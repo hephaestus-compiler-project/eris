@@ -1,1 +1,1 @@
-from src.generators.api.api_generator import APIGenerator
+from src.generators.api.api_generator import APIClientGenerator

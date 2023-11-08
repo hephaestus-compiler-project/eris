@@ -40,7 +40,7 @@ class ExprRes(NamedTuple):
                     str(self.path) + str(self.assignment_graph))
 
 
-class APIGenerator(Generator):
+class APIClientGenerator(Generator):
     TEST_CASE_NAME = "test"
 
     TEST_NAMESPACE = ast.GLOBAL_NAMESPACE + (TEST_CASE_NAME,)

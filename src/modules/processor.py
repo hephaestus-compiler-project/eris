@@ -4,7 +4,7 @@ import os
 import sys
 
 from src.generators import Generator
-from src.generators.api import APIGenerator
+from src.generators.api import APIClientGenerator
 from src.transformations.type_erasure import TypeErasure
 from src.transformations.type_overwriting import TypeOverwriting
 from src.utils import random, read_lines, load_program
@@ -25,7 +25,7 @@ class ProgramProcessor():
 
     PROGRAM_GENERATORS = {
         'base': Generator,
-        'api': APIGenerator
+        'api': APIClientGenerator
     }
 
     def __init__(self, proc_id, args):
