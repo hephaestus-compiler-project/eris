@@ -12,7 +12,7 @@ cwd = os.getcwd()
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "-g", "--generator",
-    choices=["base", "api"],
+    choices=["base", "api", "api-decl"],
     default="base",
     help="Type of generator"
 )
@@ -256,6 +256,9 @@ args.options = {
             "erase-types": args.erase_types,
             "enable-expression-cache": args.enable_expression_cache,
             "path-search-strategy": args.path_search_strategy,
+        },
+        "api-decl": {
+            "api-rules": args.api_rules,
         }
     },
     'Translator': {
@@ -287,6 +290,10 @@ if args.disable_function_references:
 if args.disable_sam:
     cfg.prob.sam_coercion = 0
 cfg.prob.local_variable_prob = args.local_variable_prob
+
+
+def is_api_driven(args):
+    return args.generator == "api" or args.generator == "api-decl"
 
 
 def validate_args(args):
@@ -322,19 +329,19 @@ def validate_args(args):
     if args.examine and not args.replay:
         sys.exit("You cannot use --examine option without the --replay option")
 
-    if args.generator == "api" and not args.api_doc_path:
+    if is_api_driven(args) and not args.api_doc_path:
         sys.exit(("You need to provide the --api-doc-path option when using"
                   " --generator 'api'"))
-    if args.generator == "api" and args.workers is not None:
+    if is_api_driven(args) and args.workers is not None:
         sys.exit("The 'api' generator cannot be used in parallel mode")
 
     if args.api_rules and not os.path.isfile(args.api_rules):
         sys.exit("You have to provide a valid file in --api-rules")
 
-    if args.generator != "api" and args.api_rules is not None:
+    if not is_api_driven(args) and args.api_rules is not None:
         sys.exit(("The --api-rules option is only combined with "
                  "--generator 'api'"))
-    if args.generator != "api" and args.library_path is not None:
+    if not is_api_driven(args) and args.library_path is not None:
         sys.exit("The --library_path option is only combined with "
                  "--generator 'api'")
     if args.max_conditional_depth <= 0:

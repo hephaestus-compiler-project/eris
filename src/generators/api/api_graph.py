@@ -2,7 +2,7 @@ from collections import OrderedDict
 from copy import copy
 import itertools
 import statistics
-from typing import NamedTuple, List, Union, Set, Dict, Tuple
+from typing import NamedTuple, List, Union, Set, Dict, Tuple, Iterable
 
 import networkx as nx
 
@@ -418,6 +418,9 @@ class APIGraph():
         self.subtyping_graph.remove_nodes_from(nodes)
         self.types = [t for t in self.types
                       if t not in nodes]
+
+    def get_api_nodes(self) -> Iterable[APINode]:
+        return self.api_graph.nodes()
 
     def get_sources_and_target(
             self, target: tp.Type,

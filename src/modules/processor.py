@@ -4,7 +4,7 @@ import os
 import sys
 
 from src.generators import Generator
-from src.generators.api import APIClientGenerator
+from src.generators.api import APIClientGenerator, APIDeclarationGenerator
 from src.transformations.type_erasure import TypeErasure
 from src.transformations.type_overwriting import TypeOverwriting
 from src.utils import random, read_lines, load_program
@@ -25,7 +25,8 @@ class ProgramProcessor():
 
     PROGRAM_GENERATORS = {
         'base': Generator,
-        'api': APIClientGenerator
+        'api': APIClientGenerator,
+        'api-decl': APIDeclarationGenerator,
     }
 
     def __init__(self, proc_id, args):
@@ -53,7 +54,7 @@ class ProgramProcessor():
             "logger": logger,
             "options": self.args.options["Generator"][self.args.generator],
         }
-        if self.args.generator == "api":
+        if self.args.generator == "api" or self.args.generator == "api-decl":
             docs = {}
             for api_path in os.listdir(self.args.api_doc_path):
                 with open(os.path.join(self.args.api_doc_path, api_path)) as f:
