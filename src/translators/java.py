@@ -185,7 +185,10 @@ class JavaTranslator(BaseTranslator):
                 return "Void"
             if box:
                 return PRIMITIVES_TO_BOXED.get(t.get_name(), t.get_name())
-            return t.get_name()
+            name = t.get_name()
+            if "." in name and t.is_type_var():
+                return name.rsplit(".", 1)[1]
+            return name
         if isinstance(t_constructor, jt.ArrayType):
             return "{}[{}]".format(self.get_type_name(t.type_args[0],
                                                       False, box),
@@ -571,8 +574,11 @@ class JavaTranslator(BaseTranslator):
         if bound:
             bound_str = self.get_type_name(bound)
             bound = ' extends ' + PRIMITIVES_TO_BOXED.get(bound_str, bound_str)
+        name = node.name
+        if "." in name:
+            name = name.rsplit(".", 1)[1]
         return "{name}{bound}".format(
-            name=node.name,
+            name=name,
             bound=bound
         )
 

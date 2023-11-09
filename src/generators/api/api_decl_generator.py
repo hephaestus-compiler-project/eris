@@ -2,7 +2,7 @@ from copy import deepcopy
 
 from src.ir import ast, types as tp
 from src.ir.context import Context
-from src.generators import Generator
+from src.generators import Generator, generators as gens
 from src.generators.api import builder, matcher, api_graph as ag
 
 
@@ -26,15 +26,15 @@ class APIDeclarationGenerator(Generator):
         # self.log_api_graph_statistics(**kwargs)
         self._has_next = True
         self.error_injected = None
+        api_components = (ag.Field, ag.Constructor, ag.Method)
+        self.api_nodes = (n for n in self.api_graph.get_api_nodes()
+                          if isinstance(n, api_components))
 
     def generate(self, context=None) -> ast.Program:
-        api_components = (ag.Field, ag.Constructor, ag.Method)
-        api_nodes = (n for n in self.api_graph.get_api_nodes()
-                     if isinstance(n, api_components))
-        node = next(api_nodes)
+        node = next(self.api_nodes)
         while node is not None and (self.matcher and
                                     not self.matcher.match(node)):
-            node = next(api_nodes)
+            node = next(self.api_nodes)
         if node is None:
             self._has_next = False
             return None
@@ -45,18 +45,62 @@ class APIDeclarationGenerator(Generator):
     def has_next(self) -> bool:
         return self._has_next
 
+    def generate_expr(self,
+                      expr_type: tp.Type = None,
+                      only_leaves=False,
+                      subtype=True,
+                      exclude_var=False,
+                      gen_bottom=False,
+                      sam_coercion=False) -> ast.Expr:
+        void_type = type(self.bt_factory.get_void_type())
+        if isinstance(expr_type, void_type) and getattr(expr_type, "primitive",
+                                                        False):
+            # For primitive void we generate an empty block
+            return ast.Block(body=[])
+        assert expr_type is not None
+        constant_candidates = {
+            self.bt_factory.get_number_type().name: gens.gen_integer_constant,
+            self.bt_factory.get_integer_type().name: gens.gen_integer_constant,
+            self.bt_factory.get_big_integer_type().name: gens.gen_integer_constant,
+            self.bt_factory.get_byte_type().name: gens.gen_integer_constant,
+            self.bt_factory.get_short_type().name: gens.gen_integer_constant,
+            self.bt_factory.get_long_type().name: gens.gen_integer_constant,
+            self.bt_factory.get_float_type().name: gens.gen_real_constant,
+            self.bt_factory.get_double_type().name: gens.gen_real_constant,
+            self.bt_factory.get_big_decimal_type().name: gens.gen_real_constant,
+            self.bt_factory.get_char_type().name: gens.gen_char_constant,
+            self.bt_factory.get_string_type().name: gens.gen_string_constant,
+            self.bt_factory.get_boolean_type().name: gens.gen_bool_constant,
+            self.bt_factory.get_array_type().name: (
+                lambda x: self.gen_array_expr(
+                    tu.substitute_invariant_wildcard_with(
+                        x, [self.bt_factory.get_any_type()]
+                    ),
+                    only_leaves=True, subtype=False)
+            ),
+        }
+        generator = constant_candidates.get(expr_type.name.capitalize())
+        if generator is not None:
+            return generator(expr_type)
+        else:
+            return ast.BottomConstant(expr_type)
+
     def convert_type_to_class(self, t: tp.Type) -> ast.ClassDeclaration:
         if t is None:
             return None
         assert not t.is_type_var()
         type_parameters = []
         if t.is_parameterized():
-            type_parameters.extend([t.t_constructor.type_parameters])
+            type_parameters.extend(t.t_constructor.type_parameters)
+        if t.is_type_constructor():
+            type_parameters.extend(t.type_parameters)
         return ast.ClassDeclaration(
             t.name.rsplit(".", 1)[1],
             superclasses=[],
             class_type=ast.ClassDeclaration.REGULAR,
-            type_parameters=type_parameters
+            type_parameters=type_parameters,
+            functions=[],
+            fields=[]
         )
 
     def convert_method(self, m: ag.Method) -> ast.FunctionDeclaration:
@@ -74,7 +118,7 @@ class APIDeclarationGenerator(Generator):
             type_parameters=m.type_parameters,
             func_type=ast.FunctionDeclaration.CLASS_METHOD,
             ret_type=out_type,
-            body=ast.BottomConstant(out_type)
+            body=self.generate_expr(out_type)
         )
         return func
 

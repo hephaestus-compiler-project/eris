@@ -140,7 +140,10 @@ class GroovyTranslator(BaseTranslator):
             return self.get_type_name(t)
         t_constructor = getattr(t, 't_constructor', None)
         if not t_constructor or isinstance(t, gt.RawType):
-            return t.get_name()
+            name = t.get_name()
+            if "." in name and t.is_type_var():
+                return name.rsplit(".", 1)[1]
+            return name
         if isinstance(t_constructor, gt.ArrayType):
             return "{}[{}]".format(self.get_type_name(t.type_args[0]),
                                    "0" if for_array else "")
@@ -375,8 +378,11 @@ class GroovyTranslator(BaseTranslator):
 
     @append_to
     def visit_type_param(self, node):
+        name = node.name
+        if "." in name:
+            name = name.rsplit(".", 1)[1]
         return "{name}{bound}".format(
-            name=node.name,
+            name=name,
             bound=' extends ' + self.get_type_name(node.bound)
             if node.bound is not None else ''
         )
