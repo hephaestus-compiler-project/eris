@@ -371,16 +371,22 @@ class APIGraphBuilder(ABC):
         if any(p.t is None for p in parameters):
             # Unable to parse parameter types
             return None
-        other_metadata = method_api.get("other_metadata", {})
+        metadata = {
+            "static": method_api["is_static"],
+            "default": method_api["is_default"],
+            "access_mod": method_api["access_mod"]
+        }
+        metadata.update(method_api.get("other_metadata", {}))
+
         if is_constructor:
             method_node = Constructor(receiver_name, parameters,
-                                      other_metadata)
+                                      metadata)
         elif is_static:
             method_node = Method(method_fqn, receiver_name,
-                                 parameters, type_parameters, other_metadata)
+                                 parameters, type_parameters, metadata)
         else:
             method_node = Method(method_api["name"], receiver_name, parameters,
-                                 type_parameters, other_metadata)
+                                 type_parameters, metadata)
         self.graph.add_node(method_node)
         return method_node
 

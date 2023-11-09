@@ -119,7 +119,8 @@ class APIDeclarationGenerator(Generator):
             type_parameters=m.type_parameters,
             func_type=ast.FunctionDeclaration.CLASS_METHOD,
             ret_type=out_type,
-            body=self.generate_expr(out_type)
+            body=self.generate_expr(out_type),
+            **m.metadata
         )
         return func
 

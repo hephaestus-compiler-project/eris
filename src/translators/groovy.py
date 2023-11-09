@@ -6,6 +6,7 @@ from collections import OrderedDict
 from src.ir import ast, groovy_types as gt, types as tp, type_utils as tu
 from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
+from src.translators.utils import get_modifier_list
 
 
 def append_to(visit):
@@ -522,10 +523,12 @@ class GroovyTranslator(BaseTranslator):
                 body=body_res
             )
         else:
-            res = ("{ident}{final}{abstract}{type_params}{ret_type} "
+            modifiers = get_modifier_list(node.metadata)
+            res = ("{ident}{final}{modifiers}{abstract}{type_params}{ret_type} "
                    "{name}({params}) {body}").format(
                 ident=self.get_ident(old_ident=old_ident),
                 final="final " if node.is_final else "",
+                modifiers=" ".join(modifiers) + " " if modifiers else "",
                 abstract="abstract " if body == "" else "",
                 type_params=(
                     "<" + type_parameters_res + ">"
