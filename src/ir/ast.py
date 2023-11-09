@@ -386,7 +386,8 @@ class FunctionDeclaration(Declaration):
                  inferred_type: types.Type = None,
                  is_final=True,
                  override=False,
-                 type_parameters=[]):
+                 type_parameters=[],
+                 **metadata):
         self.name = name
         self.params = params
         self.ret_type = ret_type
@@ -397,6 +398,7 @@ class FunctionDeclaration(Declaration):
         self.type_parameters = type_parameters
         self.inferred_type = (
             self.ret_type if inferred_type is None else inferred_type)
+        self.metadata = metadata
         assert self.inferred_type, ("The inferred_type of a function must"
                                     " not be None")
 
