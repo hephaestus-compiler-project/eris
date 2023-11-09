@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-from src.ir import ast, types as tp
+from src.ir import ast, types as tp, type_utils as tu
 from src.ir.context import Context
 from src.generators import Generator, generators as gens
 from src.generators.api import builder, matcher, api_graph as ag
@@ -26,7 +26,8 @@ class APIDeclarationGenerator(Generator):
         # self.log_api_graph_statistics(**kwargs)
         self._has_next = True
         self.error_injected = None
-        api_components = (ag.Field, ag.Constructor, ag.Method)
+        # FIXME: Handle constructors
+        api_components = (ag.Field, ag.Method)
         self.api_nodes = (n for n in self.api_graph.get_api_nodes()
                           if isinstance(n, api_components))
 
@@ -104,7 +105,7 @@ class APIDeclarationGenerator(Generator):
         )
 
     def convert_method(self, m: ag.Method) -> ast.FunctionDeclaration:
-        out_type = self.api_graph.get_output_type(m)
+        out_type = self.api_graph.get_concrete_output_type(m)
         assert out_type is not None
         func_name = m.name
         if "." in func_name:
@@ -146,6 +147,10 @@ class APIDeclarationGenerator(Generator):
         context = Context()
         rec_type = self.api_graph.get_input_type(node)
         cls = self.convert_type_to_class(rec_type)
+        if cls is None and node.cls is not None:
+            # This is a static method/field
+            cls_type = self.api_graph.get_type_by_name(node.cls)
+            cls = self.convert_type_to_class(cls_type)
         context.add_class(ast.GLOBAL_NAMESPACE, cls.name, cls)
         decl = self.convert_node_to_decl(node)
         self.add_decl_to_parent(context, cls, decl)
