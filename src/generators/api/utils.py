@@ -427,6 +427,8 @@ def is_overriden(parent_m: Method, child_m: Method, sub: dict) -> bool:
 
 def top_sort_hierarchy_chain(t: tp.Type,
                              bt_factory: BuiltinFactory) -> List[str]:
+    if t is None:
+        return []
     graph = nx.DiGraph()
     types = {t}
     types.update(t.get_supertypes())

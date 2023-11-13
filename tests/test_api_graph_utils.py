@@ -488,3 +488,4 @@ def test_top_sort_hierarchy_chain():
     assert au.top_sort_hierarchy_chain(c, factory) == [a, c]
     assert au.top_sort_hierarchy_chain(b, factory) == [a, b]
     assert au.top_sort_hierarchy_chain(a, factory) == [a]
+    assert au.top_sort_hierarchy_chain(None, factory) == []

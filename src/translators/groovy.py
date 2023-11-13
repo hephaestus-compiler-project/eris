@@ -6,7 +6,8 @@ from collections import OrderedDict
 from src.ir import ast, groovy_types as gt, types as tp, type_utils as tu
 from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
-from src.translators.utils import get_modifier_list
+from src.translators.utils import (
+    get_modifier_list, get_class_type_from_context, strip_fqn)
 
 
 def append_to(visit):
@@ -135,6 +136,7 @@ class GroovyTranslator(BaseTranslator):
         else:
             return "? super " + self.get_type_name(t_arg.bound)
 
+    @strip_fqn
     def get_type_name(self, t, for_array: bool = False):
         if t.is_wildcard():
             t = t.get_bound_rec()
@@ -271,9 +273,9 @@ class GroovyTranslator(BaseTranslator):
             for cls_inst in node.superclasses:
                 cls_name = cls_inst.class_type.name
                 cls_inst = self.get_type_name(cls_inst.class_type)
-                cls_decl = self.context.get_classes(
-                    self._namespace, glob=True)[cls_name]
-                if cls_decl.class_type == ast.ClassDeclaration.INTERFACE:
+                class_type = get_class_type_from_context(
+                    cls_name, self.context, self._namespace, {})
+                if class_type == ast.ClassDeclaration.INTERFACE:
                     interfaces.append(cls_inst)
                 else:
                     superclasses.append(cls_inst)

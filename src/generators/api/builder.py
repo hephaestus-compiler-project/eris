@@ -342,7 +342,7 @@ class APIGraphBuilder(ABC):
             "static": field_api["is_static"],
             "access_mod": field_api["access_mod"],
         }
-        if field_api["is_static"]:
+        if field_api.get("is_static", False):
             field_node = Field(prefix + field_api["name"], receiver_name,
                                metadata)
         else:
@@ -383,8 +383,8 @@ class APIGraphBuilder(ABC):
             # Unable to parse parameter types
             return None
         metadata = {
-            "static": method_api["is_static"],
-            "default": method_api["is_default"],
+            "static": method_api.get("is_static", False),
+            "default": method_api.get("is_default", False),
             "access_mod": method_api["access_mod"]
         }
         metadata.update(method_api.get("other_metadata", {}))

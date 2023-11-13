@@ -3,7 +3,7 @@ from copy import deepcopy
 from src.ir import ast, types as tp, type_utils as tu
 from src.ir.context import Context
 from src.generators import Generator, generators as gens
-from src.generators.api import builder, matcher, api_graph as ag
+from src.generators.api import builder, matcher, api_graph as ag, utils as au
 
 
 class APIDeclarationGenerator(Generator):
@@ -97,9 +97,14 @@ class APIDeclarationGenerator(Generator):
         if t.is_type_constructor():
             type_parameters.extend(t.type_parameters)
         class_type = self.api_docs[t.name]["class_type"]
+        superclasses = [
+            ast.SuperClassInstantiation(t)
+            for t in t.supertypes
+            if t != self.bt_factory.get_any_type()
+        ]
         return ast.ClassDeclaration(
             t.name.rsplit(".", 1)[1],
-            superclasses=[],
+            superclasses=superclasses,
             class_type=class_type,
             type_parameters=type_parameters,
             functions=[],
@@ -165,14 +170,18 @@ class APIDeclarationGenerator(Generator):
     def convert_node_to_program(self, node: ag.APINode) -> ast.Program:
         context = Context()
         rec_type = self.api_graph.get_input_type(node)
-        cls = self.convert_type_to_class(rec_type)
-        if cls is None and node.cls is not None:
+        inherit_chain = au.top_sort_hierarchy_chain(rec_type, self.bt_factory)
+        classes = [self.convert_type_to_class(t) for t in inherit_chain]
+        if not classes and node.cls is not None:
             # This is a static method/field
             cls_type = self.api_graph.get_type_by_name(node.cls)
-            cls = self.convert_type_to_class(cls_type)
-        context.add_class(ast.GLOBAL_NAMESPACE, cls.name, cls)
-        is_parent_abstract = (cls and
-                              cls.class_type == ast.ClassDeclaration.INTERFACE)
+            inherit_chain = au.top_sort_hierarchy_chain(cls_type,
+                                                        self.bt_factory)
+            classes = [self.convert_type_to_class(t) for t in inherit_chain]
+        for cls in classes:
+            context.add_class(ast.GLOBAL_NAMESPACE, cls.name, cls)
+        parent_cls = classes[-1]
+        is_parent_abstract = parent_cls.class_type == ast.ClassDeclaration.INTERFACE
         decl = self.convert_node_to_decl(node, is_parent_abstract)
-        self.add_decl_to_parent(context, cls, decl)
+        self.add_decl_to_parent(context, parent_cls, decl)
         return ast.Program(deepcopy(context), self.language)

@@ -9,7 +9,8 @@ from src.ir import ast, java_types as jt, types as tp, type_utils as tu
 from src.ir.context import get_decl
 from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
-from src.translators.utils import get_modifier_list
+from src.translators.utils import (
+    get_modifier_list, strip_fqn, get_class_type_from_context)
 
 
 PRIMITIVES_TO_BOXED = {
@@ -175,6 +176,7 @@ class JavaTranslator(BaseTranslator):
                                     for ta in t.type_args[len(type_params):])
         return f"{enclosing_str}.{basename}<{extra_type_args}>"
 
+    @strip_fqn
     def get_type_name(self, t, get_boxed_void=False, box=False,
                       for_array=False):
         if t.is_wildcard():
@@ -455,9 +457,9 @@ class JavaTranslator(BaseTranslator):
             for cls_inst in node.superclasses:
                 cls_name = cls_inst.class_type.name
                 cls_inst = self.get_type_name(cls_inst.class_type)
-                cls_decl = self.context.get_classes(
-                    self._namespace, glob=True)[cls_name]
-                if cls_decl.class_type == ast.ClassDeclaration.INTERFACE:
+                class_type = get_class_type_from_context(
+                    cls_name, self.context, self._namespace, {})
+                if class_type == ast.ClassDeclaration.INTERFACE:
                     interfaces.append(cls_inst)
                 else:
                     superclasses.append(cls_inst)
