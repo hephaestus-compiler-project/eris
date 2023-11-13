@@ -6,17 +6,19 @@ from src.ir import types as tp
 class Field(NamedTuple):
     name: str
     cls: str
+    metadata: dict
 
     def __str__(self):
         return self.get_class_name() + "." + self.get_name()
 
     def __hash__(self):
-        return hash((self.name, self.cls))
+        return hash((self.name, self.cls, str(self.metadata)))
 
     def __eq__(self, other):
         return (self.__class__ == other.__class__ and
                 self.name == other.name and
-                self.cls == other.cls)
+                self.cls == other.cls and
+                self.metadata == other.metadata)
 
     def get_class_name(self):
         return self.cls

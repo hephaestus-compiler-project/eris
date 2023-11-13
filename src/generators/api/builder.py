@@ -161,20 +161,15 @@ class APIGraphBuilder(ABC):
             if field_api.get("type_parameters", []):
                 # TODO support parameterized fields
                 continue
-            receiver_name = self.get_receiver_name(field_api)
-            receiver = self.get_api_incoming_node(field_api)
-            prefix = receiver_name + "." if receiver_name else ""
-            if field_api["access_mod"] == PROTECTED:
+            field_node = self.build_field_node(field_api)
+            if field_node is None:
+                # Unsupported field
                 continue
             field_type = self.parse_type(field_api["type"])
             if field_type is None:
                 # Field type is unsupported
                 continue
-            if field_api["is_static"]:
-                field_node = Field(prefix + field_api["name"], receiver_name)
-            else:
-                field_node = Field(field_api["name"], receiver_name)
-
+            receiver = self.get_api_incoming_node(field_api)
             self.graph.add_node(field_node)
             if receiver and not field_api["is_static"]:
                 # XXX: Maybe we also need to consider static fields called
@@ -337,6 +332,22 @@ class APIGraphBuilder(ABC):
             receiver = self.parse_type(receiver)
             return receiver
         return None
+
+    def build_field_node(self, field_api: dict) -> Field:
+        receiver_name = self.get_receiver_name(field_api)
+        prefix = receiver_name + "." if receiver_name else ""
+        if field_api["access_mod"] == PROTECTED:
+            return None
+        metadata = {
+            "static": field_api["is_static"],
+            "access_mod": field_api["access_mod"],
+        }
+        if field_api["is_static"]:
+            field_node = Field(prefix + field_api["name"], receiver_name,
+                               metadata)
+        else:
+            field_node = Field(field_api["name"], receiver_name, metadata)
+        return field_node
 
     def build_method_type_parameters(
             self, method_api: dict,

@@ -120,6 +120,8 @@ class APIDeclarationGenerator(Generator):
             func_type=ast.FunctionDeclaration.CLASS_METHOD,
             ret_type=out_type,
             body=self.generate_expr(out_type),
+            is_final=False,
+            override=False,
             **m.metadata
         )
         return func
@@ -130,7 +132,8 @@ class APIDeclarationGenerator(Generator):
         field_name = f.name
         if "." in field_name:
             field_name = field_name.rsplit(".", 1)[1]
-        return ast.FieldDeclaration(field_name, field_type)
+        return ast.FieldDeclaration(field_name, field_type, is_final=False,
+                                    can_override=True, override=False)
 
     def convert_node_to_decl(self, node: ag.APINode) -> ast.Declaration:
         converters = {
