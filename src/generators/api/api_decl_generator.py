@@ -16,6 +16,7 @@ class APIDeclarationGenerator(Generator):
 
     def __init__(self, api_docs, options={}, language=None, logger=None):
         super().__init__(language=language, logger=logger)
+        self.api_docs = api_docs
         self.api_graph: ag.APIGraph = self.API_GRAPH_BUILDERS[language](
             language, **options).build(api_docs)
         api_rules_file = options.get("api-rules")
@@ -95,21 +96,28 @@ class APIDeclarationGenerator(Generator):
             type_parameters.extend(t.t_constructor.type_parameters)
         if t.is_type_constructor():
             type_parameters.extend(t.type_parameters)
+        class_type = self.api_docs[t.name]["class_type"]
         return ast.ClassDeclaration(
             t.name.rsplit(".", 1)[1],
             superclasses=[],
-            class_type=ast.ClassDeclaration.REGULAR,
+            class_type=class_type,
             type_parameters=type_parameters,
             functions=[],
-            fields=[]
+            fields=[],
+            is_final=False
         )
 
-    def convert_method(self, m: ag.Method) -> ast.FunctionDeclaration:
+    def convert_method(self, m: ag.Method,
+                       is_parent_abstract: bool) -> ast.FunctionDeclaration:
         out_type = self.api_graph.get_concrete_output_type(m)
         assert out_type is not None
         func_name = m.name
         if "." in func_name:
             func_name = func_name.rsplit(".", 1)[1]
+        is_abstract = (not m.metadata.get("static", False) and
+                       not m.metadata.get("default", False) and
+                       (is_parent_abstract or
+                        m.metadata.get("is_abstract", False)))
         func = ast.FunctionDeclaration(
             name=func_name,
             params=[
@@ -119,14 +127,15 @@ class APIDeclarationGenerator(Generator):
             type_parameters=m.type_parameters,
             func_type=ast.FunctionDeclaration.CLASS_METHOD,
             ret_type=out_type,
-            body=self.generate_expr(out_type),
+            body=None if is_abstract else self.generate_expr(out_type),
             is_final=False,
             override=False,
             **m.metadata
         )
         return func
 
-    def convert_field(self, f: ag.Field) -> ast.FieldDeclaration:
+    def convert_field(self, f: ag.Field,
+                      is_parent_abstract: bool) -> ast.FieldDeclaration:
         field_type = self.api_graph.get_concrete_output_type(f)
         assert field_type is not None
         field_name = f.name
@@ -135,12 +144,13 @@ class APIDeclarationGenerator(Generator):
         return ast.FieldDeclaration(field_name, field_type, is_final=False,
                                     can_override=True, override=False)
 
-    def convert_node_to_decl(self, node: ag.APINode) -> ast.Declaration:
+    def convert_node_to_decl(self, node: ag.APINode,
+                             is_parent_abstract: bool) -> ast.Declaration:
         converters = {
             ag.Method: self.convert_method,
             ag.Field: self.convert_field,
         }
-        return converters[type(node)](node)
+        return converters[type(node)](node, is_parent_abstract)
 
     def add_decl_to_parent(self, context: Context, parent: ast.Declaration,
                            child: ast.Declaration):
@@ -161,6 +171,8 @@ class APIDeclarationGenerator(Generator):
             cls_type = self.api_graph.get_type_by_name(node.cls)
             cls = self.convert_type_to_class(cls_type)
         context.add_class(ast.GLOBAL_NAMESPACE, cls.name, cls)
-        decl = self.convert_node_to_decl(node)
+        is_parent_abstract = (cls and
+                              cls.class_type == ast.ClassDeclaration.INTERFACE)
+        decl = self.convert_node_to_decl(node, is_parent_abstract)
         self.add_decl_to_parent(context, cls, decl)
         return ast.Program(deepcopy(context), self.language)

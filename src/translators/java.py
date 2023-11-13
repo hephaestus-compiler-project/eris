@@ -184,12 +184,12 @@ class JavaTranslator(BaseTranslator):
         if not t_constructor or isinstance(t, jt.RawType):
             if get_boxed_void and isinstance(t, jt.VoidType):
                 return "Void"
+            type_name = t.get_name()
+            if "." in type_name and t.is_type_var():
+                type_name = type_name.rsplit(".", 1)[1]
             if box:
-                return PRIMITIVES_TO_BOXED.get(t.get_name(), t.get_name())
-            name = t.get_name()
-            if "." in name and t.is_type_var():
-                return name.rsplit(".", 1)[1]
-            return name
+                return PRIMITIVES_TO_BOXED.get(type_name, type_name)
+            return type_name
         if isinstance(t_constructor, jt.ArrayType):
             return "{}[{}]".format(self.get_type_name(t.type_args[0],
                                                       False, box),
@@ -717,7 +717,7 @@ class JavaTranslator(BaseTranslator):
         else:
             modifiers = get_modifier_list(node.metadata)
             res = ("{ident}{final}{modifiers}{abstract}{type_params}{ret_type} "
-                   "{name}({params}) throws Exception {body}{semicolon}").format(
+                   "{name}({params}) {body}{semicolon}").format(
                 ident=self.get_ident(old_ident=old_ident),
                 final="final " if node.is_final else "",
                 modifiers=" ".join(modifiers) + " " if modifiers else "",
