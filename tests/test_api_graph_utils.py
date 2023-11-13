@@ -474,3 +474,17 @@ def test_is_typing_sequence_ambiguous_mul_args():
     ], [], {})
     typing_seq = [kt.Integer, kt.String, t3]
     assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, {})
+
+
+def test_top_sort_hierarchy_chain():
+    factory = kt.KotlinBuiltinFactory()
+    a = tp.SimpleClassifier("A", supertypes=[kt.Any])
+    b = tp.SimpleClassifier("B", supertypes=[a])
+    c = tp.SimpleClassifier("C", supertypes=[a])
+    d = tp.SimpleClassifier("D", supertypes=[b, c])
+    res = au.top_sort_hierarchy_chain(d, factory)
+    assert res == [a, b, c, d] or res == [a, c, b, d]
+
+    assert au.top_sort_hierarchy_chain(c, factory) == [a, c]
+    assert au.top_sort_hierarchy_chain(b, factory) == [a, b]
+    assert au.top_sort_hierarchy_chain(a, factory) == [a]

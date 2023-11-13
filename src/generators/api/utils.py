@@ -6,6 +6,7 @@ import networkx as nx
 from src import utils
 from src.config import cfg
 from src.ir import types as tp, type_utils as tu
+from src.ir.builtins import BuiltinFactory
 from src.generators.api.nodes import Method
 
 
@@ -422,3 +423,19 @@ def is_overriden(parent_m: Method, child_m: Method, sub: dict) -> bool:
         parent_m.name == child_m.name and
         parent_parameters == child_parameters
     )
+
+
+def top_sort_hierarchy_chain(t: tp.Type,
+                             bt_factory: BuiltinFactory) -> List[str]:
+    graph = nx.DiGraph()
+    types = {t}
+    types.update(t.get_supertypes())
+    for t in types:
+        if t == bt_factory.get_any_type():
+            continue
+        graph.add_node(t)
+        for supertype in t.supertypes:
+            if supertype != bt_factory.get_any_type():
+                graph.add_node(supertype)
+                graph.add_edge(supertype, t)
+    return list(nx.topological_sort(graph))
