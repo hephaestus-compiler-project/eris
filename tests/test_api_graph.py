@@ -368,6 +368,13 @@ def filter_types(path):
     ]
 
 
+FUNC_METADATA = {
+    "static": False,
+    "default": False,
+    "access_mod": "public"
+}
+
+
 def test1():
     b = JavaAPIGraphBuilder("java")
     api_graph = b.build(DOCS1)
@@ -378,8 +385,8 @@ def test1():
 
     assert path == [
         b.parse_type("java.Foo"),
-        ag.Method("makeList", "java.Foo", [], [], {}),
-        ag.Method("toSet", "java.List", [], [], {}),
+        ag.Method("makeList", "java.Foo", [], [], FUNC_METADATA),
+        ag.Method("toSet", "java.List", [], [], FUNC_METADATA),
     ]
 
 
@@ -395,9 +402,10 @@ def test2():
 
     assert path == [
         b.build_class_node(docs["java.Foo"]),
-        ag.Method("makeList", "java.Foo", [], [], {}),
-        ag.Method("toSet", "java.List", [], [], {}),
+        ag.Method("makeList", "java.Foo", [], [], FUNC_METADATA),
+        ag.Method("toSet", "java.List", [], [], FUNC_METADATA),
     ]
+
 
 def test3():
     b = JavaAPIGraphBuilder("java")
@@ -413,8 +421,8 @@ def test3():
 
     assert path == [
         b.build_class_node(DOCS2["java.Foo"]),
-        ag.Method("makeList", "java.Foo", [], [], {}),
-        ag.Method("toSet", "java.List", [], [], {}),
+        ag.Method("makeList", "java.Foo", [], [], FUNC_METADATA),
+        ag.Method("toSet", "java.List", [], [], FUNC_METADATA),
     ]
 
     docs = copy.deepcopy(DOCS2)
@@ -435,8 +443,8 @@ def test3():
 
     assert path == [
         b.build_class_node(DOCS2["java.Foo"]),
-        ag.Method("makeList", "java.Foo", [], [], {}),
-        ag.Method("toSet", "java.List", [], [], {}),
+        ag.Method("makeList", "java.Foo", [], [], FUNC_METADATA),
+        ag.Method("toSet", "java.List", [], [], FUNC_METADATA),
     ]
 
 
@@ -451,9 +459,11 @@ def test4():
         b.build_class_node(DOCS5["java.Foo.List"]),
         with_constraints={tp.TypeParameter("java.Foo.T1"): jt.String})
     path = filter_types(path)
+    metadata = copy.copy(FUNC_METADATA)
+    metadata["static"] = True
     assert path == [
-        ag.Method("java.Foo.makeList", "java.Foo", [], [], {}),
-        ag.Constructor("java.Foo.List", [], {})
+        ag.Method("java.Foo.makeList", "java.Foo", [], [], metadata),
+        ag.Constructor("java.Foo.List", [], FUNC_METADATA)
     ]
     assert assignments == {
         tp.TypeParameter("java.Foo.T1"): jt.String
@@ -475,8 +485,8 @@ def test4():
         with_constraints={tp.TypeParameter("java.Foo.T1"): jt.Integer})
     path = filter_types(path)
     assert path == [
-        ag.Constructor("java.Foo", [], {}),
-        ag.Constructor("java.Foo.List", [], {})
+        ag.Constructor("java.Foo", [], FUNC_METADATA),
+        ag.Constructor("java.Foo.List", [], FUNC_METADATA)
     ]
     assert assignments == {
         tp.TypeParameter("java.Foo.T1"): jt.Integer
@@ -491,11 +501,11 @@ def test_get_function_refs_of():
         b.parse_type("java.Producer<java.lang.Object>"))
     assert refs == [
         (
-            ag.Method("m1", "java.Foo", [], [], {}),
+            ag.Method("m1", "java.Foo", [], [], FUNC_METADATA),
             {}
         ),
         (
-            ag.Method("apply", "java.Producer", [], [], {}),
+            ag.Method("apply", "java.Producer", [], [], FUNC_METADATA),
             {
                 tp.TypeParameter("java.Producer.T1"): b.parse_type(
                     "java.lang.Object")
@@ -509,18 +519,20 @@ def test_get_function_refs_of():
     assert refs == [
         (
             ag.Method("m2", "java.Foo", [
-                ag.Parameter(b.parse_type("java.lang.String"), False)], [], {}),
+                ag.Parameter(b.parse_type("java.lang.String"), False)], [],
+                      FUNC_METADATA),
             {}
         ),
         (
             ag.Method("m4", "java.List", [
-                ag.Parameter(b.parse_type("java.lang.String"), False)], [], {}),
+                ag.Parameter(b.parse_type("java.lang.String"), False)], [],
+                      FUNC_METADATA),
             {}
         ),
         (
             ag.Method("apply", "java.Function",
                       [ag.Parameter(tp.TypeParameter("java.Function.T1"), False)], [],
-                      {}),
+                      FUNC_METADATA),
             {
                 tp.TypeParameter("java.Function.T1"): b.parse_type("java.lang.String"),
                 tp.TypeParameter("java.Function.T2"): b.parse_type("java.lang.Object"),
@@ -535,13 +547,13 @@ def test_get_function_refs_of():
     assert refs == [
         (
             ag.Method("m3", "java.Foo", [],
-                      [tp.TypeParameter("java.Foo.m3.T1")], {}),
+                      [tp.TypeParameter("java.Foo.m3.T1")], FUNC_METADATA),
             {
                 tp.TypeParameter("java.Foo.m3.T1"): b.parse_type("java.lang.Integer")
             }
         ),
         (
-            ag.Method("apply", "java.Producer", [], [], {}),
+            ag.Method("apply", "java.Producer", [], [], FUNC_METADATA),
             {
                 tp.TypeParameter("java.Producer.T1"): b.parse_type(
                     "java.List<java.lang.Integer>")
@@ -555,13 +567,13 @@ def test_get_function_refs_of():
     )
     assert refs == [
         (
-            ag.Constructor("java.Foo", [], {}),
+            ag.Constructor("java.Foo", [], FUNC_METADATA),
             {
                 tp.TypeParameter("java.Foo.T1"): b.parse_type("java.lang.Integer")
             }
         ),
         (
-            ag.Method("apply", "java.Producer", [], [], {}),
+            ag.Method("apply", "java.Producer", [], [], FUNC_METADATA),
             {
                 tp.TypeParameter("java.Producer.T1"): b.parse_type(
                     "java.Foo<java.lang.Integer>")
@@ -593,7 +605,8 @@ def test_get_function_refs_of_receiver():
     assert refs == [
         (
             ag.Method("m1", "kotlin.Foo", [
-                ag.Parameter(b.parse_type("kotlin.Int"), False)], [], {}),
+                ag.Parameter(b.parse_type("kotlin.Int"), False)], [],
+                      FUNC_METADATA),
             {}
         ),
     ]
@@ -604,7 +617,8 @@ def test_get_function_refs_of_receiver():
     assert refs == [
         (
             ag.Method("m1", "kotlin.List", [
-                ag.Parameter(b.parse_type("kotlin.String"), False)], [], {}),
+                ag.Parameter(b.parse_type("kotlin.String"), False)], [],
+                      FUNC_METADATA),
             {tp.TypeParameter("kotlin.List.T1"): kt.Integer}
         ),
     ]
@@ -625,12 +639,13 @@ def test_get_function_refs_of_suspend():
 
     refs = api_graph.get_function_refs_of(
         b.parse_type("suspend (kotlin.Int) -> kotlin.String"))
+    metadata = copy.copy(FUNC_METADATA)
+    metadata["is_suspend"] = True
     assert refs == [
         (
             ag.Method("m2", "kotlin.Foo", [
-                ag.Parameter(b.parse_type("kotlin.Int"), False)], [], {
-                    "is_suspend": True
-                }),
+                ag.Parameter(b.parse_type("kotlin.Int"), False)], [],
+                      metadata),
             {}
         ),
     ]
@@ -644,12 +659,12 @@ def test_get_function_refs_of_suspend():
     assert refs == [
         (
             ag.Method("m2", "kotlin.Foo", [
-                ag.Parameter(b.parse_type("kotlin.Int"), False)], [], {
-                    "is_suspend": True
-                }),
+                ag.Parameter(b.parse_type("kotlin.Int"), False)], [],
+                      metadata),
             {}
         ),
     ]
+
 
 def test_get_functional_type():
     b = JavaAPIGraphBuilder("java")
