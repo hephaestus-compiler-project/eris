@@ -217,12 +217,13 @@ class VariableDeclaration(Declaration):
 
 class FieldDeclaration(Declaration):
     def __init__(self, name: str, field_type: types.Type, is_final=True,
-                 can_override=False, override=False):
+                 can_override=False, override=False, **metadata):
         self.name = name
         self.field_type = field_type
         self.is_final = is_final
         self.can_override = can_override
         self.override = override
+        self.metadata = metadata
 
     def children(self):
         return []

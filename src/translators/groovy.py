@@ -429,8 +429,10 @@ class GroovyTranslator(BaseTranslator):
 
     @append_to
     def visit_field_decl(self, node):
-        return "public {final}{field_type} {name}".format(
+        modifiers = get_modifier_list(node.metadata)
+        return "public {final}{modifiers}{field_type} {name}".format(
             final="final " if node.is_final else "",
+            modifiers=" ".join(modifiers) + " " if modifiers else "",
             field_type=self.get_type_name(node.field_type),
             name=node.name
         )

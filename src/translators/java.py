@@ -9,6 +9,7 @@ from src.ir import ast, java_types as jt, types as tp, type_utils as tu
 from src.ir.context import get_decl
 from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
+from src.translators.utils import get_modifier_list
 
 
 PRIMITIVES_TO_BOXED = {
@@ -623,8 +624,10 @@ class JavaTranslator(BaseTranslator):
 
     @append_to
     def visit_field_decl(self, node):
-        return "public {final}{field_type} {name};".format(
+        modifiers = get_modifier_list(node.metadata)
+        return "public {final}{modifiers}{field_type} {name};".format(
             final="final " if node.is_final else "",
+            modifiers=" ".join(modifiers) + " " if modifiers else "",
             field_type=self.get_type_name(node.field_type),
             name=node.name
         )
@@ -712,11 +715,12 @@ class JavaTranslator(BaseTranslator):
                 body=body
             )
         else:
-            res = ("{ident}{public}{final}{abstract}{type_params}{ret_type} "
+            modifiers = get_modifier_list(node.metadata)
+            res = ("{ident}{final}{modifiers}{abstract}{type_params}{ret_type} "
                    "{name}({params}) throws Exception {body}{semicolon}").format(
                 ident=self.get_ident(old_ident=old_ident),
-                public="public ",
                 final="final " if node.is_final else "",
+                modifiers=" ".join(modifiers) + " " if modifiers else "",
                 abstract="abstract " if body == "" else "",
                 type_params=(
                     "<" + type_parameters_res + "> "

@@ -125,7 +125,12 @@ class APIDeclarationGenerator(Generator):
         return func
 
     def convert_field(self, f: ag.Field) -> ast.FieldDeclaration:
-        raise NotImplementedError
+        field_type = self.api_graph.get_concrete_output_type(f)
+        assert field_type is not None
+        field_name = f.name
+        if "." in field_name:
+            field_name = field_name.rsplit(".", 1)[1]
+        return ast.FieldDeclaration(field_name, field_type)
 
     def convert_node_to_decl(self, node: ag.APINode) -> ast.Declaration:
         converters = {
