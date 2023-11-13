@@ -318,7 +318,7 @@ def gen_program(pid, dirname, packages, program_processor=None):
             'transformations': [t.get_name()
                                 for t in proc.get_transformations()],
             'error': err,
-            'program': None,
+            'programs': None,
             "time": 0,
         }
         return ProgramRes(True, stats)
@@ -393,10 +393,11 @@ def check_oracle(dirname, oracles):
     # Analyze the compiler output and check whether there are programs
     # that the compiler did not manage to compile.
     failed, _ = compiler.analyze_compiler_output(err)
+    output = {pid: proc_res.stats for pid, proc_res in oracles.items()
+              if not proc_res.stats["programs"]}
     if compiler.crash_msg:
         # We just found a compiler crash.
         shutil.rmtree(dirname)
-        output = {}
         if cli_args.debug:
             print('We found compiler crash')
         for pid, proc_res in oracles.items():
@@ -408,7 +409,6 @@ def check_oracle(dirname, oracles):
                 output[pid] = proc_res.stats
         return output, compilation_time
 
-    output = {}
     for pid, proc_res in oracles.items():
         if proc_res.failed:
             output[pid] = proc_res.stats
