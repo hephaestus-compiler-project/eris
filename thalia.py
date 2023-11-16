@@ -198,8 +198,9 @@ def get_batches(programs):
 
 
 def process_cp_transformations(pid, dirname, translator, proc,
-                               program, package_name):
+                               program):
     program_str = None
+    package_name = proc.packages[0]
     while proc.can_transform():
         res = proc.transform_program(program)
         if res is None:
@@ -228,7 +229,8 @@ def process_cp_transformations(pid, dirname, translator, proc,
 
 
 def process_ncp_transformations(pid, dirname, translator, proc,
-                                program, package_name):
+                                program):
+    package_name = proc.packages[1]
     translator.package = 'src.' + package_name
     res = proc.inject_fault(program)
     if res is None:
@@ -266,7 +268,7 @@ def gen_program(pid, dirname, packages, program_processor=None):
     utils.random.reset_word_pool()
     translator = TRANSLATORS[cli_args.language]('src.' + packages[0],
                                                 cli_args.options['Translator'])
-    proc = program_processor or ProgramProcessor(pid, cli_args)
+    proc = program_processor or ProgramProcessor(pid, cli_args, packages)
     try:
         start_time_gen = time.process_time()
         program, error_injected = proc.get_program()
@@ -288,7 +290,7 @@ def gen_program(pid, dirname, packages, program_processor=None):
                 os.path.join(get_generator_dir(pid), translator.get_filename())
             )
         correct_program = process_cp_transformations(
-            pid, dirname, translator, proc, program, packages[0])
+            pid, dirname, translator, proc, program)
         stats = {
             'transformations': [t.get_name()
                                 for t in proc.get_transformations()],
@@ -300,7 +302,7 @@ def gen_program(pid, dirname, packages, program_processor=None):
         }
         if not cli_args.only_correctness_preserving_transformations:
             incorrect_program = process_ncp_transformations(
-                pid, dirname, translator, proc, program, packages[1])
+                pid, dirname, translator, proc, program)
             if incorrect_program:
                 stats['error'] = incorrect_program[1]
                 stats['programs'][incorrect_program[0]] = False

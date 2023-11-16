@@ -29,9 +29,13 @@ class ProgramProcessor():
         'api-decl': APIDeclarationGenerator,
     }
 
-    def __init__(self, proc_id, args):
+    def __init__(self, proc_id, args, packages: tuple):
         self.proc_id = proc_id
         self.args = args
+        # This is pair; the first element is the package where the correct
+        # resides, while the second element is the package where the incorrect
+        # program resides.
+        self.packages = packages
         self.transformations = [
             ProgramProcessor.CP_TRANSFORMATIONS[t]
             for t in self.args.transformation_types
@@ -60,6 +64,8 @@ class ProgramProcessor():
                 with open(os.path.join(self.args.api_doc_path, api_path)) as f:
                     docs[api_path.replace(".json", "")] = json.load(f)
             kwargs["api_docs"] = docs
+            if self.args.generator == "api-decl":
+                kwargs["package"] = "src." + self.packages[0]
         return self.PROGRAM_GENERATORS.get(self.args.generator)(**kwargs)
 
     def _apply_transformation(self, transformation_cls,
