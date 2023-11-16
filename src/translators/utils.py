@@ -35,7 +35,8 @@ def strip_fqn(func):
             type_name = type_name.rsplit(".", 1)[1]
 
         # Strip fqn if the class is defined in context.
-        defined_classes = self.context.get_classes(self._namespace, glob=True)
+        context = self.context or Context()
+        defined_classes = context.get_classes(self._namespace, glob=True)
         if type_name in defined_classes:
             return res.replace(t.name, type_name)
         return res

@@ -267,7 +267,6 @@ class GroovyTranslator(BaseTranslator):
     @change_namespace
     def visit_class_decl(self, node):
         def get_superclasses_interfaces():
-            # In correct programs len(superclasses) must be at most 1.
             superclasses = []
             interfaces = []
             for cls_inst in node.superclasses:

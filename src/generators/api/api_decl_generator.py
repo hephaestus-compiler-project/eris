@@ -33,16 +33,16 @@ class APIDeclarationGenerator(Generator):
                           if isinstance(n, api_components))
 
     def generate(self, context=None) -> ast.Program:
-        node = next(self.api_nodes)
-        while node is not None and (self.matcher and
-                                    not self.matcher.match(node)):
+        try:
             node = next(self.api_nodes)
-        if node is None:
+            while node is not None and (self.matcher and
+                                        not self.matcher.match(node)):
+                node = next(self.api_nodes)
+            program = self.convert_node_to_program(node)
+            return program
+        except StopIteration:
             self._has_next = False
             return None
-
-        program = self.convert_node_to_program(node)
-        return program
 
     def has_next(self) -> bool:
         return self._has_next
