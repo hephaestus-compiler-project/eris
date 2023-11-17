@@ -1165,8 +1165,10 @@ class JavaTranslator(BaseTranslator):
     def visit_func_call(self, node):
         def is_nested_func():
             # fdecl[0][-1] is the parent.
-            if fdecl and fdecl[0][-1] != 'global' and fdecl[0][-1][0].islower():
-                return True
+            if fdecl and fdecl[0][-1] != 'global':
+                # It might be mypkcg.MyCls; get base name
+                base_name = fdecl[0][-1].rsplit(".", 1)[-1]
+                return base[0].islower()
             return False
         old_ident = self.ident
         self.ident = 0
