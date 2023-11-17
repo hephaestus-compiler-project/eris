@@ -4,12 +4,12 @@ import re
 
 from src.ir import ast, types as tp, type_utils as tu
 from src.ir.context import Context
-from src.generators import Generator, generators as gens
-from src.generators.api import builder, matcher, api_graph as ag, utils as au
+from src.generators import generators as gens
+from src.generators.api import builder, api_graph as ag
+from src.generators.api.api_generator import APIClientGenerator
 
 
-
-class APIDeclarationGenerator(Generator):
+class APIDeclarationGenerator(APIClientGenerator):
     API_GRAPH_BUILDERS = {
         "java": builder.JavaAPIGraphBuilder,
         "kotlin": builder.KotlinAPIGraphBuilder,
@@ -19,21 +19,11 @@ class APIDeclarationGenerator(Generator):
 
     def __init__(self, api_docs, options={}, language=None,
                  logger=None):
-        super().__init__(language=language, logger=logger)
+        super().__init__(api_docs, options=options, language=language,
+                         logger=logger)
+        self.options = options
         self.api_docs = api_docs
         self.package_name = None
-        self.api_graph: ag.APIGraph = self.API_GRAPH_BUILDERS[language](
-            language, **options).build(api_docs)
-        api_rules_file = options.get("api-rules")
-        self.options = options
-        kwargs = {}
-        if api_rules_file:
-            self.matcher = matcher.parse_rule_file(api_rules_file)
-            kwargs["matcher"] = self.matcher
-        # self.log_api_graph_statistics(**kwargs)
-        self._has_next = True
-        self.error_injected = None
-        # FIXME: Handle constructors
         self.api_namespaces = iter(api_docs.keys())
 
     def fork_api_spec(self, ns: str):
@@ -66,6 +56,8 @@ class APIDeclarationGenerator(Generator):
                        not m.metadata.get("default", False) and
                        (is_parent_abstract or
                         m.metadata.get("is_abstract", False)))
+        prev_ns = self.namespace
+        self.namespace += (func_name,)
         func = ast.FunctionDeclaration(
             name=func_name,
             params=[
@@ -75,11 +67,12 @@ class APIDeclarationGenerator(Generator):
             type_parameters=m.type_parameters,
             func_type=ast.FunctionDeclaration.CLASS_METHOD,
             ret_type=out_type,
-            body=None if is_abstract else self.generate_expr(out_type),
+            body=None if is_abstract else self._generate_expr_from_node(out_type, 2)[0],
             is_final=False,
             override=False,
             **m.metadata
         )
+        self.namespace = prev_ns
         return func
 
     def convert_field(self, f: ag.Field,
@@ -121,7 +114,7 @@ class APIDeclarationGenerator(Generator):
 
     def create_program_from_spec(self, api_spec: dict, api_graph: ag.APIGraph,
                                  defined_classes: list):
-        context = Context()
+        self.context = Context()
         for name in defined_classes:
             spec = api_spec[name]
             t = api_graph.get_type_by_name(name)
@@ -130,8 +123,10 @@ class APIDeclarationGenerator(Generator):
             if t is None:
                 continue
             is_parent_abstract = spec["class_type"] == ast.ClassDeclaration.INTERFACE
+            self.namespace = ast.GLOBAL_NAMESPACE + (name,)
             fields, methods = self.create_methods_from_namespace(
                 name, api_graph, is_parent_abstract)
+            self.namespace = ast.GLOBAL_NAMESPACE
             cls = ast.ClassDeclaration(
                 name,
                 superclasses=[ast.SuperClassInstantiation(st)
@@ -144,14 +139,14 @@ class APIDeclarationGenerator(Generator):
                 fields=fields,
                 is_final=False
             )
-            context.add_class(ast.GLOBAL_NAMESPACE, cls.name, cls)
+            self.context.add_class(ast.GLOBAL_NAMESPACE, cls.name, cls)
             for field in fields:
-                context.add_var(ast.GLOBAL_NAMESPACE + (cls.name,), field.name,
-                                field)
+                self.context.add_var(ast.GLOBAL_NAMESPACE + (cls.name,),
+                                     field.name, field)
             for method in methods:
-                context.add_func(ast.GLOBAL_NAMESPACE + (cls.name,),
-                                 method.name, method)
-        return ast.Program(context, self.language)
+                self.context.add_func(ast.GLOBAL_NAMESPACE + (cls.name,),
+                                      method.name, method)
+        return ast.Program(self.context, self.language)
 
     def generate(self, context=None) -> ast.Program:
         try:
@@ -172,45 +167,6 @@ class APIDeclarationGenerator(Generator):
         return self._has_next
 
     def prepare_next_program(self, program_id, package_name):
+        self.context = None
         self.error_injected = None
         self.package_name = package_name
-
-    def generate_expr(self,
-                      expr_type: tp.Type = None,
-                      only_leaves=False,
-                      subtype=True,
-                      exclude_var=False,
-                      gen_bottom=False,
-                      sam_coercion=False) -> ast.Expr:
-        void_type = type(self.bt_factory.get_void_type())
-        if isinstance(expr_type, void_type) and getattr(expr_type, "primitive",
-                                                        False):
-            # For primitive void we generate an empty block
-            return ast.Block(body=[])
-        assert expr_type is not None
-        constant_candidates = {
-            self.bt_factory.get_number_type().name: gens.gen_integer_constant,
-            self.bt_factory.get_integer_type().name: gens.gen_integer_constant,
-            self.bt_factory.get_big_integer_type().name: gens.gen_integer_constant,
-            self.bt_factory.get_byte_type().name: gens.gen_integer_constant,
-            self.bt_factory.get_short_type().name: gens.gen_integer_constant,
-            self.bt_factory.get_long_type().name: gens.gen_integer_constant,
-            self.bt_factory.get_float_type().name: gens.gen_real_constant,
-            self.bt_factory.get_double_type().name: gens.gen_real_constant,
-            self.bt_factory.get_big_decimal_type().name: gens.gen_real_constant,
-            self.bt_factory.get_char_type().name: gens.gen_char_constant,
-            self.bt_factory.get_string_type().name: gens.gen_string_constant,
-            self.bt_factory.get_boolean_type().name: gens.gen_bool_constant,
-            self.bt_factory.get_array_type().name: (
-                lambda x: self.gen_array_expr(
-                    tu.substitute_invariant_wildcard_with(
-                        x, [self.bt_factory.get_any_type()]
-                    ),
-                    only_leaves=True, subtype=False)
-            ),
-        }
-        generator = constant_candidates.get(expr_type.name.capitalize())
-        if generator is not None:
-            return generator(expr_type)
-        else:
-            return ast.BottomConstant(expr_type)
