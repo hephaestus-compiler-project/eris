@@ -314,10 +314,11 @@ class GroovyTranslator(BaseTranslator):
                         res = re.sub(r'\s+', ' ', res)
                     super_call = "\n" + self.get_ident(extra=2) + 'super(' + \
                         res + ");"
+            base_cls_name = node.name.rsplit(".", 1)[-1]
             return ("{ident}public {name}({params}) {{{super_call}{fields}"
                     "{new_line}{close_ident}}}").format(
                 ident=self.get_ident(),
-                name=node.name,
+                name=base_cls_name,
                 params=constructor_params,
                 super_call=super_call,
                 fields=constructor_fields,
@@ -345,7 +346,8 @@ class GroovyTranslator(BaseTranslator):
             "final "
             if node.is_final else ""
         )
-        res = "{}{} {}".format(prefix, node.get_class_prefix(), node.name)
+        base_cls_name = node.name.rsplit(".", 1)[-1]
+        res = "{}{} {}".format(prefix, node.get_class_prefix(), base_cls_name)
         if type_parameters_res:
             res = "{}<{}>".format(res, type_parameters_res)
         superclasses, interfaces = get_superclasses_interfaces()

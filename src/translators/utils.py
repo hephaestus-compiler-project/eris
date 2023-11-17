@@ -16,11 +16,8 @@ def get_modifier_list(metadata: dict) -> list:
 def get_class_type_from_context(cls_name: str, context: Context,
                                 namespace: tuple,
                                 api_spec: dict):
-    if "." in cls_name:
-        stripped_cls_name = cls_name.rsplit(".", 1)[1]
-
     defined_classes = context.get_classes(namespace, glob=True)
-    cls = defined_classes.get(stripped_cls_name)
+    cls = defined_classes.get(cls_name)
     if cls is None:
         cls = api_spec[cls_name]
     return cls.class_type
