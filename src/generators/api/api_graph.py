@@ -422,6 +422,9 @@ class APIGraph():
     def get_api_nodes(self) -> Iterable[APINode]:
         return self.api_graph.nodes()
 
+    def get_neighbors_of_node(self, node: APINode) -> Iterable[APINode]:
+        return self.api_graph.neighbors(node)
+
     def get_sources_and_target(
             self, target: tp.Type,
             target_selection: str) -> (List[APINode], APINode):
