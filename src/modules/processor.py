@@ -64,8 +64,6 @@ class ProgramProcessor():
                 with open(os.path.join(self.args.api_doc_path, api_path)) as f:
                     docs[api_path.replace(".json", "")] = json.load(f)
             kwargs["api_docs"] = docs
-            if self.args.generator == "api-decl":
-                kwargs["package"] = "src." + self.packages[0]
         return self.PROGRAM_GENERATORS.get(self.args.generator)(**kwargs)
 
     def _apply_transformation(self, transformation_cls,
@@ -123,7 +121,10 @@ class ProgramProcessor():
             print("\nGenerating program: " + str(self.proc_id))
         if not self.program_generator.has_next():
             return None, None
-        self.program_generator.prepare_next_program(self.proc_id)
+        kwargs = {}
+        if self.args.generator == "api-decl":
+            kwargs["package_name"] = "src." + self.packages[0]
+        self.program_generator.prepare_next_program(self.proc_id, **kwargs)
         self.current_transformation = 0
         program = self.program_generator.generate()
         return program, self.program_generator.error_injected

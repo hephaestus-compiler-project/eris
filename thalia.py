@@ -269,6 +269,7 @@ def gen_program(pid, dirname, packages, program_processor=None):
     translator = TRANSLATORS[cli_args.language]('src.' + packages[0],
                                                 cli_args.options['Translator'])
     proc = program_processor or ProgramProcessor(pid, cli_args, packages)
+    proc.packages = packages
     try:
         start_time_gen = time.process_time()
         program, error_injected = proc.get_program()
@@ -485,7 +486,7 @@ def _run(process_program, process_res):
     program_processor = None
     if cli_args.workers is None or cli_args.debug:
         # We do not know pid yet.
-        program_processor = ProgramProcessor(None, cli_args)
+        program_processor = ProgramProcessor(None, cli_args, tuple())
     while stop_condition(iteration, time_passed):
         try:
             utils.random.reset_word_pool()
@@ -498,8 +499,9 @@ def _run(process_program, process_res):
                 pid = iteration + i
                 args = (pid, dirname, packages)
                 if program_processor:
-                    # Set pid to program processor
+                    # Set pid and packages to program processor
                     program_processor.proc_id = pid
+                    program_processor.packages = packages
                     args += (program_processor,)
                 r = process_program(*args)
                 if r:
