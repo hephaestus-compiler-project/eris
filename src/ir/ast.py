@@ -568,7 +568,8 @@ class ClassDeclaration(Declaration):
                  fields: List[FieldDeclaration] = [],
                  functions: List[FunctionDeclaration] = [],
                  is_final=True,
-                 type_parameters: List[types.TypeParameter] = []):
+                 type_parameters: List[types.TypeParameter] = [],
+                 extra_declarations=[]):
         self.name = name
         self.superclasses = superclasses
         self.class_type = class_type or self.REGULAR
@@ -577,6 +578,9 @@ class ClassDeclaration(Declaration):
         self.is_final = is_final
         self.type_parameters = type_parameters
         self.supertypes = [s.class_type for s in self.superclasses]
+        # This field indicates whether the class contains declarations,
+        # other than fields and functions.
+        self.extra_declarations = extra_declarations
 
     @property
     def attributes(self):
@@ -584,7 +588,7 @@ class ClassDeclaration(Declaration):
 
     def children(self):
         return self.fields + self.superclasses + self.functions + \
-            self.type_parameters
+            self.type_parameters + self.extra_declarations
 
     def update_children(self, children):
         def get_lst(start, end):
@@ -595,6 +599,7 @@ class ClassDeclaration(Declaration):
         len_supercls = len(self.superclasses)
         len_functions = len(self.functions)
         len_tp = len(self.type_parameters)
+        len_extra = len(self.extra_declarations)
         fields = get_lst(0, len_fields)
         for i, c in enumerate(fields):
             self.fields[i] = c
@@ -611,6 +616,12 @@ class ClassDeclaration(Declaration):
             len_fields + len_supercls + len_functions + len_tp)
         for i, c in enumerate(type_params):
             self.type_parameters[i] = c
+        extra_decls = get_lst(
+            len_fields + len_supercls + len_functions + len_tp,
+            len_fields + len_supercls + len_functions + len_tp + len_extra
+        )
+        for i, d in enumerate(extra_decls):
+            self.extra_declarations[i] = d
 
     def get_type(self):
         if self.type_parameters:
@@ -849,8 +860,10 @@ class ClassDeclaration(Declaration):
                     self.class_type == other.class_type and
                     check_list_eq(self.functions, other.functions) and
                     self.is_final == other.is_final and
-                    check_list_eq(self.type_parameters, other.type_parameters)
-                    and self.supertypes == other.supertypes)
+                    check_list_eq(self.type_parameters,
+                                  other.type_parameters) and
+                    self.supertypes == other.supertypes and
+                    self.extra_declarations == other.extra_declarations)
         return False
 
 

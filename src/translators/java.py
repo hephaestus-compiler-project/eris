@@ -532,8 +532,14 @@ class JavaTranslator(BaseTranslator):
         function_res = [children_res[i + len_fields + len_supercls]
                         for i, _ in enumerate(node.functions)]
         len_functions = len(function_res)
-        type_parameters_res = ", ".join(
-            children_res[len_fields + len_supercls + len_functions:])
+        start_index = len_fields + len_supercls + len_functions
+        end_index = len(children_res) - len(node.extra_declarations)
+        type_parameters_res = ", ".join(children_res[start_index:end_index])
+        len_tp = len(node.type_parameters)
+        extra_decl_res = [
+            children_res[i + len_fields + len_supercls + len_functions + len_tp]
+            for i, _ in enumerate(node.extra_declarations)
+        ]
         prefix = " " * old_ident
         prefix += (
             "final "
@@ -553,7 +559,7 @@ class JavaTranslator(BaseTranslator):
             else:
                 res += " implements " + ", ".join(interfaces)
         body = " {"
-        if function_res or field_res or superclasses:
+        if function_res or field_res or superclasses or extra_decl_res:
             body += "\n"
             join_separator = "\n" + self.get_ident()
             if field_res:
@@ -566,6 +572,10 @@ class JavaTranslator(BaseTranslator):
                     body += "\n\n"
             if function_res:
                 body += "\n\n".join(function_res)
+                if extra_decl_res:
+                    body += "\n"
+            if extra_decl_res:
+                body += "\n\n".join(extra_decl_res)
             body += "\n" + self.get_ident(extra=-4) + "}"
         else:
             body += "}"
