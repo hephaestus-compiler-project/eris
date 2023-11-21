@@ -9,6 +9,38 @@ from src.generators.api import builder, api_graph as ag
 from src.generators.api.api_generator import APIClientGenerator
 
 
+def get_base_api_name(fqn: str, spec: dict):
+    segs = fqn.rsplit(".", 1)
+    assert len(segs) == 2
+    parent, base = tuple(segs)
+    if parent not in spec or not spec[parent].get("is_class", True):
+        # We encounter this case: mypkg.MyCls
+        return base
+
+    # Perhaps, we encounter a nested class/component.
+    return get_base_api_name(parent, spec) + "." + base
+
+
+def get_namespace_from_name(fqn: str, spec: dict):
+    segs = fqn.rsplit(".", 1)
+    assert len(segs) == 2
+    parent, base = tuple(segs)
+    if parent not in spec or not spec[parent].get("is_class", True):
+        # We encounter this case: mypkg.MyCls
+        return ast.GLOBAL_NAMESPACE
+    return get_namespace_from_name(parent, spec) + (parent,)
+
+
+def get_parent_classes(fqn: str, spec: dict) -> List[str]:
+    segs = fqn.rsplit(".", 1)
+    assert len(segs) == 2
+    parent, base = tuple(segs)
+    if parent not in spec or not spec[parent].get("is_class", True):
+        # We encounter this case: mypkg.MyCls
+        return []
+    return get_parent_classes(parent, spec) + [parent]
+
+
 class APIDeclarationGenerator(APIClientGenerator):
     API_GRAPH_BUILDERS = {
         "java": builder.JavaAPIGraphBuilder,
@@ -24,7 +56,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.options = options
         self.api_docs = api_docs
         self.package_name = None
-        self.api_namespaces = iter(api_docs.keys())
+        self.api_namespaces = iter(k for k in api_docs.keys())
 
     def fork_api_spec(self, ns: str):
         supertypes = {
@@ -32,14 +64,20 @@ class APIDeclarationGenerator(APIClientGenerator):
             if st != self.bt_factory.get_any_type()}
         specs = [(st.name, self.api_docs[st.name]) for st in supertypes]
         all_names = [s[0] for s in specs]
+        for parent in get_parent_classes(ns, self.api_docs):
+            if parent not in all_names:
+                specs.append((parent, self.api_docs[parent]))
+                all_names.append(parent)
+
         forked_specs = {}
         for name, spec in specs:
-            new_name = self.package_name + "." + name.rsplit(".", 1)[1]
+            new_name = self.package_name + "." + get_base_api_name(
+                name, self.api_docs)
             spec_str = json.dumps(spec)
             spec_str = functools.reduce(lambda acc, x: re.sub(
                 re.compile(x.replace(".", "\\.") + "(?![A-Za-z])"),
-                self.package_name + "." + x.rsplit(".", 1)[-1], acc),
-                                        all_names, spec_str)
+                self.package_name + "." + get_base_api_name(x, self.api_docs),
+                acc), all_names, spec_str)
             new_spec = json.loads(spec_str)
             forked_specs[new_name] = new_spec
         return forked_specs
@@ -124,15 +162,19 @@ class APIDeclarationGenerator(APIClientGenerator):
                 variables.append(decl)
         return variables, methods
 
-    def create_class_from_spec(self, cls_spec: dict, api_graph: ag.APIGraph,
+    def create_class_from_spec(self, api_spec: dict, api_graph: ag.APIGraph,
                                class_type: tp.Type):
         cls_name = class_type.name
+        cls_spec = api_spec[cls_name]
         is_parent_abstract = (
             cls_spec.get("class_type") == ast.ClassDeclaration.INTERFACE)
-        self.namespace = ast.GLOBAL_NAMESPACE + (cls_name,)
+        parent_namespace = get_namespace_from_name(cls_name, api_spec)
+        self.namespace = parent_namespace + (cls_name,)
         fields, methods = self.create_components_of_namespace(
             cls_name, api_graph, is_parent_abstract)
-        self.namespace = ast.GLOBAL_NAMESPACE
+        self.namespace = parent_namespace
+        extra_decls = list(self.context.get_classes(
+            parent_namespace + (cls_name,), only_current=True).values())
         cls = ast.ClassDeclaration(
             cls_name,
             superclasses=[ast.SuperClassInstantiation(st)
@@ -143,28 +185,27 @@ class APIDeclarationGenerator(APIClientGenerator):
                              if class_type.is_type_constructor() else []),
             functions=methods,
             fields=fields,
-            is_final=False
+            is_final=False,
+            extra_declarations=extra_decls
         )
-        self.context.add_class(ast.GLOBAL_NAMESPACE, cls.name, cls)
+        self.context.add_class(parent_namespace, cls.name, cls)
         for field in fields:
-            self.context.add_var(ast.GLOBAL_NAMESPACE + (cls.name,),
+            self.context.add_var(parent_namespace + (cls.name,),
                                  field.name, field)
         for method in methods:
-            self.context.add_func(ast.GLOBAL_NAMESPACE + (cls.name,),
+            self.context.add_func(parent_namespace + (cls.name,),
                                   method.name, method)
 
     def create_program_from_spec(self, api_spec: dict, api_graph: ag.APIGraph,
                                  defined_namespaces: List[str]):
         self.context = Context()
-        for name in defined_namespaces:
-            # Get the specification of the namespace
-            spec = api_spec[name]
+        for name in sorted(defined_namespaces, reverse=True):
             t = api_graph.get_type_by_name(name)
             if t == self.bt_factory.get_any_type() or t is None:
                 continue
             # This namespace corresponds to a class, because there's no type
             # with the same name as `name`.
-            self.create_class_from_spec(spec, api_graph, t)
+            self.create_class_from_spec(api_spec, api_graph, t)
         return ast.Program(self.context, self.language)
 
     def generate(self, context=None) -> ast.Program:
