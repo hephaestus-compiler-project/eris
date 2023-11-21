@@ -1,10 +1,10 @@
 import json
 import functools
 import re
+from typing import List
 
 from src.ir import ast, types as tp, type_utils as tu
 from src.ir.context import Context
-from src.generators import generators as gens
 from src.generators.api import builder, api_graph as ag
 from src.generators.api.api_generator import APIClientGenerator
 
@@ -58,6 +58,14 @@ class APIDeclarationGenerator(APIClientGenerator):
                         m.metadata.get("is_abstract", False)))
         prev_ns = self.namespace
         self.namespace += (func_name,)
+        body = None
+        if not is_abstract:
+            expr = self._generate_expr_from_node(out_type, 2)[0]
+            decls = list(self.context.get_declarations(self.namespace,
+                                                       True).values())
+            var_decls = [d for d in decls
+                         if not isinstance(d, ast.ParameterDeclaration)]
+            body = expr if not var_decls else ast.Block(var_decls + [expr])
         func = ast.FunctionDeclaration(
             name=func_name,
             params=[
@@ -67,7 +75,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             type_parameters=m.type_parameters,
             func_type=ast.FunctionDeclaration.CLASS_METHOD,
             ret_type=out_type,
-            body=None if is_abstract else self._generate_expr_from_node(out_type, 2)[0],
+            body=body,
             is_final=False,
             override=False,
             **m.metadata
@@ -95,69 +103,82 @@ class APIDeclarationGenerator(APIClientGenerator):
         }
         return converters[type(node)](node, api_graph, is_parent_abstract)
 
-    def create_methods_from_namespace(self, ns: str, api_graph: ag.APIGraph,
-                                      is_parent_abstract):
+    def create_components_of_namespace(self, ns: str, api_graph: ag.APIGraph,
+                                       is_parent_abstract):
+        """
+        Generate all components that reside in the given namespace `ns`.
+        These components are either methods, fields/variables, or constructors.
+        """
         t = api_graph.get_type_by_name(ns)
         if t == self.bt_factory.get_any_type() or t is None:
             return []
-        fields, methods = [], []
+        variables, methods = [], []
         for n in api_graph.get_neighbors_of_node(t):
             if isinstance(n, ag.Constructor):
                 # FIXME support constructors
                 continue
             decl = self.convert_node_to_decl(n, api_graph, is_parent_abstract)
-            if isinstance(decl, ast.FieldDeclaration):
-                fields.append(decl)
-            else:
+            if isinstance(decl, ast.FunctionDeclaration):
                 methods.append(decl)
-        return fields, methods
+            else:
+                variables.append(decl)
+        return variables, methods
+
+    def create_class_from_spec(self, cls_spec: dict, api_graph: ag.APIGraph,
+                               class_type: tp.Type):
+        cls_name = class_type.name
+        is_parent_abstract = (
+            cls_spec.get("class_type") == ast.ClassDeclaration.INTERFACE)
+        self.namespace = ast.GLOBAL_NAMESPACE + (cls_name,)
+        fields, methods = self.create_components_of_namespace(
+            cls_name, api_graph, is_parent_abstract)
+        self.namespace = ast.GLOBAL_NAMESPACE
+        cls = ast.ClassDeclaration(
+            cls_name,
+            superclasses=[ast.SuperClassInstantiation(st)
+                          for st in class_type.supertypes
+                          if st != self.bt_factory.get_any_type()],
+            class_type=cls_spec["class_type"],
+            type_parameters=(class_type.type_parameters
+                             if class_type.is_type_constructor() else []),
+            functions=methods,
+            fields=fields,
+            is_final=False
+        )
+        self.context.add_class(ast.GLOBAL_NAMESPACE, cls.name, cls)
+        for field in fields:
+            self.context.add_var(ast.GLOBAL_NAMESPACE + (cls.name,),
+                                 field.name, field)
+        for method in methods:
+            self.context.add_func(ast.GLOBAL_NAMESPACE + (cls.name,),
+                                  method.name, method)
 
     def create_program_from_spec(self, api_spec: dict, api_graph: ag.APIGraph,
-                                 defined_classes: list):
+                                 defined_namespaces: List[str]):
         self.context = Context()
-        for name in defined_classes:
+        for name in defined_namespaces:
+            # Get the specification of the namespace
             spec = api_spec[name]
             t = api_graph.get_type_by_name(name)
-            if t == self.bt_factory.get_any_type():
+            if t == self.bt_factory.get_any_type() or t is None:
                 continue
-            if t is None:
-                continue
-            is_parent_abstract = spec["class_type"] == ast.ClassDeclaration.INTERFACE
-            self.namespace = ast.GLOBAL_NAMESPACE + (name,)
-            fields, methods = self.create_methods_from_namespace(
-                name, api_graph, is_parent_abstract)
-            self.namespace = ast.GLOBAL_NAMESPACE
-            cls = ast.ClassDeclaration(
-                name,
-                superclasses=[ast.SuperClassInstantiation(st)
-                              for st in t.supertypes
-                              if st != self.bt_factory.get_any_type()],
-                class_type=spec["class_type"],
-                type_parameters=(
-                    t.type_parameters if t.is_type_constructor() else []),
-                functions=methods,
-                fields=fields,
-                is_final=False
-            )
-            self.context.add_class(ast.GLOBAL_NAMESPACE, cls.name, cls)
-            for field in fields:
-                self.context.add_var(ast.GLOBAL_NAMESPACE + (cls.name,),
-                                     field.name, field)
-            for method in methods:
-                self.context.add_func(ast.GLOBAL_NAMESPACE + (cls.name,),
-                                      method.name, method)
+            # This namespace corresponds to a class, because there's no type
+            # with the same name as `name`.
+            self.create_class_from_spec(spec, api_graph, t)
         return ast.Program(self.context, self.language)
 
     def generate(self, context=None) -> ast.Program:
         try:
             api_namespace = next(self.api_namespaces)
             forked_spec = self.fork_api_spec(api_namespace)
-            defined_classes = list(forked_spec.keys())
+            # This is the list of namespaces that are explicitly defined in
+            # the program.
+            defined_namespaces = list(forked_spec.keys())
             forked_spec.update(self.api_docs)
             api_graph = self.API_GRAPH_BUILDERS[self.language](
                 self.language, **self.options).build(forked_spec)
             program = self.create_program_from_spec(forked_spec, api_graph,
-                                                    defined_classes)
+                                                    defined_namespaces)
             return program
         except StopIteration:
             self._has_next = False
