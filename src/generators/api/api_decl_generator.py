@@ -64,10 +64,13 @@ class APIDeclarationGenerator(APIClientGenerator):
             if st != self.bt_factory.get_any_type()}
         specs = [(st.name, self.api_docs[st.name]) for st in supertypes]
         all_names = [s[0] for s in specs]
-        for parent in get_parent_classes(ns, self.api_docs):
-            if parent not in all_names:
-                specs.append((parent, self.api_docs[parent]))
-                all_names.append(parent)
+        # If the current namespace has parent classes, include these classes
+        # to our list of specs.
+        for cls_name, spec in specs:
+            for parent in get_parent_classes(cls_name, self.api_docs):
+                if parent not in all_names:
+                    specs.append((parent, self.api_docs[parent]))
+                    all_names.append(parent)
 
         forked_specs = {}
         for name, spec in specs:
@@ -75,7 +78,7 @@ class APIDeclarationGenerator(APIClientGenerator):
                 name, self.api_docs)
             spec_str = json.dumps(spec)
             spec_str = functools.reduce(lambda acc, x: re.sub(
-                re.compile(x.replace(".", "\\.") + "(?![A-Za-z])"),
+                re.compile(x.replace(".", "\\.") + "(?![A-Za-z.])"),
                 self.package_name + "." + get_base_api_name(x, self.api_docs),
                 acc), all_names, spec_str)
             new_spec = json.loads(spec_str)
