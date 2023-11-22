@@ -173,11 +173,18 @@ class APIDeclarationGenerator(APIClientGenerator):
             cls_spec.get("class_type") == ast.ClassDeclaration.INTERFACE)
         parent_namespace = get_namespace_from_name(cls_name, api_spec)
         self.namespace = parent_namespace + (cls_name,)
+        # Get the fields and methods included in this current class.
         fields, methods = self.create_components_of_namespace(
             cls_name, api_graph, is_parent_abstract)
         self.namespace = parent_namespace
+        # Get any other declarations (e.g., nested classes) included in
+        # this class.
         extra_decls = list(self.context.get_classes(
             parent_namespace + (cls_name,), only_current=True).values())
+        # Some class metadata. The class is static if it is not defined in
+        # the global namespace and its parent is None.
+        metadata = {"is_static": (cls_spec["parent"] is None and
+                                  parent_namespace != ast.GLOBAL_NAMESPACE)}
         cls = ast.ClassDeclaration(
             cls_name,
             superclasses=[ast.SuperClassInstantiation(st)
@@ -189,8 +196,9 @@ class APIDeclarationGenerator(APIClientGenerator):
             functions=methods,
             fields=fields,
             is_final=False,
-            extra_declarations=extra_decls
+            extra_declarations=extra_decls, **metadata
         )
+        # Now, add the class and its components to the context.
         self.context.add_class(parent_namespace, cls.name, cls)
         for field in fields:
             self.context.add_var(parent_namespace + (cls.name,),
