@@ -3,7 +3,8 @@ import functools
 import re
 from typing import List
 
-from src.ir import ast, types as tp, type_utils as tu
+from src import utils
+from src.ir import ast, types as tp
 from src.ir.context import Context
 from src.generators.api import builder, api_graph as ag
 from src.generators.api.api_generator import APIClientGenerator
@@ -59,6 +60,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.api_namespaces = iter(k for k in api_docs.keys())
 
     def fork_api_spec(self, ns: str):
+        # Get the supertypes of ns
         supertypes = {
             st for st in self.api_graph.get_type_by_name(ns).get_supertypes()
             if st != self.bt_factory.get_any_type()}
@@ -72,6 +74,17 @@ class APIDeclarationGenerator(APIClientGenerator):
                     specs.append((parent, self.api_docs[parent]))
                     all_names.append(parent)
 
+        # Now select a random subset of namespaces. This means that our class
+        # will inherit from some user-defined classes, but also inherit from
+        # the classes that come from the given API.
+        selected_namespaces = utils.random.sample(
+            all_names, k=utils.random.integer(1, len(all_names)))
+        if ns not in selected_namespaces:
+            selected_namespaces.append(ns)
+        selected_namespaces.extend(x for x in all_names
+                                   if any(x in y and x != y
+                                          for y in selected_namespaces))
+        specs = [s for s in specs if s[0] in selected_namespaces]
         forked_specs = {}
         for name, spec in specs:
             new_name = self.package_name + "." + get_base_api_name(
@@ -80,7 +93,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             spec_str = functools.reduce(lambda acc, x: re.sub(
                 re.compile(x.replace(".", "\\.") + "(?![A-Za-z.])"),
                 self.package_name + "." + get_base_api_name(x, self.api_docs),
-                acc), all_names, spec_str)
+                acc), selected_namespaces, spec_str)
             new_spec = json.loads(spec_str)
             forked_specs[new_name] = new_spec
         return forked_specs
@@ -217,7 +230,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             # This namespace corresponds to a class, because there's no type
             # with the same name as `name`.
             self.create_class_from_spec(api_spec, api_graph, t)
-        return ast.Program(self.context, self.language)
+        return ast.Program(self.context, self.language, lib=api_spec)
 
     def generate(self, context=None) -> ast.Program:
         try:
