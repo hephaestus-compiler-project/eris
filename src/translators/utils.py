@@ -15,11 +15,12 @@ def get_modifier_list(metadata: dict) -> list:
 
 def get_class_type_from_context(cls_name: str, context: Context,
                                 namespace: tuple,
-                                api_spec: dict):
+                                lib_spec: dict):
     defined_classes = context.get_classes(namespace, glob=True)
     cls = defined_classes.get(cls_name)
     if cls is None:
-        cls = api_spec[cls_name]
+        cls = lib_spec[cls_name]
+        return cls["class_type"]
     return cls.class_type
 
 

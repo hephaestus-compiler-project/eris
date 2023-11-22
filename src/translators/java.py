@@ -257,6 +257,7 @@ class JavaTranslator(BaseTranslator):
     def visit_program(self, node):
         self.types = node.get_types()
         self.context = node.context
+        self.lib_spec = node.lib
         children = node.children()
         for c in children:
             c.accept(self)
@@ -458,7 +459,7 @@ class JavaTranslator(BaseTranslator):
                 cls_name = cls_inst.class_type.name
                 cls_inst = self.get_type_name(cls_inst.class_type)
                 class_type = get_class_type_from_context(
-                    cls_name, self.context, self._namespace, {})
+                    cls_name, self.context, self._namespace, self.lib_spec)
                 if class_type == ast.ClassDeclaration.INTERFACE:
                     interfaces.append(cls_inst)
                 else:

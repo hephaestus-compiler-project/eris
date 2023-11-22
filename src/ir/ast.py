@@ -6,6 +6,7 @@ import src.ir.type_utils as tu
 import src.ir.types as types
 from src import utils
 from src.ir import BUILTIN_FACTORIES
+from src.ir.context import Context
 from src.ir.builtins import BuiltinFactory, FunctionType
 from src.ir.node import Node
 
@@ -33,11 +34,13 @@ class Expr(Node):
 
 
 class Program(Node):
-    # Set default value to kotlin for backward compatibility
-    def __init__(self, context, language):
+    def __init__(self, context: Context, language: str, lib: dict = None):
         self.context = context
         self.language = language
         self.bt_factory: BuiltinFactory = BUILTIN_FACTORIES[language]
+        # This is the library used by the program.
+        # The library is presented through a dictionary.
+        self.lib = lib or {}
 
     def children(self):
         return self.context.get_declarations(GLOBAL_NAMESPACE,
