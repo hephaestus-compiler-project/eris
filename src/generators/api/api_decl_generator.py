@@ -98,6 +98,22 @@ class APIDeclarationGenerator(APIClientGenerator):
             forked_specs[new_name] = new_spec
         return forked_specs
 
+    def add_local_variables(self, m: ag.Method, api_graph: ag.APIGraph):
+        t = api_graph.get_input_type(m)
+        # Add this
+        if t is not None:
+            if t.is_type_constructor():
+                t = t.new(t.type_parameters)
+            api_graph.add_variable_node("this", t)
+        # Add method's parameters
+        for p in m.parameters:
+            api_graph.add_variable_node(p.name, p.t)
+
+    def remove_local_variables(self, m: ag.Method, api_graph: ag.APIGraph):
+        api_graph.remove_variable_node("this")
+        for p in m.parameters:
+            api_graph.remove_variable_node(p.name)
+
     def convert_method(self, m: ag.Method,
                        api_graph: ag.APIGraph,
                        is_parent_abstract: bool) -> ast.FunctionDeclaration:
@@ -113,6 +129,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         prev_ns = self.namespace
         self.namespace += (func_name,)
         body = None
+        self.add_local_variables(m, api_graph)
         if not is_abstract:
             expr = self._generate_expr_from_node(out_type, 2)[0]
             decls = list(self.context.get_declarations(self.namespace,
@@ -120,6 +137,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             var_decls = [d for d in decls
                          if not isinstance(d, ast.ParameterDeclaration)]
             body = expr if not var_decls else ast.Block(var_decls + [expr])
+        self.remove_local_variables(m, api_graph)
         func = ast.FunctionDeclaration(
             name=func_name,
             params=[
