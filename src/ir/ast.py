@@ -223,6 +223,8 @@ class FieldDeclaration(Declaration):
         self.is_final = is_final
         self.can_override = can_override
         self.override = override
+        # This is a dictionary of other metadata. This metadata might be
+        # used in translation.
         self.metadata = metadata
 
     def children(self):
@@ -247,7 +249,8 @@ class FieldDeclaration(Declaration):
                     self.field_type == other.field_type and
                     self.is_final == other.is_final and
                     self.can_override == other.can_override and
-                    self.override == other.override)
+                    self.override == other.override and
+                    self.metadata == other.metadata)
         return False
 
 
@@ -399,6 +402,8 @@ class FunctionDeclaration(Declaration):
         self.type_parameters = type_parameters
         self.inferred_type = (
             self.ret_type if inferred_type is None else inferred_type)
+        # This is a dictionary of other metadata. This metadata might be
+        # used in translation.
         self.metadata = metadata
         assert self.inferred_type, ("The inferred_type of a function must"
                                     " not be None")
@@ -469,7 +474,8 @@ class FunctionDeclaration(Declaration):
                     check_list_eq(self.params, other.params) and
                     check_list_eq(self.type_parameters,
                                   other.type_parameters) and
-                    self.inferred_type == other.inferred_type)
+                    self.inferred_type == other.inferred_type and
+                    self.metadata == other.metadata)
         return False
 
 
@@ -569,7 +575,8 @@ class ClassDeclaration(Declaration):
                  functions: List[FunctionDeclaration] = [],
                  is_final=True,
                  type_parameters: List[types.TypeParameter] = [],
-                 extra_declarations=[]):
+                 extra_declarations=[],
+                 **metadata):
         self.name = name
         self.superclasses = superclasses
         self.class_type = class_type or self.REGULAR
@@ -581,6 +588,9 @@ class ClassDeclaration(Declaration):
         # This field indicates whether the class contains declarations,
         # other than fields and functions.
         self.extra_declarations = extra_declarations
+        # This is a dictionary of other metadata. This metadata might be
+        # used in translation.
+        self.metadata = metadata
 
     @property
     def attributes(self):
@@ -863,7 +873,8 @@ class ClassDeclaration(Declaration):
                     check_list_eq(self.type_parameters,
                                   other.type_parameters) and
                     self.supertypes == other.supertypes and
-                    self.extra_declarations == other.extra_declarations)
+                    self.extra_declarations == other.extra_declarations and
+                    self.metadata == other.metadata)
         return False
 
 

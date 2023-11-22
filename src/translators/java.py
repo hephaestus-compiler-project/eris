@@ -545,6 +545,8 @@ class JavaTranslator(BaseTranslator):
             "final "
             if node.is_final else ""
         )
+        if node.metadata.get("is_static", False):
+            prefix += "static "
         base_cls_name = node.name.rsplit(".", 1)[-1]
         res = "{}{} {}".format(prefix, node.get_class_prefix(), base_cls_name)
         if type_parameters_res:
