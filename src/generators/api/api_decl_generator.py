@@ -130,6 +130,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         prev_ns = self.namespace
         self.namespace += (func_name,)
         body = None
+        self.api_graph.add_types(m.type_parameters)
         self.add_local_variables(m)
         if not is_abstract:
             expr = self._generate_expr_from_node(out_type, 2)[0]
@@ -154,6 +155,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             **m.metadata
         )
         self.namespace = prev_ns
+        self.api_graph.remove_types(m.type_parameters)
         return func
 
     def convert_field(self, f: ag.Field,
@@ -193,6 +195,15 @@ class APIDeclarationGenerator(APIClientGenerator):
                 methods.append(decl)
             else:
                 variables.append(decl)
+        # Now consider static methods and static fields
+        for n in list(self.api_graph.get_api_nodes()):
+            if isinstance(n, (ag.Method, ag.Field)):
+                if ns == n.name.rsplit(".", 1)[0]:
+                    decl = self.convert_node_to_decl(n, False)
+                    if isinstance(decl, ast.FunctionDeclaration):
+                        methods.append(decl)
+                    else:
+                        variables.append(decl)
         return variables, methods
 
     def create_class_from_spec(self, api_spec: dict, class_type: tp.Type):
@@ -202,6 +213,8 @@ class APIDeclarationGenerator(APIClientGenerator):
             cls_spec.get("class_type") == ast.ClassDeclaration.INTERFACE)
         parent_namespace = get_namespace_from_name(cls_name, api_spec)
         self.namespace = parent_namespace + (cls_name,)
+        if class_type.is_type_constructor():
+            self.api_graph.add_types(class_type.type_parameters)
         # Get the fields and methods included in this current class.
         fields, methods = self.create_components_of_namespace(
             cls_name, is_parent_abstract)
@@ -227,6 +240,8 @@ class APIDeclarationGenerator(APIClientGenerator):
             is_final=False,
             extra_declarations=extra_decls, **metadata
         )
+        if class_type.is_type_constructor():
+            self.api_graph.remove_types(class_type.type_parameters)
         # Now, add the class and its components to the context.
         self.context.add_class(parent_namespace, cls.name, cls)
         for field in fields:
