@@ -56,13 +56,15 @@ class APIDeclarationGenerator(APIClientGenerator):
                          logger=logger)
         self.options = options
         self.api_docs = api_docs
+        self.initial_api_graph = self.api_graph
         self.package_name = None
         self.api_namespaces = iter(k for k in api_docs.keys())
 
     def fork_api_spec(self, ns: str):
         # Get the supertypes of ns
         supertypes = {
-            st for st in self.api_graph.get_type_by_name(ns).get_supertypes()
+            st for st in self.initial_api_graph.get_type_by_name(
+                ns).get_supertypes()
             if st != self.bt_factory.get_any_type()}
         specs = [(st.name, self.api_docs[st.name]) for st in supertypes]
         all_names = [s[0] for s in specs]
@@ -98,26 +100,25 @@ class APIDeclarationGenerator(APIClientGenerator):
             forked_specs[new_name] = new_spec
         return forked_specs
 
-    def add_local_variables(self, m: ag.Method, api_graph: ag.APIGraph):
-        t = api_graph.get_input_type(m)
+    def add_local_variables(self, m: ag.Method):
+        t = self.api_graph.get_input_type(m)
         # Add this
         if t is not None:
             if t.is_type_constructor():
                 t = t.new(t.type_parameters)
-            api_graph.add_variable_node("this", t)
+            self.api_graph.add_variable_node("this", t)
         # Add method's parameters
-        for p in m.parameters:
-            api_graph.add_variable_node(p.name, p.t)
+        for i, p in enumerate(m.parameters):
+            self.api_graph.add_variable_node(f"p{i}", p.t)
 
-    def remove_local_variables(self, m: ag.Method, api_graph: ag.APIGraph):
-        api_graph.remove_variable_node("this")
-        for p in m.parameters:
-            api_graph.remove_variable_node(p.name)
+    def remove_local_variables(self, m: ag.Method):
+        self.api_graph.remove_variable_node("this")
+        for i in range(len(m.parameters)):
+            self.api_graph.remove_variable_node(f"p{i}")
 
     def convert_method(self, m: ag.Method,
-                       api_graph: ag.APIGraph,
                        is_parent_abstract: bool) -> ast.FunctionDeclaration:
-        out_type = api_graph.get_concrete_output_type(m)
+        out_type = self.api_graph.get_concrete_output_type(m)
         assert out_type is not None
         func_name = m.name
         if "." in func_name:
@@ -129,7 +130,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         prev_ns = self.namespace
         self.namespace += (func_name,)
         body = None
-        self.add_local_variables(m, api_graph)
+        self.add_local_variables(m)
         if not is_abstract:
             expr = self._generate_expr_from_node(out_type, 2)[0]
             decls = list(self.context.get_declarations(self.namespace,
@@ -137,7 +138,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             var_decls = [d for d in decls
                          if not isinstance(d, ast.ParameterDeclaration)]
             body = expr if not var_decls else ast.Block(var_decls + [expr])
-        self.remove_local_variables(m, api_graph)
+        self.remove_local_variables(m)
         func = ast.FunctionDeclaration(
             name=func_name,
             params=[
@@ -156,9 +157,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         return func
 
     def convert_field(self, f: ag.Field,
-                      api_graph: ag.APIGraph,
                       is_parent_abstract: bool) -> ast.FieldDeclaration:
-        field_type = api_graph.get_concrete_output_type(f)
+        field_type = self.api_graph.get_concrete_output_type(f)
         assert field_type is not None
         field_name = f.name
         if "." in field_name:
@@ -167,37 +167,35 @@ class APIDeclarationGenerator(APIClientGenerator):
                                     can_override=True, override=False)
 
     def convert_node_to_decl(self, node: ag.APINode,
-                             api_graph: ag.APIGraph,
                              is_parent_abstract: bool) -> ast.Declaration:
         converters = {
             ag.Method: self.convert_method,
             ag.Field: self.convert_field,
         }
-        return converters[type(node)](node, api_graph, is_parent_abstract)
+        return converters[type(node)](node, is_parent_abstract)
 
-    def create_components_of_namespace(self, ns: str, api_graph: ag.APIGraph,
+    def create_components_of_namespace(self, ns: str,
                                        is_parent_abstract):
         """
         Generate all components that reside in the given namespace `ns`.
         These components are either methods, fields/variables, or constructors.
         """
-        t = api_graph.get_type_by_name(ns)
+        t = self.api_graph.get_type_by_name(ns)
         if t == self.bt_factory.get_any_type() or t is None:
             return []
         variables, methods = [], []
-        for n in api_graph.get_neighbors_of_node(t):
+        for n in self.api_graph.get_neighbors_of_node(t):
             if isinstance(n, ag.Constructor):
                 # FIXME support constructors
                 continue
-            decl = self.convert_node_to_decl(n, api_graph, is_parent_abstract)
+            decl = self.convert_node_to_decl(n, is_parent_abstract)
             if isinstance(decl, ast.FunctionDeclaration):
                 methods.append(decl)
             else:
                 variables.append(decl)
         return variables, methods
 
-    def create_class_from_spec(self, api_spec: dict, api_graph: ag.APIGraph,
-                               class_type: tp.Type):
+    def create_class_from_spec(self, api_spec: dict, class_type: tp.Type):
         cls_name = class_type.name
         cls_spec = api_spec[cls_name]
         is_parent_abstract = (
@@ -206,7 +204,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.namespace = parent_namespace + (cls_name,)
         # Get the fields and methods included in this current class.
         fields, methods = self.create_components_of_namespace(
-            cls_name, api_graph, is_parent_abstract)
+            cls_name, is_parent_abstract)
         self.namespace = parent_namespace
         # Get any other declarations (e.g., nested classes) included in
         # this class.
@@ -238,16 +236,16 @@ class APIDeclarationGenerator(APIClientGenerator):
             self.context.add_func(parent_namespace + (cls.name,),
                                   method.name, method)
 
-    def create_program_from_spec(self, api_spec: dict, api_graph: ag.APIGraph,
+    def create_program_from_spec(self, api_spec: dict,
                                  defined_namespaces: List[str]):
         self.context = Context()
         for name in sorted(defined_namespaces, reverse=True):
-            t = api_graph.get_type_by_name(name)
+            t = self.api_graph.get_type_by_name(name)
             if t == self.bt_factory.get_any_type() or t is None:
                 continue
             # This namespace corresponds to a class, because there's no type
             # with the same name as `name`.
-            self.create_class_from_spec(api_spec, api_graph, t)
+            self.create_class_from_spec(api_spec, t)
         return ast.Program(self.context, self.language, lib=api_spec)
 
     def generate(self, context=None) -> ast.Program:
@@ -258,9 +256,9 @@ class APIDeclarationGenerator(APIClientGenerator):
             # the program.
             defined_namespaces = list(forked_spec.keys())
             forked_spec.update(self.api_docs)
-            api_graph = self.API_GRAPH_BUILDERS[self.language](
+            self.api_graph = self.API_GRAPH_BUILDERS[self.language](
                 self.language, **self.options).build(forked_spec)
-            program = self.create_program_from_spec(forked_spec, api_graph,
+            program = self.create_program_from_spec(forked_spec,
                                                     defined_namespaces)
             return program
         except StopIteration:
