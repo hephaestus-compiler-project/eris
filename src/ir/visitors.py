@@ -17,6 +17,7 @@ class ASTVisitor():
             ast.FieldDeclaration: self.visit_field_decl,
             ast.VariableDeclaration: self.visit_var_decl,
             ast.ParameterDeclaration: self.visit_param_decl,
+            ast.Constructor: self.visit_constructor,
             ast.FunctionDeclaration: self.visit_func_decl,
             ast.Lambda: self.visit_lambda,
             ast.FunctionReference: self.visit_func_ref,
@@ -74,6 +75,9 @@ class ASTVisitor():
 
     def visit_param_decl(self, node):
         raise NotImplementedError('visit_param_decl() must be implemented')
+
+    def visit_constructor(self, node):
+        raise NotImplementedError('visit_constructor() must be implemented')
 
     def visit_func_decl(self, node):
         raise NotImplementedError('visit_func_decl() must be implemented')
@@ -179,6 +183,9 @@ class DefaultVisitor(ASTVisitor):
         return self._visit_node(node)
 
     def visit_param_decl(self, node):
+        return self._visit_node(node)
+
+    def visit_constructor(self, node):
         return self._visit_node(node)
 
     def visit_func_decl(self, node):

@@ -379,6 +379,46 @@ class ParameterDeclaration(Declaration):
         return False
 
 
+class Constructor(Declaration):
+    def __init__(self, class_name: str, params: List[ParameterDeclaration],
+                 body: Block, **metadata):
+        self.name = class_name
+        self.params = params
+        self.body = body
+        self.metadata = metadata
+
+    def children(self):
+        children = self.params
+        if self.body is None:
+            return children
+        return children + [self.body]
+
+    def update_children(self, children):
+        def get_lst(start, end):
+            return children[start:end]
+
+        super().update_children(children)
+        len_params = len(self.params)
+        for i, c in enumerate(children[:len_params]):
+            self.params[i] = c
+        if self.body is None:
+            return
+        self.body = children[-1]
+
+    def __str__(self):
+        return "constructor {name}({params}) {{\n {body}\n }}".format(
+            name=self.name, params=",".join(map(str, self.params)),
+            body=str(self.body))
+
+    def is_equal(self, other):
+        if isinstance(other,  Constructor):
+            return (self.name == other.name and
+                    check_list_eq(self.params, other.params) and
+                    self.body == other.body and
+                    self.metadata == other.metadata)
+        return False
+
+
 class FunctionDeclaration(Declaration):
     CLASS_METHOD = 0
     FUNCTION = 1
@@ -576,6 +616,7 @@ class ClassDeclaration(Declaration):
                  class_type: int = None,
                  fields: List[FieldDeclaration] = [],
                  functions: List[FunctionDeclaration] = [],
+                 constructors: List[Constructor] = [],
                  is_final=True,
                  type_parameters: List[types.TypeParameter] = [],
                  extra_declarations=[],
@@ -585,6 +626,7 @@ class ClassDeclaration(Declaration):
         self.class_type = class_type or self.REGULAR
         self.fields = fields
         self.functions = functions
+        self.constructors = constructors
         self.is_final = is_final
         self.type_parameters = type_parameters
         self.supertypes = [s.class_type for s in self.superclasses]
@@ -601,7 +643,7 @@ class ClassDeclaration(Declaration):
 
     def children(self):
         return self.fields + self.superclasses + self.functions + \
-            self.type_parameters + self.extra_declarations
+            self.constructors + self.type_parameters + self.extra_declarations
 
     def update_children(self, children):
         def get_lst(start, end):
@@ -611,6 +653,7 @@ class ClassDeclaration(Declaration):
         len_fields = len(self.fields)
         len_supercls = len(self.superclasses)
         len_functions = len(self.functions)
+        len_c = len(self.constructors)
         len_tp = len(self.type_parameters)
         len_extra = len(self.extra_declarations)
         fields = get_lst(0, len_fields)
@@ -624,14 +667,20 @@ class ClassDeclaration(Declaration):
                             len_fields + len_supercls + len_functions)
         for i, c in enumerate(functions):
             self.functions[i] = c
-        type_params = get_lst(
+        constructors = get_lst(
             len_fields + len_supercls + len_functions,
-            len_fields + len_supercls + len_functions + len_tp)
+            len_fields + len_supercls + len_functions + len_c
+        )
+        for i, c in enumerate(constructors):
+            self.constructors[i] = c
+        type_params = get_lst(
+            len_fields + len_supercls + len_functions + len_c,
+            len_fields + len_supercls + len_functions + len_c + len_tp)
         for i, c in enumerate(type_params):
             self.type_parameters[i] = c
         extra_decls = get_lst(
-            len_fields + len_supercls + len_functions + len_tp,
-            len_fields + len_supercls + len_functions + len_tp + len_extra
+            len_fields + len_supercls + len_functions + len_c + len_tp,
+            len_fields + len_supercls + len_functions + len_c + len_tp + len_extra
         )
         for i, d in enumerate(extra_decls):
             self.extra_declarations[i] = d
@@ -872,6 +921,7 @@ class ClassDeclaration(Declaration):
                     check_list_eq(self.superclasses, other.superclasses) and
                     self.class_type == other.class_type and
                     check_list_eq(self.functions, other.functions) and
+                    check_list_eq(self.constructors == other.constructors) and
                     self.is_final == other.is_final and
                     check_list_eq(self.type_parameters,
                                   other.type_parameters) and
