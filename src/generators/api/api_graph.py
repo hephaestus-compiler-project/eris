@@ -408,7 +408,9 @@ class APIGraph():
         self.api_graph.add_edge(source, target, **kwargs)
 
     def remove_variable_node(self, name: str):
-        self.api_graph.remove_node(Variable(name))
+        variable = Variable(name)
+        if variable in self.api_graph:
+            self.api_graph.remove_node(Variable(name))
 
     def add_types(self, nodes: List[tp.Type]):
         self.subtyping_graph.add_nodes_from(nodes)
