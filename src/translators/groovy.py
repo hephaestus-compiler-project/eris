@@ -340,7 +340,10 @@ class GroovyTranslator(BaseTranslator):
         function_res = [children_res[i + len_fields + len_supercls]
                         for i, _ in enumerate(node.functions)]
         len_functions = len(function_res)
-        start_index = len_fields + len_supercls + len_functions
+        constr_res = [children_res[i + len_fields + len_supercls + len_functions]
+                      for i, _ in enumerate(node.constructors)]
+        len_constr = len(constr_res)
+        start_index = len_fields + len_supercls + len_functions + len_constr
         end_index = len(children_res) - len(node.extra_declarations)
         type_parameters_res = ", ".join(children_res[start_index:end_index])
         len_tp = len(node.type_parameters)
@@ -376,9 +379,13 @@ class GroovyTranslator(BaseTranslator):
                 body += self.get_ident()
                 body += join_separator.join(field_res)
                 body += "\n\n"
-            if superclasses or field_res:
+            if (superclasses or field_res) and not node.constructors:
                 body += construct_constructor()
-                if function_res:
+                if function_res or constr_res or extra_decl_res:
+                    body += "\n\n"
+            if constr_res:
+                body += "\n\n".join(constr_res)
+                if function_res or extra_decl_res:
                     body += "\n\n"
             if function_res:
                 body += "\n\n".join(function_res)
@@ -474,6 +481,28 @@ class GroovyTranslator(BaseTranslator):
             children_res = self.pop_children_res(children)
             res += " = " + children_res[0]
         return res
+
+    @append_to
+    @change_namespace
+    def visit_constructor(self, node):
+        old_ident = self.ident
+        self.ident += 2
+        children = node.children()
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        param_res = [children_res[i] for i, _ in enumerate(node.params)]
+        body_res = children_res[-1] if node.body else ''
+        self.ident = old_ident
+        constructor_name = node.name.rsplit(".", )[-1]
+        modifiers = get_modifier_list(node.metadata)
+        modifiers = " ".join(modifiers) + " " if modifiers else ""
+        return "{modifiers}{name}({params}){body}".format(
+            modifiers=modifiers,
+            name=constructor_name,
+            params=", ".join(param_res),
+            body=body_res
+        )
 
     @append_to
     @change_namespace
@@ -955,6 +984,8 @@ class GroovyTranslator(BaseTranslator):
                 if len(segs) == 1
                 else (segs[0] + ".", segs[1])
             )
+            if func == ast.FunctionCall.SUPER:
+                receiver_expr = ""
         type_args_str = ""
         if node.type_args and not node.can_infer_type_args:
             type_args_str = "<{}>".format(", ".join(

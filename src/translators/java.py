@@ -1236,6 +1236,8 @@ class JavaTranslator(BaseTranslator):
                 if len(segs) == 1
                 else (segs[0] + ".", segs[1])
             )
+            if func == ast.FunctionCall.SUPER:
+                receiver_expr = ""
         type_args_str = ""
         if node.type_args and not node.can_infer_type_args:
             type_args_str = "<{}>".format(", ".join(
