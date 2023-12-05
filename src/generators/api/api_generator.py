@@ -354,7 +354,7 @@ class APIClientGenerator(Generator):
             var_decl = ast.VariableDeclaration(
                 var_name,
                 res.expr,
-                is_final=True,
+                is_final=utils.random.bool(),
                 var_type=node,
                 inferred_type=node
             )
@@ -436,7 +436,7 @@ class APIClientGenerator(Generator):
         var_decl = ast.VariableDeclaration(
             gu.gen_identifier('lower'),
             expr=expr,
-            is_final=True,
+            is_final=utils.random.bool(),
             var_type=var_type,
             inferred_type=var_type)
         self._add_node_to_parent(self.namespace, var_decl)
