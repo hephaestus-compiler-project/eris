@@ -161,8 +161,12 @@ class APIDeclarationGenerator(APIClientGenerator):
             body=ast.Block(body)
         )
 
-    def generate_assignment(self, m: ag.Method,
-                            local_vars: List[ast.VariableDeclaration]):
+    def generate_assignments(self, m: ag.Method,
+                             local_vars: List[ast.VariableDeclaration]):
+        """
+        Generate a set of random assignments that mutate the value of the given
+        local variables.
+        """
         mutable_vars = [v for v in local_vars if not v.is_final]
         if not mutable_vars:
             return []
@@ -218,7 +222,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             var_decls = [d for d in decls
                          if not isinstance(d, ast.ParameterDeclaration)]
 
-            assignments = self.generate_assignment(m, var_decls)
+            assignments = self.generate_assignments(m, var_decls)
             body = expr if not var_decls else ast.Block(
                 var_decls + assignments + [expr])
         self.remove_local_variables(m)
