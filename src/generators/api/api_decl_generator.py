@@ -161,6 +161,38 @@ class APIDeclarationGenerator(APIClientGenerator):
             body=ast.Block(body)
         )
 
+    def generate_assignment(self, m: ag.Method,
+                            local_vars: List[ast.VariableDeclaration]):
+        mutable_vars = [v for v in local_vars if not v.is_final]
+        if not mutable_vars:
+            return []
+        mutable_vars = utils.random.sample(
+            mutable_vars, k=utils.random.integer(0, len(mutable_vars)))
+        assignments = []
+        for local_var in mutable_vars:
+            cls = self.api_graph.get_type_by_name(local_var.get_type().name)
+            fields = []
+            if cls is not None:
+                fields = [f for f in self.api_graph.get_neighbors_of_node(cls)
+                          if (isinstance(f, ag.Field) and
+                              not f.metadata.get("is_final", False))]
+            out_type = local_var.get_type()
+            kwargs = {
+                "name": local_var.name,
+                "receiver": None,
+            }
+            if fields:
+                f = utils.random.choice(fields)
+                out_type = self.api_graph.get_output_type(f)
+                kwargs.update({
+                    "name": f.name,
+                    "receiver": ast.Variable(local_var.name)
+                })
+            expr = self.generate_expr(out_type)
+            kwargs["expr"] = expr
+            assignments.append(ast.Assignment(**kwargs))
+        return assignments
+
     def convert_method(self, m: ag.Method,
                        ns_spec: dict) -> ast.FunctionDeclaration:
         out_type = self.api_graph.get_concrete_output_type(m)
@@ -185,7 +217,10 @@ class APIDeclarationGenerator(APIClientGenerator):
                                                        True).values())
             var_decls = [d for d in decls
                          if not isinstance(d, ast.ParameterDeclaration)]
-            body = expr if not var_decls else ast.Block(var_decls + [expr])
+
+            assignments = self.generate_assignment(m, var_decls)
+            body = expr if not var_decls else ast.Block(
+                var_decls + assignments + [expr])
         self.remove_local_variables(m)
         func = ast.FunctionDeclaration(
             name=func_name,
