@@ -30,8 +30,20 @@ class APIGraphBuilder(ABC):
         self.bt_factory: BuiltinFactory = BUILTIN_FACTORIES[target_language]
         self.api_language: str = None
 
-        self.graph: nx.DiGraph = None
-        self.subtyping_graph: nx.DiGraph = None
+        self.graph: nx.DiGraph = nx.DiGraph()
+        self.subtyping_graph: nx.DiGraph = nx.DiGraph()
+
+        # Add basic types to the subtyping graph
+        self.subtyping_graph.add_node(self.bt_factory.get_any_type())
+        self.subtyping_graph.add_node(self.bt_factory.get_boolean_type())
+        self.subtyping_graph.add_node(self.bt_factory.get_char_type())
+        self.subtyping_graph.add_node(self.bt_factory.get_byte_type())
+        self.subtyping_graph.add_node(self.bt_factory.get_short_type())
+        self.subtyping_graph.add_node(self.bt_factory.get_integer_type())
+        self.subtyping_graph.add_node(self.bt_factory.get_long_type())
+        self.subtyping_graph.add_node(self.bt_factory.get_float_type())
+        self.subtyping_graph.add_node(self.bt_factory.get_double_type())
+        self.subtyping_graph.add_node(self.bt_factory.get_string_type())
 
         self.functional_types: Dict[tp.Type, tp.ParameterizedType] = {}
         self.class_nodes: dict[str, tp.Type] = {}
@@ -118,8 +130,6 @@ class APIGraphBuilder(ABC):
         # First we make a pass to assign class type parameters a unique name.
         excluded_cls = self.rename_class_type_parameters(docs, top_sort)
         top_sort = [c for c in top_sort if c not in excluded_cls]
-        self.graph = nx.DiGraph()
-        self.subtyping_graph = nx.DiGraph()
         for cls_name in top_sort:
             api_doc = docs.get(cls_name)
             if api_doc:
@@ -499,6 +509,16 @@ class JavaAPIGraphBuilder(APIGraphBuilder):
         super().__init__(target_language, **kwargs)
         self.api_language = "java"
 
+        # Add primitive types to the subtyping graph.
+        self.subtyping_graph.add_node(self.bt_factory.get_char_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_boolean_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_byte_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_short_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_integer_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_long_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_float_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_double_type(primitive=True))
+
     def get_type_parser(self):
         return JavaTypeParser(
             self.target_language,
@@ -632,6 +652,7 @@ class ScalaAPIGraphBuilder(APIGraphBuilder):
 
     def __init__(self, target_language="scala", **kwargs):
         super().__init__(target_language, **kwargs)
+        self.subtyping_graph.add_node(self.bt_factory.get_anyref_type())
 
     def get_type_parser(self):
         parsers = {
