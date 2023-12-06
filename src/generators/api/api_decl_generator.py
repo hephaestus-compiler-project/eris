@@ -4,10 +4,12 @@ import re
 from typing import List
 
 from src import utils
+from src.config import cfg
 from src.ir import ast, types as tp
 from src.ir.context import Context
 from src.generators.api import builder, api_graph as ag
-from src.generators.api.api_generator import APIClientGenerator
+from src.generators.api.api_generator import APIClientGenerator, ExprRes
+from src.generators.api.special_methods import JAVA_SPECIAL_METHODS
 
 
 def get_base_api_name(fqn: str, spec: dict):
@@ -42,6 +44,15 @@ def get_parent_classes(fqn: str, spec: dict) -> List[str]:
     return get_parent_classes(parent, spec) + [parent]
 
 
+def to_namespace(m: ag.Method) -> str:
+    param_str = ", ".join([p.t.name for p in m.parameters])
+    func_name = m.name
+    if "." in func_name:
+        func_name = func_name.rsplit(".", 1)[1]
+    return f"{func_name}({param_str})"
+
+
+
 class APIDeclarationGenerator(APIClientGenerator):
     API_GRAPH_BUILDERS = {
         "java": builder.JavaAPIGraphBuilder,
@@ -55,6 +66,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         super().__init__(api_docs, options=options, language=language,
                          logger=logger)
         self.options = options
+        api_docs.update(JAVA_SPECIAL_METHODS)
         self.api_docs = api_docs
         self.initial_api_graph = self.api_graph
         self.package_name = None
@@ -161,6 +173,54 @@ class APIDeclarationGenerator(APIClientGenerator):
             body=ast.Block(body)
         )
 
+    def generate_expr_from_special_method(self, m: ag.Method,
+                                          depth: int) -> ast.Expr:
+        parameters = [param.t for param in m.parameters]
+        args = self._generate_args(parameters,
+                                   [[p] for p in parameters],
+                                   depth + 1, {})
+        converters = {
+            "&&": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
+                                               ast.Operator("&&")),
+            "||": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
+                                               ast.Operator("||")),
+            "==": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
+                                               ast.Operator("==")),
+            "!=": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
+                                               ast.Operator("!=")),
+            "+": lambda args: ast.ArithExpr(args[0].expr, args[1].expr,
+                                            ast.Operator("+")),
+            "-": lambda args: ast.ArithExpr(args[0].expr, args[1].expr,
+                                            ast.Operator("-")),
+            "/": lambda args: ast.ArithExpr(args[0].expr, args[1].expr,
+                                            ast.Operator("/")),
+            "*": lambda args: ast.ArithExpr(args[0].expr, args[1].expr,
+                                            ast.Operator("*")),
+            ">": lambda args: ast.ComparisonExpr(args[0].expr, args[1].expr,
+                                                 ast.Operator(">")),
+            "<": lambda args: ast.ComparisonExpr(args[0].expr, args[1].expr,
+                                                 ast.Operator(">")),
+            ">=": lambda args: ast.ComparisonExpr(args[0].expr, args[1].expr,
+                                                  ast.Operator(">=")),
+            "<=": lambda args: ast.ComparisonExpr(args[0].expr, args[1].expr,
+                                                  ast.Operator("<=")),
+        }
+        symbol = m.metadata["symbol"]
+        return converters[symbol](args)
+
+    def _generate_expression_from_path(self, path: list, depth: int,
+                                       type_var_map: dict) -> ast.Expr:
+
+        elem = path[-1]
+        if isinstance(elem, ag.Method) and elem.metadata.get("is_special"):
+            return self.generate_expr_from_special_method(elem, depth)
+        else:
+            return super()._generate_expression_from_path(path, depth,
+                                                          type_var_map)
+
+    def _generate_expr_from_node(self, node, depth=1, constraints=None):
+        return super()._generate_expr_from_node(node, depth, constraints)
+
     def generate_assignments(self, m: ag.Method,
                              local_vars: List[ast.VariableDeclaration]):
         """
@@ -211,12 +271,12 @@ class APIDeclarationGenerator(APIClientGenerator):
                        (is_parent_abstract or
                         m.metadata.get("is_abstract", False)))
         prev_ns = self.namespace
-        self.namespace += (func_name,)
+        self.namespace += (to_namespace(m),)
         body = None
         self.api_graph.add_types(m.type_parameters)
         self.add_local_variables(m)
         if not is_abstract:
-            expr = self._generate_expr_from_node(out_type, 2)[0]
+            expr = self._generate_expr_from_node(out_type, 1)[0]
             decls = list(self.context.get_declarations(self.namespace,
                                                        True).values())
             var_decls = [d for d in decls
