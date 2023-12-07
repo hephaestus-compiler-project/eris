@@ -4,12 +4,11 @@ import re
 from typing import List
 
 from src import utils
-from src.config import cfg
 from src.ir import ast, types as tp
 from src.ir.context import Context
 from src.generators.api import builder, api_graph as ag
-from src.generators.api.api_generator import APIClientGenerator, ExprRes
-from src.generators.api.special_methods import JAVA_SPECIAL_METHODS
+from src.generators.api.api_generator import APIClientGenerator
+from src.generators.api.special_methods import GROOVY_SPECIAL_METHODS
 
 
 def get_base_api_name(fqn: str, spec: dict):
@@ -65,11 +64,12 @@ class APIDeclarationGenerator(APIClientGenerator):
         super().__init__(api_docs, options=options, language=language,
                          logger=logger)
         self.options = options
-        api_docs.update(JAVA_SPECIAL_METHODS)
+        api_docs.update(GROOVY_SPECIAL_METHODS)
         self.api_docs = api_docs
         self.initial_api_graph = self.api_graph
         self.package_name = None
-        self.api_namespaces = iter(k for k in api_docs.keys())
+        self.api_namespaces = iter(utils.random.shuffle(
+            [k for k in api_docs.keys()]))
 
     def fork_api_spec(self, ns: str):
         # Get the supertypes of ns
