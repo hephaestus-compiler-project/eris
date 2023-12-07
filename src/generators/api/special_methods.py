@@ -54,7 +54,7 @@ def create_arithmetic_methods(types: List[str], ret_type: str,
     return methods
 
 
-JAVA_SPECIAL_METHODS = {
+GROOVY_SPECIAL_METHODS = {
     "builtin.ops": {
         "name": "builtin.ops",
         "is_class": False,
@@ -96,10 +96,59 @@ JAVA_SPECIAL_METHODS = {
                     "is_special": True,
                 }
             },
+            {
+                "name": "==",
+                "parameters": [
+                    "T",
+                    "T"
+                ],
+                "return_type": "boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "==",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "!=",
+                "parameters": [
+                    "T",
+                    "T"
+                ],
+                "return_type": "boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "!=",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "_if_",
+                "parameters": [
+                    "boolean",
+                    "T",
+                    "T"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "_if_",
+                    "is_special": True,
+                }
+            },
         ]
     }
 }
-JAVA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+GROOVY_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
     create_comparison_methods([
         "char",
         "byte",
@@ -110,14 +159,14 @@ JAVA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
         "float"
     ])
 )
-JAVA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+GROOVY_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
     create_arithmetic_methods([
         "byte",
         "short",
         "int",
     ], "int")
 )
-JAVA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+GROOVY_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
     create_arithmetic_methods([
         "byte",
         "short",
@@ -126,7 +175,7 @@ JAVA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
         "double"
     ], "java.lang.Number", second_types=["char"])
 )
-JAVA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+GROOVY_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
     create_arithmetic_methods(["char"], "java.lang.Number",
                               second_types=["byte", "short", "int", "float",
                                             "double"])

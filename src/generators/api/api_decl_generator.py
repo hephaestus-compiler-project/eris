@@ -52,7 +52,6 @@ def to_namespace(m: ag.Method) -> str:
     return f"{func_name}({param_str})"
 
 
-
 class APIDeclarationGenerator(APIClientGenerator):
     API_GRAPH_BUILDERS = {
         "java": builder.JavaAPIGraphBuilder,
@@ -174,20 +173,21 @@ class APIDeclarationGenerator(APIClientGenerator):
         )
 
     def generate_expr_from_special_method(self, m: ag.Method,
-                                          depth: int) -> ast.Expr:
+                                          depth: int,
+                                          type_var_map: dict) -> ast.Expr:
         parameters = [param.t for param in m.parameters]
         args = self._generate_args(parameters,
                                    [[p] for p in parameters],
-                                   depth + 1, {})
+                                   depth + 1, type_var_map)
         converters = {
             "&&": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
                                                ast.Operator("&&")),
             "||": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
                                                ast.Operator("||")),
-            "==": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
-                                               ast.Operator("==")),
-            "!=": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
-                                               ast.Operator("!=")),
+            "==": lambda args: ast.EqualityExpr(args[0].expr, args[1].expr,
+                                                ast.Operator("==")),
+            "!=": lambda args: ast.EqualityExpr(args[0].expr, args[1].expr,
+                                                ast.Operator("=", is_not=True)),
             "+": lambda args: ast.ArithExpr(args[0].expr, args[1].expr,
                                             ast.Operator("+")),
             "-": lambda args: ast.ArithExpr(args[0].expr, args[1].expr,
@@ -204,6 +204,12 @@ class APIDeclarationGenerator(APIClientGenerator):
                                                   ast.Operator(">=")),
             "<=": lambda args: ast.ComparisonExpr(args[0].expr, args[1].expr,
                                                   ast.Operator("<=")),
+            "_if_": lambda args: ast.Conditional(
+                args[0].expr, args[1].expr, args[2].expr,
+                inferred_type=(args[1].path[-1]
+                               if args[2].path[-1].is_subtype(args[1].path[-1])
+                               else args[2].path[-1])
+            )
         }
         symbol = m.metadata["symbol"]
         return converters[symbol](args)
@@ -213,7 +219,8 @@ class APIDeclarationGenerator(APIClientGenerator):
 
         elem = path[-1]
         if isinstance(elem, ag.Method) and elem.metadata.get("is_special"):
-            return self.generate_expr_from_special_method(elem, depth)
+            return self.generate_expr_from_special_method(elem, depth,
+                                                          type_var_map)
         else:
             return super()._generate_expression_from_path(path, depth,
                                                           type_var_map)
