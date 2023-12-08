@@ -1072,11 +1072,16 @@ class Variable(Expr):
 
 class Conditional(Expr):
     def __init__(self, cond: Expr, true_branch: Block, false_branch: Block,
-                 inferred_type: types.Type):
+                 inferred_type: types.Type, is_expression: bool = True):
         self.cond = cond
         self.true_branch = true_branch
         self.false_branch = false_branch
         self.inferred_type = inferred_type
+
+        # This flag indicates whether the conditional is an expression-based
+        # conditional (e.g., if (true) else x else y), or it's used as as
+        # statement-based conditional.
+        self.is_expression = is_expression
 
     def has_variable(self):
         return any(e.has_variable() for e in [self.cond, self.true_branch,
@@ -1106,7 +1111,8 @@ class Conditional(Expr):
             return (self.cond.is_equal(other.cond) and
                     self.true_branch.is_equal(other.true_branch) and
                     self.false_branch.is_equal(other.false_branch) and
-                    self.inferred_type == other.inferred_type)
+                    self.inferred_type == other.inferred_type and
+                    self.is_expression == other.is_expression)
         return False
 
 

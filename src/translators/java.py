@@ -975,7 +975,7 @@ class JavaTranslator(BaseTranslator):
     @append_to
     def visit_conditional(self, node):
         prev_inside_is = self._inside_is
-        self._inside_is = True
+        self._inside_is = node.is_expression
         old_ident = self.ident
         self.ident += 2
         children = node.children()
@@ -1011,13 +1011,21 @@ class JavaTranslator(BaseTranslator):
             false_branch.accept(self)
 
         children_res = self.pop_children_res(children)
-        res = "{ident}(({if_condition}) ?\n{body} : \n {else_body}){semicolon}".format(
-            ident=self.get_ident(old_ident=old_ident),
-            if_condition=children_res[0].lstrip(),
-            body=children_res[1],
-            else_body=children_res[2],
-            semicolon=";" if self._parent_is_block() else ""
-        )
+        if node.is_expression:
+            res = "{ident}(({if_condition}) ?\n{body} : \n {else_body}){semicolon}".format(
+                ident=self.get_ident(old_ident=old_ident),
+                if_condition=children_res[0].lstrip(),
+                body=children_res[1],
+                else_body=children_res[2],
+                semicolon=";" if self._parent_is_block() else ""
+            )
+        else:
+            res = "{ident}if({if_condition})\n{ident}{body}\n{ident}else\n{ident}{else_body}".format(
+                ident=self.get_ident(old_ident=old_ident),
+                if_condition=children_res[0].lstrip(),
+                body=children_res[1],
+                else_body=children_res[2]
+            )
         self.ident = old_ident
         self._inside_is = prev_inside_is
         self._namespace = prev_namespace
