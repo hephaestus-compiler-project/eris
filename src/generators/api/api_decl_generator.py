@@ -264,6 +264,31 @@ class APIDeclarationGenerator(APIClientGenerator):
             assignments.append(ast.Assignment(**kwargs))
         return assignments
 
+    def add_control_flow(self, block: ast.Block, block_type: tp.Type):
+        if not isinstance(block, ast.Block) or not block.body:
+            return block
+        body_block = [block.body[-1]]
+        for node in block.body[len(block.body) - 2::-1]:
+            # FIXME: This probability should be an option.
+            if utils.random.bool(prob=0.3):
+                # We put the node to the current block.
+                body_block.append(node)
+            else:
+                cond_expr = self.generate_expr(
+                    self.bt_factory.get_boolean_type(primitive=True))
+                base_expr = ast.Block(body_block[::-1])
+                alt_expr = self.generate_expr(block_type)
+                true_expr, false_expr = ((base_expr, alt_expr)
+                                         if utils.random.bool()
+                                         else (alt_expr, base_expr))
+                cond = ast.Conditional(
+                    cond_expr, true_expr, false_expr,
+                    inferred_type=block_type,
+                    is_expression=False
+                )
+                body_block = [cond, node]
+        return ast.Block(body_block[::-1])
+
     def convert_method(self, m: ag.Method,
                        ns_spec: dict) -> ast.FunctionDeclaration:
         out_type = self.api_graph.get_concrete_output_type(m)
@@ -292,6 +317,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             assignments = self.generate_assignments(m, var_decls)
             body = expr if not var_decls else ast.Block(
                 var_decls + assignments + [expr])
+            body = self.add_control_flow(body, out_type)
         self.remove_local_variables(m)
         func = ast.FunctionDeclaration(
             name=func_name,
