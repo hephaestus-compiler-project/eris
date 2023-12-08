@@ -651,6 +651,8 @@ class GroovyTranslator(BaseTranslator):
 
     @append_to
     def visit_bottom_constant(self, node):
+        if node.t.is_wildcard() and not node.t.bound:
+            return self.get_ident() + "null"
         return self.get_ident() + "{}{}null{}".format(
             '(' if self._parent_is_func_ref() else '',
             '(' + self.get_type_name(node.t) + ') ' if node.t else '',
@@ -808,7 +810,7 @@ class GroovyTranslator(BaseTranslator):
                 else_body=children_res[2]
             )
         else:
-            res = "{ident}if({if_condition})\n{ident}{body}\n{ident}else\n{ident}{else_body}".format(
+            res = "{ident}if(({if_condition}))\n{ident}{body}\n{ident}else\n{ident}{else_body}".format(
                 ident=self.get_ident(old_ident=old_ident),
                 if_condition=children_res[0].lstrip(),
                 body=children_res[1],

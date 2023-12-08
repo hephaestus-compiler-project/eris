@@ -1042,7 +1042,7 @@ class JavaTranslator(BaseTranslator):
                 semicolon=";" if self._parent_is_block() else ""
             )
         else:
-            res = "{ident}if({if_condition})\n{ident}{body}\n{ident}else\n{ident}{else_body}".format(
+            res = "{ident}if(({if_condition}))\n{ident}{body}\n{ident}else\n{ident}{else_body}".format(
                 ident=self.get_ident(old_ident=old_ident),
                 if_condition=children_res[0].lstrip(),
                 body=children_res[1],
