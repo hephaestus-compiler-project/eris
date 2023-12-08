@@ -663,6 +663,28 @@ class JavaTranslator(BaseTranslator):
 
     @append_to
     @change_namespace
+    def visit_constructor(self, node):
+        old_ident = self.ident
+        self.ident += 2
+        children = node.children()
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        param_res = [children_res[i] for i, _ in enumerate(node.params)]
+        body_res = children_res[-1] if node.body else ''
+        self.ident = old_ident
+        constructor_name = node.name.rsplit(".", )[-1]
+        modifiers = get_modifier_list(node.metadata)
+        modifiers = " ".join(modifiers) + " " if modifiers else ""
+        return "{modifiers}{name}({params}){body}".format(
+            modifiers=modifiers,
+            name=constructor_name,
+            params=", ".join(param_res),
+            body=body_res
+        )
+
+    @append_to
+    @change_namespace
     def visit_func_decl(self, node):
         def is_nested_func():
             parent_namespace = self._namespace[:-2]
