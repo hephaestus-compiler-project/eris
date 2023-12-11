@@ -150,7 +150,7 @@ class APIGraphBuilder(ABC):
                         self.functional_types, self.bt_factory,
                         **self.options)
 
-    def process_class(self, class_api: dict):
+    def _process_class(self, class_api: dict):
         if class_api.get("access_mod", PUBLIC) == PROTECTED:
             return
         self.api_language = class_api.get("language", self.api_language)
@@ -165,6 +165,16 @@ class APIGraphBuilder(ABC):
         self.build_subtyping_relations(class_api)
         self.class_name = None
         self.parent_cls: tp.Type = None
+
+    def process_class(self, class_api: dict):
+        self.api_language = class_api["language"]
+        if class_api.get("is_class", True):
+            self._process_class(class_api)
+        else:
+            self._is_func_interface = False
+            self.class_name = None
+            self.process_methods(class_api["methods"])
+            self.process_fields(class_api["fields"])
 
     def process_fields(self, fields: List[dict]):
         for field_api in fields:
@@ -624,16 +634,6 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
         field_node = Field(field_name, receiver_name)
         self.graph.add_node(field_node)
         return field_node
-
-    def process_class(self, class_api):
-        self.api_language = class_api["language"]
-        if class_api.get("is_class", True):
-            super().process_class(class_api)
-        else:
-            self._is_func_interface = False
-            self.class_name = None
-            self.process_methods(class_api["methods"])
-            self.process_fields(class_api["fields"])
 
 
 class ScalaAPIGraphBuilder(APIGraphBuilder):
