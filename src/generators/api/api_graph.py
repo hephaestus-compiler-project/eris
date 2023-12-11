@@ -778,7 +778,10 @@ class APIGraph():
             else self.api_graph.nodes()
         )
         for api in api_components:
-            if not isinstance(api, (Method, Constructor)):
+            if (not isinstance(api, (Method, Constructor)) and
+                    getattr(api, "metadata", {}).get("is_special", False)):
+                # Exclude nodes that are not constructors or methods or methods
+                # that are special.
                 continue
             param_types = [
                 (
