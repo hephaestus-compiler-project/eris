@@ -476,6 +476,8 @@ class GroovyTranslator(BaseTranslator):
             if node.vararg and isinstance(node.param_type,
                                           tp.ParameterizedType)
             else node.param_type)
+        if param_type.is_wildcard() and param_type.get_bound_rec() is None:
+            param_type = gt.Object
         res = self.get_type_name(param_type) + vararg_str + " " + node.name
         if len(children):
             children_res = self.pop_children_res(children)
