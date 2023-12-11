@@ -555,16 +555,16 @@ def run_parallel():
             STOP_COND = True
 
     def process_res(start_index, res, testdir, batch):
+        results = [r.get() for r in res]
         batch_time = functools.reduce(lambda acc, x: acc + x.stats["time"],
-                                      res, 0)
+                                      results, 0)
 
         def update(res):
             update_stats(res, batch, batch_time)
 
         try:
-            res = [r.get() for r in res]
             oracles = OrderedDict()
-            for i, r in enumerate(res):
+            for i, r in enumerate(results):
                 oracles[start_index + i] = r
             if cli_args.dry_run:
                 return update({})

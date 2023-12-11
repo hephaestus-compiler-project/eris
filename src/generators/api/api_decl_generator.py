@@ -68,8 +68,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.api_docs = api_docs
         self.initial_api_graph = self.api_graph
         self.package_name = None
-        self.api_namespaces = iter(utils.random.shuffle(
-            [k for k in api_docs.keys()]))
+        self.api_namespaces = utils.random.shuffle(
+            [k for k in api_docs.keys()])
 
     def fork_api_spec(self, ns: str):
         # Get the supertypes of ns
@@ -450,21 +450,20 @@ class APIDeclarationGenerator(APIClientGenerator):
         return ast.Program(self.context, self.language, lib=api_spec)
 
     def generate(self, context=None) -> ast.Program:
-        try:
-            api_namespace = next(self.api_namespaces)
-            forked_spec = self.fork_api_spec(api_namespace)
-            # This is the list of namespaces that are explicitly defined in
-            # the program.
-            defined_namespaces = list(forked_spec.keys())
-            forked_spec.update(self.api_docs)
-            self.api_graph = self.API_GRAPH_BUILDERS[self.language](
-                self.language, **self.options).build(forked_spec)
-            program = self.create_program_from_spec(forked_spec,
-                                                    defined_namespaces)
-            return program
-        except StopIteration:
+        if self.program_id - 1 >= len(self.api_namespaces):
             self._has_next = False
             return None
+        api_namespace = self.api_namespaces[self.program_id - 1]
+        forked_spec = self.fork_api_spec(api_namespace)
+        # This is the list of namespaces that are explicitly defined in
+        # the program.
+        defined_namespaces = list(forked_spec.keys())
+        forked_spec.update(self.api_docs)
+        self.api_graph = self.API_GRAPH_BUILDERS[self.language](
+            self.language, **self.options).build(forked_spec)
+        program = self.create_program_from_spec(forked_spec,
+                                                defined_namespaces)
+        return program
 
     def has_next(self) -> bool:
         return self._has_next
@@ -473,3 +472,4 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.context = None
         self.error_injected = None
         self.package_name = package_name
+        self.program_id = program_id
