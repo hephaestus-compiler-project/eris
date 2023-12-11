@@ -270,12 +270,12 @@ class APIDeclarationGenerator(APIClientGenerator):
         body_block = [block.body[-1]]
         for node in block.body[len(block.body) - 2::-1]:
             # FIXME: This probability should be an option.
-            if utils.random.bool(prob=0.3):
-                # We put the node to the current block.
-                body_block.append(node)
-            else:
-                cond_expr = self.generate_expr(
-                    self.bt_factory.get_boolean_type(primitive=True))
+            if utils.random.bool(prob=0.2):
+                self.block_variables = True
+                cond_expr = self._generate_expr_from_node(
+                    self.bt_factory.get_boolean_type(primitive=True),
+                    depth=2)[0]
+                self.block_variables = False
                 base_expr = ast.Block(body_block[::-1])
                 alt_expr = self.generate_expr(block_type)
                 true_expr, false_expr = ((base_expr, alt_expr)
@@ -287,6 +287,9 @@ class APIDeclarationGenerator(APIClientGenerator):
                     is_expression=False
                 )
                 body_block = [cond, node]
+            else:
+                # We put the node to the current block.
+                body_block.append(node)
         return ast.Block(body_block[::-1])
 
     def convert_method(self, m: ag.Method,

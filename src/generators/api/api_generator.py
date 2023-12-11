@@ -82,6 +82,11 @@ class APIClientGenerator(Generator):
         self.error_injected = None
         self.test_case_type_params: List[tp.TypeParameter] = []
 
+        # This flag blocks the creation of local variables. This flag is
+        # needed, if in certain points we want to block the creation of
+        # local variables.
+        self.block_variables: bool = False
+
     def log_api_graph_statistics(self, matcher=None):
         if self.logger is None:
             return
@@ -332,6 +337,10 @@ class APIClientGenerator(Generator):
                 # of iteration.
                 self.api_graph.remove_types(encoding.type_parameters)
 
+    def create_variable(self):
+        return not self.block_variables and utils.random.bool(
+            prob=cfg.prob.local_variable_prob)
+
     def generate_expr_from_node(self, node: tp.Type,
                                 func_ref: bool,
                                 constraints: dict = None,
@@ -346,7 +355,7 @@ class APIClientGenerator(Generator):
             else self._generate_expr_from_node(
                 node, depth, {} if func_ref else (constraints or {}))
         )
-        if node and utils.random.bool(prob=cfg.prob.local_variable_prob):
+        if node and self.create_variable():
             var_name = gu.gen_identifier("lower")
             if node.is_type_constructor():
                 node = node.new(node.type_parameters)
