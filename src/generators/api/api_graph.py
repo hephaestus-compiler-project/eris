@@ -425,6 +425,8 @@ class APIGraph():
         return self.api_graph.nodes()
 
     def get_neighbors_of_node(self, node: APINode) -> Iterable[APINode]:
+        if node not in self.api_graph:
+            return []
         return self.api_graph.neighbors(node)
 
     def get_sources_and_target(
@@ -778,7 +780,7 @@ class APIGraph():
             else self.api_graph.nodes()
         )
         for api in api_components:
-            if (not isinstance(api, (Method, Constructor)) and
+            if (not isinstance(api, (Method, Constructor)) or
                     getattr(api, "metadata", {}).get("is_special", False)):
                 # Exclude nodes that are not constructors or methods or methods
                 # that are special.
