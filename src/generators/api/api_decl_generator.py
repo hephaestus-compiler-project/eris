@@ -72,10 +72,12 @@ class APIDeclarationGenerator(APIClientGenerator):
             [k for k in api_docs.keys()])
 
     def fork_api_spec(self, ns: str):
+        # We might encounter a namespace of the form: java.lang.Integer
+        t = (self.initial_api_graph.get_type_by_name(ns) or
+             self.parse_builtin_type(ns))
         # Get the supertypes of ns
         supertypes = {
-            st for st in self.initial_api_graph.get_type_by_name(
-                ns).get_supertypes()
+            st for st in t.get_supertypes()
             if st != self.bt_factory.get_any_type()}
         specs = [(st.name, self.api_docs[st.name]) for st in supertypes]
         all_names = [s[0] for s in specs]
