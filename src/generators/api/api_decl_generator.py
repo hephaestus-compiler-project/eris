@@ -1,7 +1,7 @@
 import json
 import functools
 import re
-from typing import List
+from typing import List, Tuple
 
 from src import utils
 from src.ir import ast, types as tp
@@ -71,7 +71,28 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.api_namespaces = utils.random.shuffle(
             [k for k in api_docs.keys()])
 
-    def fork_api_spec(self, ns: str):
+    def _fork_api_spec(self, specs: Tuple[str, dict],
+                       selected_namespaces: List[str]) -> dict:
+        forked_specs = {}
+        for name, spec in specs:
+            new_name = self.package_name + "." + get_base_api_name(
+                name, self.api_docs)
+            spec_str = json.dumps(spec)
+            spec_str = functools.reduce(lambda acc, x: re.sub(
+                re.compile(x.replace(".", "\\.") + "(?![A-Za-z.])"),
+                self.package_name + "." + get_base_api_name(x, self.api_docs),
+                acc), selected_namespaces, spec_str)
+            new_spec = json.loads(spec_str)
+            forked_specs[new_name] = new_spec
+        return forked_specs
+
+    def fork_api_spec(self, ns: str) -> dict:
+        """
+        Given a namespace (e.g., a class name), we find all the namespaces
+        (e.g., classes) related to that (e.g., parent-child relationships).
+        Then, we fork parts of the given API by changing the names of the
+        given namespace `ns` and the related namespaces.
+        """
         # We might encounter a namespace of the form: java.lang.Integer
         t = (self.initial_api_graph.get_type_by_name(ns) or
              self.parse_builtin_type(ns))
@@ -79,7 +100,10 @@ class APIDeclarationGenerator(APIClientGenerator):
         supertypes = {
             st for st in t.get_supertypes()
             if st != self.bt_factory.get_any_type()}
-        specs = [(st.name, self.api_docs[st.name]) for st in supertypes]
+        # Note that we omit parent classes not defined in the given API.
+        # We do that because their specification is not available to us.
+        specs = [(st.name, self.api_docs[st.name]) for st in supertypes
+                 if st.name in self.api_docs]
         all_names = [s[0] for s in specs]
         # If the current namespace has parent classes, include these classes
         # to our list of specs.
@@ -100,18 +124,7 @@ class APIDeclarationGenerator(APIClientGenerator):
                                    if any(x in y and x != y
                                           for y in selected_namespaces))
         specs = [s for s in specs if s[0] in selected_namespaces]
-        forked_specs = {}
-        for name, spec in specs:
-            new_name = self.package_name + "." + get_base_api_name(
-                name, self.api_docs)
-            spec_str = json.dumps(spec)
-            spec_str = functools.reduce(lambda acc, x: re.sub(
-                re.compile(x.replace(".", "\\.") + "(?![A-Za-z.])"),
-                self.package_name + "." + get_base_api_name(x, self.api_docs),
-                acc), selected_namespaces, spec_str)
-            new_spec = json.loads(spec_str)
-            forked_specs[new_name] = new_spec
-        return forked_specs
+        return self._fork_api_spec(specs, selected_namespaces)
 
     def add_local_variables(self, m: ag.Method):
         t = self.api_graph.get_input_type(m)
