@@ -537,12 +537,15 @@ class JavaTranslator(BaseTranslator):
         function_res = [children_res[i + len_fields + len_supercls]
                         for i, _ in enumerate(node.functions)]
         len_functions = len(function_res)
-        start_index = len_fields + len_supercls + len_functions
+        constr_res = [children_res[i + len_fields + len_supercls + len_functions]
+                      for i, _ in enumerate(node.constructors)]
+        len_constr = len(constr_res)
+        start_index = len_fields + len_supercls + len_functions + len_constr
         end_index = len(children_res) - len(node.extra_declarations)
         type_parameters_res = ", ".join(children_res[start_index:end_index])
         len_tp = len(node.type_parameters)
         extra_decl_res = [
-            children_res[i + len_fields + len_supercls + len_functions + len_tp]
+            children_res[i + len_fields + len_supercls + len_functions + len_constr + len_tp]
             for i, _ in enumerate(node.extra_declarations)
         ]
         prefix = " " * old_ident
