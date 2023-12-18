@@ -57,10 +57,7 @@ def is_parent_interface(child_name: str, parent_name: str,
     if class_type is not None:
         return class_type
 
-    try:
-        assert child_name in api_spec, "Child class specification not found"
-    except:
-        import pdb; pdb.set_trace()
+    assert child_name in api_spec, "Child class specification not found"
 
     cls_spec = api_spec[child_name]
     return parent_name not in cls_spec["inherits"]
