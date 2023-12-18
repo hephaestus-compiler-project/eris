@@ -89,7 +89,6 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.package_name = None
         self.api_namespaces = utils.random.shuffle(
             [k for k in api_docs.keys()])
-        self.api_namespaces = ["com.google.common.util.concurrent.ClosingFuture"]
 
     def _fork_api_spec(self, specs: Tuple[str, dict],
                        selected_namespaces: List[str]) -> dict:
