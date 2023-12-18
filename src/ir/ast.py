@@ -1404,6 +1404,7 @@ class FieldAccess(Expr):
 
 class FunctionCall(Expr):
     SUPER = "super"
+    THIS = "this"
 
     def __init__(self, func: str, args: List[CallArgument],
                  receiver: Expr = None,
