@@ -10,7 +10,8 @@ from src.ir.context import get_decl
 from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
 from src.translators.utils import (
-    get_modifier_list, strip_fqn, get_class_type_from_context)
+    get_modifier_list, strip_fqn, get_class_type_from_context,
+    is_parent_interface)
 
 
 PRIMITIVES_TO_BOXED = {
@@ -460,7 +461,10 @@ class JavaTranslator(BaseTranslator):
                 cls_inst = self.get_type_name(cls_inst.class_type)
                 class_type = get_class_type_from_context(
                     cls_name, self.context, self._namespace, self.lib_spec)
-                if class_type == ast.ClassDeclaration.INTERFACE:
+                is_interface = (class_type == ast.ClassDeclaration.INTERFACE or
+                                is_parent_interface(node.name, cls_name,
+                                                    self.lib_spec))
+                if is_interface:
                     interfaces.append(cls_inst)
                 else:
                     superclasses.append(cls_inst)

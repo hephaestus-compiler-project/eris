@@ -7,7 +7,8 @@ from src.ir import ast, groovy_types as gt, types as tp, type_utils as tu
 from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
 from src.translators.utils import (
-    get_modifier_list, get_class_type_from_context, strip_fqn)
+    get_modifier_list, get_class_type_from_context, strip_fqn,
+    is_parent_interface)
 
 
 def append_to(visit):
@@ -275,7 +276,10 @@ class GroovyTranslator(BaseTranslator):
                 cls_inst = self.get_type_name(cls_inst.class_type)
                 class_type = get_class_type_from_context(
                     cls_name, self.context, self._namespace, self.lib_spec)
-                if class_type == ast.ClassDeclaration.INTERFACE:
+                is_interface = (class_type == ast.ClassDeclaration.INTERFACE or
+                                is_parent_interface(node.name, cls_name,
+                                                    self.lib_spec))
+                if is_interface:
                     interfaces.append(cls_inst)
                 else:
                     superclasses.append(cls_inst)
@@ -996,7 +1000,7 @@ class GroovyTranslator(BaseTranslator):
                 if len(segs) == 1
                 else (segs[0] + ".", segs[1])
             )
-            if func == ast.FunctionCall.SUPER:
+            if func == ast.FunctionCall.SUPER or func == ast.FunctionCall.THIS:
                 receiver_expr = ""
         type_args_str = ""
         if node.type_args and not node.can_infer_type_args:

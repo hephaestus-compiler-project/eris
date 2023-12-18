@@ -19,9 +19,19 @@ def get_class_type_from_context(cls_name: str, context: Context,
     defined_classes = context.get_classes(namespace, glob=True)
     cls = defined_classes.get(cls_name)
     if cls is None:
-        cls = lib_spec[cls_name]
+        cls = lib_spec.get(cls_name)
+        if cls is None:
+            # Class specification not found in the given lib spec.
+            return None
         return cls["class_type"]
     return cls.class_type
+
+
+def is_parent_interface(child_name: str, parent_name: str,
+                        lib_spec: dict) -> bool:
+    assert child_name in lib_spec, "Child class specification not found"
+    cls_spec = lib_spec[child_name]
+    return parent_name not in cls_spec["inherits"]
 
 
 def strip_fqn(func):
