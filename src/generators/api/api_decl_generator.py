@@ -51,6 +51,21 @@ def to_namespace(m: ag.Method) -> str:
     return f"{func_name}({param_str})"
 
 
+def is_parent_interface(child_name: str, parent_name: str,
+                        api_spec: dict) -> bool:
+    class_type = api_spec.get(parent_name, {}).get("class_type")
+    if class_type is not None:
+        return class_type
+
+    try:
+        assert child_name in api_spec, "Child class specification not found"
+    except:
+        import pdb; pdb.set_trace()
+
+    cls_spec = api_spec[child_name]
+    return parent_name not in cls_spec["inherits"]
+
+
 class APIDeclarationGenerator(APIClientGenerator):
     API_GRAPH_BUILDERS = {
         "java": builder.JavaAPIGraphBuilder,
@@ -102,8 +117,9 @@ class APIDeclarationGenerator(APIClientGenerator):
             if st != self.bt_factory.get_any_type()}
         # Note that we omit parent classes not defined in the given API.
         # We do that because their specification is not available to us.
-        specs = [(st.name, self.api_docs[st.name]) for st in supertypes
-                 if st.name in self.api_docs]
+        specs = [(ns, self.api_docs[ns])]
+        specs.extend([(st.name, self.api_docs[st.name]) for st in supertypes
+                     if st.name != ns and st.name in self.api_docs])
         all_names = [s[0] for s in specs]
         # If the current namespace has parent classes, include these classes
         # to our list of specs.
@@ -142,18 +158,52 @@ class APIDeclarationGenerator(APIClientGenerator):
         for i in range(len(m.parameters)):
             self.api_graph.remove_variable_node(f"p{i}")
 
+    def generate_super_call_unknown(self, m: ag.Constructor,
+                                    parent_name: str) -> ast.FunctionCall:
+        """
+        This is a heuristic: We are trying to call the constructor of a call
+        for which we don't have its specification. As a result, we know nothing
+        about its constructors.
+
+        We proceed as follows: If the the child class has a single constructor,
+        then call the super constructor by assuming that the super constructor
+        has the same signature as the child constructor.
+
+        If the child class has multiple constructors, then assume that the
+        parent constructor has the same signature with the child constructor
+        that has the smallest arity.
+        """
+        constructors = [n for n in self.api_graph.get_api_nodes()
+                        if isinstance(n, ag.Constructor) and n.name == m.name]
+        if not constructors:
+            return ast.FunctionCall(ast.FunctionCall.SUPER, [])
+        if len(constructors) == 1:
+            super_args = [self.generate_expr(p.t) for p in m.parameters]
+            return ast.FunctionCall(ast.FunctionCall.SUPER,
+                                    args=super_args)
+        con = sorted(constructors, key=lambda x: len(x.parameters))[0]
+        super_args = [self.generate_expr(p.t) for p in con.parameters]
+        return ast.FunctionCall(ast.FunctionCall.THIS,
+                                super_args)
+
     def generate_super_call(self, m: ag.Constructor):
         st_names = [st.name
                     for st in self.api_graph.get_type_by_name(m.name).supertypes
                     if st != self.bt_factory.get_any_type()]
         parent_classes = [
-            self.api_spec[n] for n in st_names
-            if self.api_spec[n]["class_type"] != ast.ClassDeclaration.INTERFACE
+            self.api_spec.get(n, n) for n in st_names
+            if not is_parent_interface(m.get_class_name(), n, self.api_spec)
         ]
         if not parent_classes:
             # We don't need to generate a super call.
             return None
         parent_cls = parent_classes[0]
+        if isinstance(parent_cls, str):
+            # This means that we don't have the spec for the parent class.
+            # Therefore, we know nothing about its constructors. Below, we
+            # use a heuristic to a constructor a super call to an unknown
+            # class.
+            return self.generate_super_call_unknown(m, parent_cls)
         super_constructors = [
             node
             for node in self.api_graph.get_api_nodes()
