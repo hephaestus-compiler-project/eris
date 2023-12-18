@@ -43,6 +43,13 @@ def get_parent_classes(fqn: str, spec: dict) -> List[str]:
     return get_parent_classes(parent, spec) + [parent]
 
 
+def get_nested_classes(fqn: str, spec: dict) -> List[str]:
+    return [
+        k for k, v in spec.items()
+        if k != fqn and k.startswith(fqn) and v.get("is_class", True)
+    ]
+
+
 def to_namespace(m: ag.Method) -> str:
     param_str = ", ".join([p.t.name for p in m.parameters])
     func_name = m.name
@@ -82,6 +89,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.package_name = None
         self.api_namespaces = utils.random.shuffle(
             [k for k in api_docs.keys()])
+        self.api_namespaces = ["com.google.common.util.concurrent.ClosingFuture"]
 
     def _fork_api_spec(self, specs: Tuple[str, dict],
                        selected_namespaces: List[str]) -> dict:
@@ -97,6 +105,22 @@ class APIDeclarationGenerator(APIClientGenerator):
             new_spec = json.loads(spec_str)
             forked_specs[new_name] = new_spec
         return forked_specs
+
+    def _handle_nested_classes(self, specs: List[dict],
+                               included_ns: List[str]):
+        for cls_name, spec in list(specs):
+            # If the current namespace has parent classes, include these
+            # classes to our list of specs.
+            for parent in get_parent_classes(cls_name, self.api_docs):
+                if parent not in included_ns:
+                    specs.append((parent, self.api_docs[parent]))
+                    included_ns.append(parent)
+            # Now handle any nested classes defined in the class given
+            # by `cls_name`.
+            for nested_c in get_nested_classes(cls_name, self.api_docs):
+                if nested_c not in included_ns:
+                    specs.append((nested_c, self.api_docs[nested_c]))
+                    included_ns.append(nested_c)
 
     def fork_api_spec(self, ns: str) -> dict:
         """
@@ -118,13 +142,6 @@ class APIDeclarationGenerator(APIClientGenerator):
         specs.extend([(st.name, self.api_docs[st.name]) for st in supertypes
                      if st.name != ns and st.name in self.api_docs])
         all_names = [s[0] for s in specs]
-        # If the current namespace has parent classes, include these classes
-        # to our list of specs.
-        for cls_name, spec in specs:
-            for parent in get_parent_classes(cls_name, self.api_docs):
-                if parent not in all_names:
-                    specs.append((parent, self.api_docs[parent]))
-                    all_names.append(parent)
 
         # Now select a random subset of namespaces. This means that our class
         # will inherit from some user-defined classes, but also inherit from
@@ -133,10 +150,8 @@ class APIDeclarationGenerator(APIClientGenerator):
             all_names, k=utils.random.integer(1, len(all_names)))
         if ns not in selected_namespaces:
             selected_namespaces.append(ns)
-        selected_namespaces.extend(x for x in all_names
-                                   if any(x in y and x != y
-                                          for y in selected_namespaces))
         specs = [s for s in specs if s[0] in selected_namespaces]
+        self._handle_nested_classes(specs, selected_namespaces)
         return self._fork_api_spec(specs, selected_namespaces)
 
     def add_local_variables(self, m: ag.Method):
