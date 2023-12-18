@@ -664,7 +664,7 @@ class APIClientGenerator(Generator):
             arg_types = actual_types[i]
             param_types = self.substitute_types(arg_types, type_var_map)
             self.type_eraser.with_target(param, tu.get_type_variables_of_type(
-                param))
+                param, self.bt_factory))
             for i, param_t in enumerate(list(param_types)):
                 # If encountering a raw type, instantiate the corresponding
                 # type constructor.
