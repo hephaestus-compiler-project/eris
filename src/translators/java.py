@@ -577,7 +577,7 @@ class JavaTranslator(BaseTranslator):
                 body += self.get_ident()
                 body += join_separator.join(field_res)
                 body += "\n\n"
-            if superclasses or field_res:
+            if superclasses or field_res and not is_interface:
                 body += construct_constructor()
                 if function_res:
                     body += "\n\n"
