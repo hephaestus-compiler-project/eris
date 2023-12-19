@@ -138,7 +138,7 @@ def _assign_type_unconstrained(api_graph, type_var,
         if type_var.is_type_constructor():
             t = api_graph.get_matching_type_constructor(type_var)
         else:
-            t = api_graph.get_random_type()
+            t = api_graph.get_random_type().box_type()
     return {type_var: tp.substitute_type(t, type_var_assignments)}
 
 
@@ -287,7 +287,7 @@ def instantiate_type_variables(api_graph, constraints,
             assigned_t = tu.substitute_invariant_wildcard_with(
                 assigned_t, [t for t in api_graph.get_reg_types()
                              if not t.is_type_constructor()])
-        type_var_assignments[type_var] = assigned_t
+        type_var_assignments[type_var] = assigned_t.box_type()
     return type_var_assignments
 
 
