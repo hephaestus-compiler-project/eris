@@ -649,7 +649,7 @@ class JavaTranslator(BaseTranslator):
     @append_to
     def visit_field_decl(self, node):
         modifiers = get_modifier_list(node.metadata)
-        return "public {final}{modifiers}{field_type} {name};".format(
+        return "{final}{modifiers}{field_type} {name};".format(
             final="final " if node.is_final else "",
             modifiers=" ".join(modifiers) + " " if modifiers else "",
             field_type=self.get_type_name(node.field_type),
