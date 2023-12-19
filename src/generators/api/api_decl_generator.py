@@ -162,7 +162,11 @@ class APIDeclarationGenerator(APIClientGenerator):
             self.api_graph.add_variable_node("this", t)
         # Add method's parameters
         for i, p in enumerate(m.parameters):
-            self.api_graph.add_variable_node(f"p{i}", p.t)
+            param_type = p.t
+            if p.variable:
+                param_type = self.bt_factory.get_array_type().new([p.t])
+
+            self.api_graph.add_variable_node(f"p{i}", param_type)
 
     def remove_local_variables(self, m: ag.Method):
         self.api_graph.remove_variable_node("this")
