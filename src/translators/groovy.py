@@ -368,13 +368,14 @@ class GroovyTranslator(BaseTranslator):
         if type_parameters_res:
             res = "{}<{}>".format(res, type_parameters_res)
         superclasses, interfaces = get_superclasses_interfaces()
-        if superclasses:
-            res += " extends " + ", ".join(superclasses)
-        if interfaces:
-            if node.class_type == ast.ClassDeclaration.INTERFACE:
-                # len(interfaces) should not be more than 1.
-                res += " extends " + ", ".join(interfaces)
-            else:
+        is_interface = node.class_type == ast.ClassDeclaration.INTERFACE
+        if is_interface:
+            if superclasses or interfaces:
+                res += " extends " + ", ".join(superclasses + interfaces)
+        else:
+            if superclasses:
+                res += " extends " + ", ".join(superclasses)
+            if interfaces:
                 res += " implements " + ", ".join(interfaces)
         body = " {"
         if function_res or field_res or superclasses or extra_decl_res:

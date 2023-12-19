@@ -31,7 +31,8 @@ def is_parent_interface(child_name: str, parent_name: str,
                         lib_spec: dict) -> bool:
     assert child_name in lib_spec, "Child class specification not found"
     cls_spec = lib_spec[child_name]
-    return parent_name not in cls_spec["inherits"]
+    return not any(sc.startswith(parent_name)
+                   for sc in cls_spec["inherits"])
 
 
 def strip_fqn(func):

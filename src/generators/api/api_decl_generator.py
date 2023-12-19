@@ -67,7 +67,8 @@ def is_parent_interface(child_name: str, parent_name: str,
     assert child_name in api_spec, "Child class specification not found"
 
     cls_spec = api_spec[child_name]
-    return parent_name not in cls_spec["inherits"]
+    return not any(sc.startswith(parent_name)
+                   for sc in cls_spec["inherits"])
 
 
 class APIDeclarationGenerator(APIClientGenerator):
@@ -524,11 +525,10 @@ class APIDeclarationGenerator(APIClientGenerator):
             t = self.api_graph.get_type_by_name(name)
             if t == self.bt_factory.get_any_type() or t is None:
                 continue
-            # This namespace corresponds to a class, because there's no type
-            # with the same name as `name`.
             self.api_spec = api_spec
             self.create_class_from_spec(api_spec, t)
-        return ast.Program(self.context, self.language, lib=api_spec)
+            self.api_spec.update(self.api_docs)
+        return ast.Program(self.context, self.language, lib=self.api_spec)
 
     def generate(self, context=None) -> ast.Program:
         if self.program_id - 1 >= len(self.api_namespaces):
