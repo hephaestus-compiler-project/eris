@@ -1,5 +1,7 @@
 from src.ir import ast, kotlin_types as kt, types as tp, type_utils as tu
+from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
+from src.translators.utils import strip_fqn
 
 
 def append_to(visit):
@@ -24,6 +26,7 @@ class KotlinTranslator(BaseTranslator):
         self.is_lambda = False
         self._cast_integers = False
         self.context = None
+        self._namespace = ast.GLOBAL_NAMESPACE
 
         # We need nodes_stack to assign lambdas to vars when needed.
         # Specifically, in visit_lambda we use `var y = ` as a prefix only if
@@ -39,6 +42,7 @@ class KotlinTranslator(BaseTranslator):
         self._cast_integers = False
         self._nodes_stack = [None]
         self.context = None
+        self._namespace = ast.GLOBAL_NAMESPACE
 
     @staticmethod
     def get_filename():
@@ -72,6 +76,7 @@ class KotlinTranslator(BaseTranslator):
         else:
             return "in " + self.get_type_name(t_arg.bound)
 
+    @strip_fqn
     def get_type_name(self, t):
         if t.is_wildcard():
             t = t.get_bound_rec()
@@ -188,7 +193,16 @@ class KotlinTranslator(BaseTranslator):
                 children_res) + ")")
 
     @append_to
+    @change_namespace
     def visit_class_decl(self, node):
+        def get_superclasses_interfaces():
+            superclasses = []
+            for cls_inst in node.superclasses:
+                cls_name = cls_inst.class_type.name
+                cls_inst = self.get_type_name(cls_inst.class_type)
+                superclasses.append(cls_inst)
+            return superclasses
+
         old_ident = self.ident
         self.ident += 2
         children = node.children()
@@ -198,14 +212,21 @@ class KotlinTranslator(BaseTranslator):
         field_res = [children_res[i]
                      for i, _ in enumerate(node.fields)]
         len_fields = len(field_res)
-        superclasses_res = [children_res[i + len_fields]
-                            for i, _ in enumerate(node.superclasses)]
-        len_supercls = len(superclasses_res)
+        len_supercls = len(node.superclasses)
         function_res = [children_res[i + len_fields + len_supercls]
                         for i, _ in enumerate(node.functions)]
         len_functions = len(function_res)
-        type_parameters_res = ", ".join(
-            children_res[len_fields + len_supercls + len_functions:])
+        constr_res = [children_res[i + len_fields + len_supercls + len_functions]
+                      for i, _ in enumerate(node.constructors)]
+        len_constr = len(constr_res)
+        start_index = len_fields + len_supercls + len_functions + len_constr
+        end_index = len(children_res) - len(node.extra_declarations)
+        type_parameters_res = ", ".join(children_res[start_index:end_index])
+        len_tp = len(node.type_parameters)
+        extra_decl_res = [
+            children_res[i + len_fields + len_supercls + len_functions + len_constr + len_tp]
+            for i, _ in enumerate(node.extra_declarations)
+        ]
 
         is_sam = tu.is_sam(self.context, cls_decl=node)
         class_prefix = "interface" if is_sam else node.get_class_prefix()
@@ -216,6 +237,8 @@ class KotlinTranslator(BaseTranslator):
                 old_ident=" " * old_ident
             )
 
+        base_cls_name = node.name.rsplit(".", 1)[-1]
+        superclasses = get_superclasses_interfaces()
         res = "{ident}{f}{o}{p} {n}".format(
             ident=" " * old_ident,
             f="fun " if is_sam else "",
@@ -223,10 +246,10 @@ class KotlinTranslator(BaseTranslator):
                           node.class_type != ast.ClassDeclaration.INTERFACE and
                           not is_sam) else "",
             p=class_prefix,
-            n=node.name,
+            n=base_cls_name,
             tps="<" + type_parameters_res + ">" if type_parameters_res else "",
             fields="(" + ", ".join(field_res) + ")" if field_res else "",
-            s=": " + ", ".join(superclasses_res) if superclasses_res else "",
+            s=": " + ", ".join(superclasses) if superclasses else "",
             body=body
         )
 
@@ -235,8 +258,8 @@ class KotlinTranslator(BaseTranslator):
         if field_res:
             res = "{}({})".format(
                 res, ", ".join(field_res))
-        if superclasses_res:
-            res += ": " + ", ".join(superclasses_res)
+        if superclasses:
+            res += ": " + ", ".join(superclasses)
         if function_res:
             res += " {\n" + "\n\n".join(
                 function_res) + "\n" + " " * old_ident + "}"
@@ -245,10 +268,13 @@ class KotlinTranslator(BaseTranslator):
 
     @append_to
     def visit_type_param(self, node):
+        type_param_name = node.name
+        if "." in type_param_name:
+            type_param_name = type_param_name.rsplit(".", 1)[1]
         self._children_res.append("{}{}{}{}".format(
             node.variance_to_string(),
             ' ' if node.variance != tp.Invariant else '',
-            node.name,
+            type_param_name,
             ': ' + (
                 self.get_type_name(node.bound)
                 if node.bound is not None
@@ -322,6 +348,42 @@ class KotlinTranslator(BaseTranslator):
         self._children_res.append(res)
 
     @append_to
+    @change_namespace
+    def visit_constructor(self, node):
+        def is_super_call(n: ast.Node):
+            return (isinstance(n, ast.FunctionCall) and
+                    n.func == ast.FunctionCall.SUPER)
+
+        old_ident = self.ident
+        self.ident += 2
+        super_call = None
+        new_body = []
+        for n in node.body.body:
+            if is_super_call(n):
+                super_call = n
+            else:
+                new_body.append(n)
+        children = node.params + [ast.Block(new_body)]
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        super_call_res = ""
+        if super_call is not None:
+            super_call.accept(self)
+            super_call_res = ":" + self.pop_children_res([super_call])[0]
+        param_res = [children_res[i] for i, _ in enumerate(node.params)]
+        body_res = children_res[-1] if node.body else ''
+        res = "{ident}constructor({params}){super}{body}".format(
+            ident=" " * old_ident,
+            params=", ".join(param_res),
+            super=super_call_res,
+            body=body_res
+        )
+        self.ident = old_ident
+        self._children_res.append(res)
+
+    @append_to
+    @change_namespace
     def visit_func_decl(self, node):
         old_ident = self.ident
         self.ident += 2
@@ -360,6 +422,7 @@ class KotlinTranslator(BaseTranslator):
         self._children_res.append(res)
 
     @append_to
+    @change_namespace
     def visit_lambda(self, node):
         def inside_block_unit_function():
             if (isinstance(self._nodes_stack[-2], ast.Block) and
@@ -567,9 +630,14 @@ class KotlinTranslator(BaseTranslator):
     def visit_conditional(self, node):
         old_ident = self.ident
         self.ident += 2
+        prev_namespace = self._namespace
         children = node.children()
-        for c in children:
-            c.accept(self)
+        children[0].accept(self)  # cond
+        self._namespace = prev_namespace + ('true_block',)
+        children[1].accept(self)  # true branch
+        self._namespace = prev_namespace + ('false_block',)
+        children[2].accept(self)  # false branch
+        self._namespace = prev_namespace
         children_res = self.pop_children_res(children)
         res = "{}(if ({})\n{}\n{}else\n{})".format(
             " " * old_ident, children_res[0][self.ident:], children_res[1],
