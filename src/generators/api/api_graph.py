@@ -438,7 +438,7 @@ class APIGraph():
             msg = msg.format(sel=target_selection)
             return Exception(msg)
         origin = target
-        targets = []
+        targets = [origin]
         if target.is_parameterized():
             is_primitive = (
                 origin.t_constructor == self.bt_factory.get_array_type() and
