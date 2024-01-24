@@ -473,11 +473,9 @@ class APIDeclarationGenerator(APIClientGenerator):
         # Now consider static methods, static fields, or constructors
         for n in list(self.api_graph.get_api_nodes()):
             if isinstance(n, (ag.Method, ag.Field, ag.Constructor)):
-                is_static = ns == n.name.rsplit(".", 1)[0]
-                is_constructor = (
-                    isinstance(n, ag.Constructor) and
-                    ns == n.name
-                )
+                is_con = isinstance(n, ag.Constructor)
+                is_static = ns == n.name.rsplit(".", 1)[0] and not is_con
+                is_constructor = is_con and ns == n.name
                 if is_static or is_constructor:
                     decl = self.convert_node_to_decl(n, ns_spec)
                     if isinstance(decl, ast.FunctionDeclaration):
