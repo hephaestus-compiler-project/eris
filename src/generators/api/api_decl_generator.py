@@ -1,3 +1,4 @@
+from collections import namedtuple
 import json
 import functools
 import re
@@ -6,7 +7,7 @@ from typing import List, Tuple
 from src import utils
 from src.ir import ast, types as tp
 from src.ir.context import Context
-from src.generators.api import builder, api_graph as ag
+from src.generators.api import builder, api_graph as ag, matcher as match
 from src.generators.api.api_generator import APIClientGenerator
 from src.generators.api.special_methods import GROOVY_SPECIAL_METHODS
 
@@ -71,6 +72,9 @@ def is_parent_interface(child_name: str, parent_name: str,
                    for sc in cls_spec["inherits"])
 
 
+Namespace = namedtuple("namespace", ["api_component_name"])
+
+
 class APIDeclarationGenerator(APIClientGenerator):
     API_GRAPH_BUILDERS = {
         "java": builder.JavaAPIGraphBuilder,
@@ -88,13 +92,23 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.api_docs = api_docs
         self.initial_api_graph = self.api_graph
         self.package_name = None
-        self.api_namespaces = utils.random.shuffle(
-            [k for k in api_docs.keys()])
+        api_rules_file = options.get("api-rules")
+        api_namespaces = list(api_docs.keys())
+        if api_rules_file:
+            matcher = match.parse_rule_file(api_rules_file)
+            api_namespaces = [k for k in api_namespaces
+                              if matcher.match(Namespace(k))]
+        self.api_namespaces = utils.random.shuffle(api_namespaces)
 
     def _fork_api_spec(self, specs: Tuple[str, dict],
                        selected_namespaces: List[str]) -> dict:
         forked_specs = {}
         for name, spec in specs:
+            # The new name of the component (e.g., class) is derived as follows
+            # <pkg_name>.<base_name>
+            # where <pkg_name> stands for the package of the generated program
+            # where <base_name> represents the base name of the component
+            # as taken from the input API.
             new_name = self.package_name + "." + get_base_api_name(
                 name, self.api_docs)
             spec_str = json.dumps(spec)
