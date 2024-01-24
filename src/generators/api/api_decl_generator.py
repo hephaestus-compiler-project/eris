@@ -551,19 +551,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         # This is the list of namespaces that are explicitly defined in
         # the program.
         defined_namespaces = list(forked_spec.keys())
-        # forked_spec.update(self.api_docs)
         self.api_graph = self.API_GRAPH_BUILDERS[self.language](
             self.language, **self.options).build(forked_spec)
-
-        # add_spec = {}
-        # for p in api_graph.get_api_nodes():
-        #     for t in p.get_type_names():
-        #         spec = self.api_docs.get(t)
-        #         if spec is not None:
-        #             add_spec[t] = spec
-        # forked_spec.update(add_spec)
-        # self.api_graph = self.API_GRAPH_BUILDERS[self.language](
-        #     self.language, **self.options).build(forked_spec)
 
         program = self.create_program_from_spec(forked_spec,
                                                 defined_namespaces)
