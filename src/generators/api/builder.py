@@ -362,6 +362,7 @@ class APIGraphBuilder(ABC):
             "static": field_api["is_static"],
             "access_mod": field_api["access_mod"],
         }
+        metadata.update(field_api.get("other_metadata", {}))
         if field_api.get("is_static", False):
             field_node = Field(prefix + field_api["name"], receiver_name,
                                metadata)
