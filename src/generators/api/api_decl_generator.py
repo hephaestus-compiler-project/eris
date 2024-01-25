@@ -216,6 +216,20 @@ class APIDeclarationGenerator(APIClientGenerator):
         return ast.FunctionCall(ast.FunctionCall.THIS,
                                 super_args)
 
+    def generate_this_call(self, m: ag.Constructor):
+        primary_constructors = [
+            n for n in self.api_graph.get_api_nodes()
+            if (isinstance(n, ag.Constructor) and n.name == m.name and
+                n.metadata["primary"] and n != m)
+        ]
+        if not primary_constructors:
+            return None
+        primary_constructor = primary_constructors[0]
+        super_args = [self.generate_expr(p.t)
+                      for p in primary_constructor.parameters]
+        return ast.FunctionCall(ast.FunctionCall.THIS,
+                                super_args)
+
     def generate_super_call(self, m: ag.Constructor):
         st_names = [st.name
                     for st in self.api_graph.get_type_by_name(m.name).supertypes
@@ -255,9 +269,13 @@ class APIDeclarationGenerator(APIClientGenerator):
     def convert_constructor(self, m: ag.Constructor,
                             ns_spec: dict) -> ast.Constructor:
         body = []
-        super_call = self.generate_super_call(m)
-        if super_call is not None:
-            body.append(super_call)
+        this_call = self.generate_this_call(m)
+        if this_call is not None:
+            body.append(this_call)
+        else:
+            super_call = self.generate_super_call(m)
+            if super_call is not None:
+                body.append(super_call)
         return ast.Constructor(
             class_name=ns_spec["name"],
             params=[
