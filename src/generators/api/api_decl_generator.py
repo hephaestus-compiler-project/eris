@@ -212,6 +212,10 @@ class APIDeclarationGenerator(APIClientGenerator):
             return ast.FunctionCall(ast.FunctionCall.SUPER,
                                     args=super_args)
         con = sorted(constructors, key=lambda x: len(x.parameters))[0]
+        if con == m:
+            # The constructor 'con' is the same with m. We avoid generating
+            # a this call to avoid cycles.
+            return None
         super_args = [self.generate_expr(p.t) for p in con.parameters]
         return ast.FunctionCall(ast.FunctionCall.THIS,
                                 super_args)
@@ -220,9 +224,9 @@ class APIDeclarationGenerator(APIClientGenerator):
         primary_constructors = [
             n for n in self.api_graph.get_api_nodes()
             if (isinstance(n, ag.Constructor) and n.name == m.name and
-                n.metadata["primary"] and n != m)
+                n.metadata.get("primary", False) and n != m)
         ]
-        if not primary_constructors:
+        if not primary_constructors or m.metadata.get("primary", False):
             return None
         primary_constructor = primary_constructors[0]
         super_args = [self.generate_expr(p.t)
@@ -417,7 +421,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         is_abstract = (not m.metadata.get("static", False) and
                        not m.metadata.get("default", False) and
                        (is_parent_abstract or
-                        m.metadata.get("is_abstract", False)))
+                        m.metadata.get("abstract", False)))
         prev_ns = self.namespace
         self.namespace += (to_namespace(m),)
         body = None
@@ -460,9 +464,13 @@ class APIDeclarationGenerator(APIClientGenerator):
         field_name = f.name
         if "." in field_name:
             field_name = field_name.rsplit(".", 1)[1]
-        return ast.FieldDeclaration(field_name, field_type, is_final=False,
-                                    can_override=True, override=False,
-                                    metadata=f.metadata)
+        return ast.FieldDeclaration(
+            field_name, field_type,
+            is_final=f.metadata.get("final", False),
+            can_override=f.metadata.get("open", False),
+            override=f.metadata.get("override", False),
+            metadata=f.metadata
+        )
 
     def convert_node_to_decl(self, node: ag.APINode,
                              ns_spec: dict) -> ast.Declaration:
