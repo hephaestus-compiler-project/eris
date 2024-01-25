@@ -220,7 +220,7 @@ class VariableDeclaration(Declaration):
 
 class FieldDeclaration(Declaration):
     def __init__(self, name: str, field_type: types.Type, is_final=True,
-                 can_override=False, override=False, **metadata):
+                 can_override=False, override=False, metadata={}):
         self.name = name
         self.field_type = field_type
         self.is_final = is_final
@@ -381,7 +381,7 @@ class ParameterDeclaration(Declaration):
 
 class Constructor(Declaration):
     def __init__(self, class_name: str, params: List[ParameterDeclaration],
-                 body: Block, **metadata):
+                 body: Block, metadata={}):
         self.name = class_name
         self.params = params
         self.body = body
@@ -434,7 +434,7 @@ class FunctionDeclaration(Declaration):
                  is_final=True,
                  override=False,
                  type_parameters=[],
-                 **metadata):
+                 metadata: dict = {}):
         self.name = name
         self.params = params
         self.ret_type = ret_type
@@ -620,7 +620,7 @@ class ClassDeclaration(Declaration):
                  is_final=True,
                  type_parameters: List[types.TypeParameter] = [],
                  extra_declarations=[],
-                 **metadata):
+                 metadata: dict = {}):
         self.name = name
         self.superclasses = superclasses
         self.class_type = class_type or self.REGULAR

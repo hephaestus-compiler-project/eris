@@ -427,9 +427,9 @@ class APIDeclarationGenerator(APIClientGenerator):
             func_type=ast.FunctionDeclaration.CLASS_METHOD,
             ret_type=out_type,
             body=body,
-            is_final=False,
-            override=False,
-            **m.metadata
+            is_final=m.metadata.get("final", False),
+            override=m.metadata.get("override", False),
+            metadata=m.metadata
         )
         self.namespace = prev_ns
         self.api_graph.remove_types(m.type_parameters)
@@ -444,7 +444,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             field_name = field_name.rsplit(".", 1)[1]
         return ast.FieldDeclaration(field_name, field_type, is_final=False,
                                     can_override=True, override=False,
-                                    **f.metadata)
+                                    metadata=f.metadata)
 
     def convert_node_to_decl(self, node: ag.APINode,
                              ns_spec: dict) -> ast.Declaration:
@@ -517,7 +517,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             fields=fields,
             constructors=constructors,
             is_final=False,
-            extra_declarations=extra_decls, **metadata
+            extra_declarations=extra_decls, metadata=metadata
         )
         if class_type.is_type_constructor():
             self.api_graph.remove_types(class_type.type_parameters)
