@@ -1,13 +1,13 @@
 from src.ir import ast, kotlin_types as kt, types as tp, type_utils as tu
 from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
-from src.translators.utils import strip_fqn
+from src.translators.utils import strip_fqn, get_modifier_list
 
 
 def append_to(visit):
     def inner(self, node):
         self._nodes_stack.append(node)
-        res = visit(self, node)
+        visit(self, node)
         self._nodes_stack.pop()
     return inner
 
@@ -246,23 +246,33 @@ class KotlinTranslator(BaseTranslator):
                           node.class_type != ast.ClassDeclaration.INTERFACE and
                           not is_sam) else "",
             p=class_prefix,
-            n=base_cls_name,
-            tps="<" + type_parameters_res + ">" if type_parameters_res else "",
-            fields="(" + ", ".join(field_res) + ")" if field_res else "",
-            s=": " + ", ".join(superclasses) if superclasses else "",
-            body=body
+            n=base_cls_name
         )
+        start_brace = field_res or constr_res or function_res or extra_decl_res
 
         if type_parameters_res:
             res = "{}<{}>".format(res, type_parameters_res)
-        if field_res:
-            res = "{}({})".format(
-                res, ", ".join(field_res))
         if superclasses:
             res += ": " + ", ".join(superclasses)
+
+        # Now create the body of class consisting of field, functions,
+        # constructors, or other nested classes.
+
+        # Now add a starting curly brace.
+        if start_brace:
+            res += " " * old_ident + "{\n"
+        if field_res:
+            res += "\n".join(field_res) + "\n"
+        if constr_res:
+            res += "\n\n".join(constr_res) + "\n"
         if function_res:
-            res += " {\n" + "\n\n".join(
-                function_res) + "\n" + " " * old_ident + "}"
+            res += "\n\n".join(function_res) + "\n"
+        if extra_decl_res:
+            res += "\n\n".join(extra_decl_res) + "\n"
+        # Add an ending curly brace.
+        if start_brace:
+            res += " " * old_ident + "}"
+
         self.ident = old_ident
         self._children_res.append(res)
 
@@ -319,10 +329,12 @@ class KotlinTranslator(BaseTranslator):
 
     @append_to
     def visit_field_decl(self, node):
-        prefix = 'open ' if node.can_override else ''
+        prefix = " " * self.ident
+        prefix += 'open ' if node.can_override else ''
         prefix += '' if not node.override else 'override '
         prefix += 'val ' if node.is_final else 'var '
         res = prefix + node.name + ": " + self.get_type_name(node.field_type)
+        res += " = TODO()"
         self._children_res.append(res)
 
     @append_to
@@ -350,33 +362,35 @@ class KotlinTranslator(BaseTranslator):
     @append_to
     @change_namespace
     def visit_constructor(self, node):
-        def is_super_call(n: ast.Node):
+        def is_super_or_this_call(n: ast.Node):
             return (isinstance(n, ast.FunctionCall) and
-                    n.func == ast.FunctionCall.SUPER)
+                    (n.func == ast.FunctionCall.SUPER or
+                     n.func == ast.FunctionCall.THIS))
 
         old_ident = self.ident
         self.ident += 2
-        super_call = None
+        super_this_call = None
         new_body = []
         for n in node.body.body:
-            if is_super_call(n):
-                super_call = n
+            if is_super_or_this_call(n):
+                super_this_call = n
             else:
                 new_body.append(n)
         children = node.params + [ast.Block(new_body)]
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        super_call_res = ""
-        if super_call is not None:
-            super_call.accept(self)
-            super_call_res = ":" + self.pop_children_res([super_call])[0]
+        super_this_call_res = ""
+        if super_this_call is not None:
+            super_this_call.accept(self)
+            super_this_call_res = ":" + self.pop_children_res(
+                [super_this_call])[0]
         param_res = [children_res[i] for i, _ in enumerate(node.params)]
         body_res = children_res[-1] if node.body else ''
         res = "{ident}constructor({params}){super}{body}".format(
             ident=" " * old_ident,
             params=", ".join(param_res),
-            super=super_call_res,
+            super=super_this_call_res.replace("`", ""),
             body=body_res
         )
         self.ident = old_ident
@@ -406,7 +420,11 @@ class KotlinTranslator(BaseTranslator):
         prefix = " " * old_ident
         prefix += "" if node.is_final else "open "
         prefix += "" if not node.override else "override "
-        prefix += "" if node.body is not None else "abstract "
+        modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
+                                       if k not in ["final", "override"]})
+        if "abstract" not in modifiers and node.body is None:
+            prefix += "abstract "
+        prefix += " ".join(modifiers) + " " if modifiers else ""
         type_params = (
             "<" + type_parameters_res + ">" if type_parameters_res else "")
         res = prefix + "fun " + type_params + node.name + "(" + ", ".join(
