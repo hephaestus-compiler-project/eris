@@ -332,9 +332,14 @@ class KotlinTranslator(BaseTranslator):
         prefix = " " * self.ident
         prefix += 'open ' if node.can_override else ''
         prefix += '' if not node.override else 'override '
+        modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
+                                       if k not in ["final", "override",
+                                                    "open"]})
+        prefix += " ".join(modifiers) + " " if modifiers else ""
         prefix += 'val ' if node.is_final else 'var '
         res = prefix + node.name + ": " + self.get_type_name(node.field_type)
-        res += " = TODO()"
+        if "abstract" not in modifiers:
+            res += " = TODO()"
         self._children_res.append(res)
 
     @append_to
@@ -432,7 +437,7 @@ class KotlinTranslator(BaseTranslator):
         if node.ret_type:
             res += ": " + self.get_type_name(node.ret_type)
         if body_res:
-            sign = "=" if is_expression and node.get_type() != kt.Unit else ""
+            sign = "=" if is_expression else ""
             res += " " + sign + "\n" + body_res
         self.ident = old_ident
         self.is_unit = prev_is_unit
