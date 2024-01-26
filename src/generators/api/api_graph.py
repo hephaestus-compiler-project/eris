@@ -721,6 +721,36 @@ class APIGraph():
             receiver, method, methods))
         return methods
 
+    def is_method_overriden(self, receiver: tp.Type,
+                            method: Method) -> bool:
+        """
+        This method checks whether the given instance method found in the input
+        receiver type is overriden. To do so, it examines the inheritance chain
+        to identify functions with the same signature.
+        """
+        if not isinstance(method, Method):
+            return False
+        child_params = [p.t for p in method.parameters]
+        for supertype in {st for st in receiver.get_supertypes()
+                          if st != receiver}:
+            # Get the substitution of the supertype and its type constructor
+            # (if present).
+            sub = {}
+            if supertype.is_parameterized():
+                sub = supertype.get_type_variable_assignments()
+                supertype = self.get_type_by_name(
+                    supertype.name) or supertype.t_constructor
+            if supertype not in self.api_graph:
+                continue
+            for m in self.api_graph.neighbors(supertype):
+                if not isinstance(m, Method):
+                    continue
+                parent_params = [tp.substitute_type(p.t, sub)
+                                 for p in m.parameters]
+                if m.name == method.name and parent_params == child_params:
+                    return True
+        return False
+
     def get_functional_type(self, etype: tp.Type) -> tp.ParameterizedType:
         if etype.is_parameterized():
             # Check if this the given type is a native function type, e.g.,

@@ -854,3 +854,64 @@ def test_get_overloaded_methods_with_receiver():
     assert methods == set()
     methods = api_graph.get_overloaded_methods(rec, m2)
     assert methods == set()
+
+
+def test_get_overriden_methods():
+    # class A {
+    #  fun m()
+    #  fun m(int)
+    # }
+    # class B : A {
+    #  fun m(int)
+    # }
+    g = nx.DiGraph()
+    t1 = tp.SimpleClassifier("A")
+    t2 = tp.SimpleClassifier("B", supertypes=[t1])
+
+    m1 = ag.Method("m", "B", [], [], {})
+    m2 = ag.Method("m", "A", [ag.Parameter(jt.Integer, False)], [], {})
+    m3 = ag.Method("m", "B", [ag.Parameter(jt.Integer, False)], [], {})
+
+    g.add_node(t1)
+    g.add_node(t2)
+    g.add_node(m1)
+    g.add_node(m2)
+    g.add_node(m3)
+    g.add_edge(t1, m2)
+    g.add_edge(t2, m1)
+    g.add_edge(t2, m3)
+
+    api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
+    assert not api_graph.is_method_overriden(t2, m1)
+    assert api_graph.is_method_overriden(t2, m3)
+    assert not api_graph.is_method_overriden(t1, m2)
+
+    # class A<T> {
+    #  fun m(T)
+    # }
+    # class B: A<Int> {
+    #  fun m(int)
+    #  fun m(String)
+    # }
+    g = nx.DiGraph()
+    t1 = tp.TypeConstructor("A", [tp.TypeParameter("T")])
+    t1_int = t1.new([jt.Integer])
+    t2 = tp.SimpleClassifier("B", [t1_int])
+    m1 = ag.Method("m", "A", [ag.Parameter(tp.TypeParameter("T"), False)], [],
+                   {})
+    m2 = ag.Method("m", "B", [ag.Parameter(jt.Integer, False)], [], {})
+    m3 = ag.Method("m", "B", [ag.Parameter(jt.String, False)], [], {})
+
+    g.add_node(t1)
+    g.add_node(t2)
+    g.add_node(m1)
+    g.add_node(m2)
+    g.add_node(m3)
+    g.add_edge(t1, m1)
+    g.add_edge(t2, m2)
+    g.add_edge(t2, m3)
+
+    api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
+    assert not api_graph.is_method_overriden(t1_int, m1)
+    assert not api_graph.is_method_overriden(t2, m3)
+    assert api_graph.is_method_overriden(t2, m2)
