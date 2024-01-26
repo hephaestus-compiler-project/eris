@@ -192,41 +192,70 @@ class KotlinTranslator(BaseTranslator):
             self.get_type_name(node.class_type) + "(" + ", ".join(
                 children_res) + ")")
 
+    def create_companion_object(self, node):
+        static_fields = [f for f in node.fields
+                         if f.metadata.get("static", False)]
+        static_methods = [m for m in node.functions
+                          if m.metadata.get("static", False)]
+        children = static_fields + static_methods
+        if not children:
+            return None
+        old_ident = self.ident
+        self.ident += 2
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        base_cls_name = node.name.rsplit(".", 1)[-1]
+        res = "{ident}companion object {name} {{\n{body}\n{ident}}}".format(
+            ident=" " * old_ident,
+            name=f"Companion_{base_cls_name}",
+            body="\n\n".join(children_res)
+        )
+        self.ident = old_ident
+        return res
+
+    def create_fields(self, node):
+        non_static_fields = [f for f in node.fields
+                             if not f.metadata.get("static", False)]
+        for c in non_static_fields:
+            c.accept(self)
+        return self.pop_children_res(non_static_fields)
+
+    def create_functions(self, node):
+        non_static_functions = [m for m in node.functions
+                                if not m.metadata.get("static", False)]
+        for c in non_static_functions:
+            c.accept(self)
+        return self.pop_children_res(non_static_functions)
+
+    def create_constructors(self, node):
+        for c in node.constructors:
+            c.accept(self)
+        return self.pop_children_res(node.constructors)
+
+    def create_type_params(self, node):
+        for c in node.type_parameters:
+            c.accept(self)
+        return self.pop_children_res(node.type_parameters)
+
     @append_to
     @change_namespace
     def visit_class_decl(self, node):
         def get_superclasses_interfaces():
             superclasses = []
             for cls_inst in node.superclasses:
-                cls_name = cls_inst.class_type.name
                 cls_inst = self.get_type_name(cls_inst.class_type)
                 superclasses.append(cls_inst)
             return superclasses
 
         old_ident = self.ident
         self.ident += 2
-        children = node.children()
-        for c in children:
-            c.accept(self)
-        children_res = self.pop_children_res(children)
-        field_res = [children_res[i]
-                     for i, _ in enumerate(node.fields)]
-        len_fields = len(field_res)
-        len_supercls = len(node.superclasses)
-        function_res = [children_res[i + len_fields + len_supercls]
-                        for i, _ in enumerate(node.functions)]
-        len_functions = len(function_res)
-        constr_res = [children_res[i + len_fields + len_supercls + len_functions]
-                      for i, _ in enumerate(node.constructors)]
-        len_constr = len(constr_res)
-        start_index = len_fields + len_supercls + len_functions + len_constr
-        end_index = len(children_res) - len(node.extra_declarations)
-        type_parameters_res = ", ".join(children_res[start_index:end_index])
-        len_tp = len(node.type_parameters)
-        extra_decl_res = [
-            children_res[i + len_fields + len_supercls + len_functions + len_constr + len_tp]
-            for i, _ in enumerate(node.extra_declarations)
-        ]
+        companion_obj = self.create_companion_object(node)
+        field_res = self.create_fields(node)
+        function_res = self.create_functions(node)
+        constr_res = self.create_constructors(node)
+        type_parameters_res = self.create_type_params(node)
+        extra_decl_res = None  # TODO
 
         is_sam = tu.is_sam(self.context, cls_decl=node)
         class_prefix = "interface" if is_sam else node.get_class_prefix()
@@ -248,7 +277,8 @@ class KotlinTranslator(BaseTranslator):
             p=class_prefix,
             n=base_cls_name
         )
-        start_brace = field_res or constr_res or function_res or extra_decl_res
+        start_brace = (field_res or constr_res or function_res or
+                       extra_decl_res or companion_obj)
 
         if type_parameters_res:
             res = "{}<{}>".format(res, type_parameters_res)
@@ -261,6 +291,8 @@ class KotlinTranslator(BaseTranslator):
         # Now add a starting curly brace.
         if start_brace:
             res += " " * old_ident + "{\n"
+        if companion_obj:
+            res += companion_obj + "\n"
         if field_res:
             res += "\n".join(field_res) + "\n"
         if constr_res:
@@ -334,7 +366,7 @@ class KotlinTranslator(BaseTranslator):
         prefix += '' if not node.override else 'override '
         modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
                                        if k not in ["final", "override",
-                                                    "open"]})
+                                                    "open", "static"]})
         prefix += " ".join(modifiers) + " " if modifiers else ""
         prefix += 'val ' if node.is_final else 'var '
         res = prefix + node.name + ": " + self.get_type_name(node.field_type)
@@ -426,7 +458,8 @@ class KotlinTranslator(BaseTranslator):
         prefix += "" if node.is_final else "open "
         prefix += "" if not node.override else "override "
         modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
-                                       if k not in ["final", "override"]})
+                                       if k not in ["final", "override",
+                                                    "static"]})
         if "abstract" not in modifiers and node.body is None:
             prefix += "abstract "
         prefix += " ".join(modifiers) + " " if modifiers else ""
@@ -437,7 +470,7 @@ class KotlinTranslator(BaseTranslator):
         if node.ret_type:
             res += ": " + self.get_type_name(node.ret_type)
         if body_res:
-            sign = "=" if is_expression else ""
+            sign = "=" if is_expression and node.get_type() != kt.Unit else ""
             res += " " + sign + "\n" + body_res
         self.ident = old_ident
         self.is_unit = prev_is_unit
