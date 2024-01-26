@@ -10,7 +10,8 @@ DOCS1 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java",
     },
     "java.IntegerList": {
         "name": "java.IntegerList",
@@ -18,7 +19,8 @@ DOCS1 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java",
     },
     "java.util.List": {
         "name": "java.util.List",
@@ -26,7 +28,8 @@ DOCS1 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java",
     },
     "java.util.LinkedList": {
         "name": "java.util.LinkedList",
@@ -34,7 +37,8 @@ DOCS1 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java",
     }
 }
 
@@ -46,7 +50,8 @@ DOCS2 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java",
     },
     "java.Integer": {
         "name": "java.Integer",
@@ -54,7 +59,8 @@ DOCS2 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java",
     },
     "java.Long": {
         "name": "java.Long",
@@ -62,7 +68,8 @@ DOCS2 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java",
     },
     "java.String": {
         "name": "java.String",
@@ -70,7 +77,8 @@ DOCS2 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java",
     },
 }
 
@@ -82,7 +90,8 @@ DOCS3 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["K", "V"]
+        "type_parameters": ["K", "V"],
+        "language": "java",
     },
     "java.HashMap": {
         "name": "java.HashMap",
@@ -90,7 +99,8 @@ DOCS3 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["K", "V"]
+        "type_parameters": ["K", "V"],
+        "language": "java",
     },
     "java.Foo": {
         "name": "java.Foo",
@@ -98,7 +108,8 @@ DOCS3 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java",
     },
     "java.Bar": {
         "name": "java.Bar",
@@ -106,7 +117,8 @@ DOCS3 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java",
     }
 }
 
@@ -118,7 +130,8 @@ DOCS4 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["K", "V"]
+        "type_parameters": ["K", "V"],
+        "language": "java",
     },
     "java.Stream": {
         "name": "java.Stream",
@@ -126,7 +139,8 @@ DOCS4 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java",
     },
     "java.Foo": {
         "name": "java.Foo",
@@ -134,7 +148,8 @@ DOCS4 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java",
     },
 }
 
@@ -148,7 +163,8 @@ DOCS5 = {
           "java.util.Spliterator.OfPrimitive<java.lang.Integer,java.lang.Integer,java.util.Spliterator.OfInt>"
         ],
         "methods": [],
-        "fields": []
+        "fields": [],
+        "language": "java",
 
     },
     "java.util.Spliterator.OfPrimitive": {
@@ -161,7 +177,8 @@ DOCS5 = {
         "implements": [],
         "inherits": ["java.lang.Object"],
         "methods": [],
-        "fields": []
+        "fields": [],
+        "language": "java",
     }
 }
 
@@ -173,7 +190,8 @@ DOCS6 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java",
     },
     "java.String": {
         "name": "java.String",
@@ -181,7 +199,8 @@ DOCS6 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java",
     },
     "java.Foo": {
         "name": "java.Foo",
@@ -189,7 +208,8 @@ DOCS6 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java",
     },
     "java.BaseStream": {
         "name": "java.BaseStream",
@@ -197,7 +217,8 @@ DOCS6 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["T", "S"]
+        "type_parameters": ["T", "S"],
+        "language": "java",
     },
     "java.Stream": {
         "name": "java.Stream",
@@ -205,7 +226,8 @@ DOCS6 = {
         "implements": [],
         "fields": [],
         "methods": [],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java",
     }
 
 }

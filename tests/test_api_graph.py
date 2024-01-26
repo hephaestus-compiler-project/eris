@@ -24,7 +24,8 @@ DOCS1 = {
 
 
         }],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java"
     },
     "java.List": {
         "name": "java.List",
@@ -42,7 +43,8 @@ DOCS1 = {
 
 
         }],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java"
     },
     "java.Set": {
         "name": "java.Set",
@@ -60,7 +62,8 @@ DOCS1 = {
 
 
         }],
-        "type_parameters": []
+        "type_parameters": [],
+        "language": "java"
     },
 }
 
@@ -80,7 +83,8 @@ DOCS2 = {
             "type_parameters": [],
             "return_type": "java.List<T>"
         }],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java"
     },
     "java.List": {
         "name": "java.List",
@@ -96,7 +100,8 @@ DOCS2 = {
             "type_parameters": [],
             "return_type": "java.Set<T>"
         }],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java"
     },
     "java.Set": {
         "name": "java.Set",
@@ -114,7 +119,8 @@ DOCS2 = {
 
 
         }],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java"
     },
 }
 
@@ -162,7 +168,8 @@ DOCS3 = {
                 "return_type": None
             },
         ],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java"
     },
     "java.List": {
         "name": "java.List",
@@ -178,7 +185,8 @@ DOCS3 = {
             "type_parameters": [],
             "return_type": "java.lang.Object"
         }],
-        "type_parameters": ["T"]
+        "type_parameters": ["T"],
+        "language": "java"
     },
     "java.Function": {
         "name": "java.Function",
@@ -205,7 +213,8 @@ DOCS3 = {
             "throws": [],
             "is_default": False
           },
-        ]
+        ],
+        "language": "java",
     },
     "java.Producer": {
         "name": "java.Producer",
@@ -227,7 +236,8 @@ DOCS3 = {
             "throws": [],
             "is_default": False
           },
-        ]
+        ],
+        "language": "java",
     },
 }
 
@@ -253,7 +263,8 @@ DOCS4 = {
             "throws": [],
             "is_default": False
           },
-        ]
+        ],
+        "language": "java",
     },
     "java.Foo": {
         "name": "java.Foo",
@@ -263,7 +274,8 @@ DOCS4 = {
         "inherits": [],
         "class_type": 9,
         "fields": [],
-        "methods": []
+        "methods": [],
+        "language": "java",
     }
 }
 
@@ -286,6 +298,7 @@ DOCS5 = {
 
         }],
         "type_parameters": ["T"],
+        "language": "java",
     },
     "java.Foo.List": {
         "name": "java.Foo.List",
@@ -305,6 +318,7 @@ DOCS5 = {
         }],
         "parent": "java.Foo",
         "type_parameters": [],
+        "language": "java",
     },
 }
 
