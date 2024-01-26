@@ -856,7 +856,7 @@ def test_get_overloaded_methods_with_receiver():
     assert methods == set()
 
 
-def test_get_overriden_methods():
+def test_is_overriden_method():
     # class A {
     #  fun m()
     #  fun m(int)
@@ -885,6 +885,7 @@ def test_get_overriden_methods():
     assert not api_graph.is_method_overriden(t2, m1)
     assert api_graph.is_method_overriden(t2, m3)
     assert not api_graph.is_method_overriden(t1, m2)
+    assert not api_graph.is_method_overriden(None, m3)
 
     # class A<T> {
     #  fun m(T)
@@ -915,3 +916,28 @@ def test_get_overriden_methods():
     assert not api_graph.is_method_overriden(t1_int, m1)
     assert not api_graph.is_method_overriden(t2, m3)
     assert api_graph.is_method_overriden(t2, m2)
+
+
+def test_is_overriden_field():
+    g = nx.DiGraph()
+    t1 = tp.SimpleClassifier("A")
+    t2 = tp.SimpleClassifier("B", supertypes=[t1])
+
+    f1 = ag.Field("f1", "A", {})
+    f2 = ag.Field("f1", "B", {})
+    f3 = ag.Field("f2", "B", {})
+
+    g.add_node(t1)
+    g.add_node(t2)
+    g.add_node(f1)
+    g.add_node(f2)
+    g.add_node(f3)
+    g.add_edge(t1, f1)
+    g.add_edge(t2, f2)
+    g.add_edge(t2, f3)
+
+    api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
+    assert not api_graph.is_field_overriden(None, f2)
+    assert not api_graph.is_field_overriden(t1, f1)
+    assert not api_graph.is_field_overriden(t2, f3)
+    assert api_graph.is_field_overriden(t2, f2)

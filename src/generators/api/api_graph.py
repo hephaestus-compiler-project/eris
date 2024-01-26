@@ -728,7 +728,7 @@ class APIGraph():
         receiver type is overriden. To do so, it examines the inheritance chain
         to identify functions with the same signature.
         """
-        if not isinstance(method, Method):
+        if not isinstance(method, Method) or receiver is None:
             return False
         child_params = [p.t for p in method.parameters]
         for supertype in {st for st in receiver.get_supertypes()
@@ -748,6 +748,28 @@ class APIGraph():
                 parent_params = [tp.substitute_type(p.t, sub)
                                  for p in m.parameters]
                 if m.name == method.name and parent_params == child_params:
+                    return True
+        return False
+
+    def is_field_overriden(self, receiver: tp.Type, field: Field) -> bool:
+        """
+        This method checks whether the given field found in the input
+        receiver type is overriden. To do so, it examines the inheritance chain
+        to identify fields with the same signature.
+        """
+        if not isinstance(field, Field) or receiver is None:
+            return False
+        for supertype in {st for st in receiver.get_supertypes()
+                          if st != receiver}:
+            if supertype.is_parameterized():
+                supertype = self.get_type_by_name(
+                    supertype.name) or supertype.t_constructor
+            if supertype not in self.api_graph:
+                continue
+            for f in self.api_graph.neighbors(supertype):
+                if not isinstance(f, Field):
+                    continue
+                if f.name == field.name:
                     return True
         return False
 
