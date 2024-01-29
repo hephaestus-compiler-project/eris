@@ -460,26 +460,17 @@ class APIGraphBuilder(ABC):
     def build_class_node(self, class_api: dict) -> tp.Type:
         self.parent_cls = self.class_nodes.get(class_api.get("parent"))
         self.build_tentative_type(class_api)
-        super_types = {
-            self.parse_type(st, build_class_node=True)
-            for st in class_api["implements"] + class_api["inherits"]
-        }
-
-        if not super_types:
-            super_types.add(self.parse_type(ROOT_CLASSES[self.api_language]))
         class_name = class_api["name"]
-        super_types = list(super_types)
         if self.parent_cls is None or not self.parent_cls.is_type_constructor():
+            # XXX revisit: maybe use parse_type instead of explicitly
+            # initializing the type constructor?
             if class_api["type_parameters"]:
                 class_node = tp.TypeConstructor(
                     class_name,
-                    list(self._class_type_var_map[class_name].values()),
-                    super_types
+                    list(self._class_type_var_map[class_name].values())
                 )
             else:
                 class_node = self.parse_type(class_name, build_class_node=True)
-            if type(class_node) is tp.SimpleClassifier:
-                class_node = tp.SimpleClassifier(class_node.name, super_types)
         else:
             type_params = (
                 list(self._class_type_var_map[class_name].values())
@@ -488,10 +479,17 @@ class APIGraphBuilder(ABC):
             )
             basename = class_name.rsplit(".")[-1]
             class_node = tp.InstanceTypeConstructor(
-                class_name, self.parent_cls, basename, type_params,
-                super_types)
+                class_name, self.parent_cls, basename, type_params)
 
+        super_types = {
+            self.parse_type(st, build_class_node=True)
+            for st in class_api["implements"] + class_api["inherits"]
+        }
         self.parsed_types[class_node.name] = class_node
+        if not super_types:
+            super_types.add(self.parse_type(ROOT_CLASSES[self.api_language]))
+        super_types = list(super_types)
+        class_node.supertypes = super_types
         return class_node
 
     def build_subtyping_relations(self, class_api: dict):
