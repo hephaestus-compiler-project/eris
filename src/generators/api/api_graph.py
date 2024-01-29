@@ -125,6 +125,14 @@ class APIGraph():
         }
     }
 
+    # A list of common methods found in the Object/Any class.
+    OBJECT_METHODS = {
+        "java": {"hashCode", "toString", "equals"},
+        "groovy": {"hashCode", "toString", "equals"},
+        "kotlin": {"hashCode", "toString", "equals"},
+        "scala": {"hashCode", "toString", "equals"},
+    }
+
     def __init__(self, api_graph, subtyping_graph, functional_types,
                  bt_factory, **kwargs):
         self.api_graph: nx.DiGraph = api_graph
@@ -749,6 +757,7 @@ class APIGraph():
                                  for p in m.parameters]
                 if m.name == method.name and parent_params == child_params:
                     return True
+        lang = self.bt_factory.get_language()
         return False
 
     def is_field_overriden(self, receiver: tp.Type, field: Field) -> bool:

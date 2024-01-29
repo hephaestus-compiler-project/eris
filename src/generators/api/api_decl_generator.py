@@ -421,6 +421,9 @@ class APIDeclarationGenerator(APIClientGenerator):
         func_name = m.name
         if "." in func_name:
             func_name = func_name.rsplit(".", 1)[1]
+        if func_name in self.api_graph.OBJECT_METHODS[self.language]:
+            # If it's a common object method, then do not re-define it.
+            return None
         is_parent_abstract = (
             ns_spec.get("class_type") == ast.ClassDeclaration.INTERFACE)
         is_abstract = (not m.metadata.get("static", False) and
@@ -498,6 +501,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         variables, methods, constructors = [], [], []
         for n in self.api_graph.get_neighbors_of_node(t):
             decl = self.convert_node_to_decl(n, ns_spec)
+            if decl is None:
+                continue
             if isinstance(decl, ast.FunctionDeclaration):
                 methods.append(decl)
             else:
@@ -510,6 +515,8 @@ class APIDeclarationGenerator(APIClientGenerator):
                 is_constructor = is_con and ns == n.name
                 if is_static or is_constructor:
                     decl = self.convert_node_to_decl(n, ns_spec)
+                    if decl is None:
+                        continue
                     if isinstance(decl, ast.FunctionDeclaration):
                         methods.append(decl)
                     elif isinstance(decl, ast.Constructor):
