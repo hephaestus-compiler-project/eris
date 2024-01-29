@@ -47,7 +47,7 @@ def get_parent_classes(fqn: str, spec: dict) -> List[str]:
 def get_nested_classes(fqn: str, spec: dict) -> List[str]:
     return [
         k for k, v in spec.items()
-        if k != fqn and k.startswith(fqn) and v.get("is_class", True)
+        if k != fqn and k.startswith(fqn + ".") and v.get("is_class", True)
     ]
 
 
