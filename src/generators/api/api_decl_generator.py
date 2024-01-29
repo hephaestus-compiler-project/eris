@@ -166,7 +166,11 @@ class APIDeclarationGenerator(APIClientGenerator):
             selected_namespaces.append(ns)
         specs = [s for s in specs if s[0] in selected_namespaces]
         self._handle_nested_classes(specs, selected_namespaces)
-        return self._fork_api_spec(specs, selected_namespaces)
+        forked_spec = self._fork_api_spec(specs, selected_namespaces)
+        for elem in all_names:
+            if elem not in selected_namespaces:
+                forked_spec[elem] = self.api_docs[elem]
+        return forked_spec
 
     def add_local_variables(self, m: ag.Method):
         t = self.api_graph.get_input_type(m)
