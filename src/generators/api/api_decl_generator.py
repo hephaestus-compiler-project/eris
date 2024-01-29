@@ -412,6 +412,7 @@ class APIDeclarationGenerator(APIClientGenerator):
     def convert_method(self, m: ag.Method,
                        ns_spec: dict) -> ast.FunctionDeclaration:
         out_type = self.api_graph.get_concrete_output_type(m)
+        input_type = self.api_graph.get_input_type(m)
         assert out_type is not None
         func_name = m.name
         if "." in func_name:
@@ -450,7 +451,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             ret_type=out_type,
             body=body,
             is_final=m.metadata.get("final", False),
-            override=m.metadata.get("override", False),
+            override=self.api_graph.is_method_overriden(input_type, m),
             metadata=m.metadata
         )
         self.namespace = prev_ns
@@ -460,6 +461,7 @@ class APIDeclarationGenerator(APIClientGenerator):
     def convert_field(self, f: ag.Field,
                       ns_spec: dict) -> ast.FieldDeclaration:
         field_type = self.api_graph.get_concrete_output_type(f)
+        receiver = self.api_graph.get_input_type(f)
         assert field_type is not None
         field_name = f.name
         if "." in field_name:
@@ -468,7 +470,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             field_name, field_type,
             is_final=f.metadata.get("final", False),
             can_override=f.metadata.get("open", False),
-            override=f.metadata.get("override", False),
+            override=self.api_graph.is_field_overriden(receiver, f),
             metadata=f.metadata
         )
 
