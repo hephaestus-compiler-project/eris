@@ -2,7 +2,7 @@ from collections import namedtuple
 import json
 import functools
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 from src import utils
 from src.ir import ast, types as tp
@@ -70,6 +70,16 @@ def is_parent_interface(child_name: str, parent_name: str,
     cls_spec = api_spec[child_name]
     return not any(sc.startswith(parent_name)
                    for sc in cls_spec["inherits"])
+
+
+def is_definition_abstract(ns_spec: dict, node: Union[ag.Method, ag.Field]):
+    is_parent_abstract = (
+        ns_spec.get("class_type") == ast.ClassDeclaration.INTERFACE)
+    is_abstract = (not node.metadata.get("static", False) and
+                   not node.metadata.get("default", False) and
+                   (is_parent_abstract or
+                    node.metadata.get("abstract", False)))
+    return is_abstract
 
 
 Namespace = namedtuple("namespace", ["api_component_name"])
@@ -424,12 +434,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         if func_name in self.api_graph.OBJECT_METHODS[self.language]:
             # If it's a common object method, then do not re-define it.
             return None
-        is_parent_abstract = (
-            ns_spec.get("class_type") == ast.ClassDeclaration.INTERFACE)
-        is_abstract = (not m.metadata.get("static", False) and
-                       not m.metadata.get("default", False) and
-                       (is_parent_abstract or
-                        m.metadata.get("abstract", False)))
+        is_abstract = is_definition_abstract(ns_spec, m)
         prev_ns = self.namespace
         self.namespace += (to_namespace(m),)
         body = None
@@ -473,6 +478,9 @@ class APIDeclarationGenerator(APIClientGenerator):
         field_name = f.name
         if "." in field_name:
             field_name = field_name.rsplit(".", 1)[1]
+        is_abstract = is_definition_abstract(ns_spec, f)
+        if is_abstract:
+            f.metadata["abstract"] = True
         return ast.FieldDeclaration(
             field_name, field_type,
             is_final=f.metadata.get("final", False),
