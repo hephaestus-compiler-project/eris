@@ -18,6 +18,8 @@ class KotlinTranslator(BaseTranslator):
     incorrect_filename = "incorrect.kt"
     executable = "program.jar"
 
+    EXCLUDED_METADATA = ["final", "override", "open", "static", "default"]
+
     def __init__(self, package=None, options={}):
         super().__init__(package, options)
         self._children_res = []
@@ -365,8 +367,7 @@ class KotlinTranslator(BaseTranslator):
         prefix += 'open ' if node.can_override else ''
         prefix += '' if not node.override else 'override '
         modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
-                                       if k not in ["final", "override",
-                                                    "open", "static"]})
+                                       if k not in self.EXCLUDED_METADATA})
         prefix += " ".join(modifiers) + " " if modifiers else ""
         prefix += 'val ' if node.is_final else 'var '
         res = prefix + node.name + ": " + self.get_type_name(node.field_type)
@@ -458,8 +459,7 @@ class KotlinTranslator(BaseTranslator):
         prefix += "" if node.is_final else "open "
         prefix += "" if not node.override else "override "
         modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
-                                       if k not in ["final", "override",
-                                                    "static"]})
+                                       if k not in self.EXCLUDED_METADATA})
         if "abstract" not in modifiers and node.body is None:
             prefix += "abstract "
         prefix += " ".join(modifiers) + " " if modifiers else ""
