@@ -216,29 +216,29 @@ class KotlinTranslator(BaseTranslator):
         self.ident = old_ident
         return res
 
+    def _create_children(self, children):
+        for c in children:
+            c.accept(self)
+        return self.pop_children_res(children)
+
     def create_fields(self, node):
         non_static_fields = [f for f in node.fields
                              if not f.metadata.get("static", False)]
-        for c in non_static_fields:
-            c.accept(self)
-        return self.pop_children_res(non_static_fields)
+        return self._create_children(non_static_fields)
 
     def create_functions(self, node):
         non_static_functions = [m for m in node.functions
                                 if not m.metadata.get("static", False)]
-        for c in non_static_functions:
-            c.accept(self)
-        return self.pop_children_res(non_static_functions)
+        return self._create_children(non_static_functions)
 
     def create_constructors(self, node):
-        for c in node.constructors:
-            c.accept(self)
-        return self.pop_children_res(node.constructors)
+        return self._create_children(node.constructors)
 
     def create_type_params(self, node):
-        for c in node.type_parameters:
-            c.accept(self)
-        return self.pop_children_res(node.type_parameters)
+        return self._create_children(node.type_parameters)
+
+    def create_extra_declarations(self, node):
+        return self._create_children(node.extra_declarations)
 
     @append_to
     @change_namespace
@@ -257,7 +257,7 @@ class KotlinTranslator(BaseTranslator):
         function_res = self.create_functions(node)
         constr_res = self.create_constructors(node)
         type_parameters_res = self.create_type_params(node)
-        extra_decl_res = None  # TODO
+        extra_decl_res = self.create_extra_declarations(node)
 
         is_sam = tu.is_sam(self.context, cls_decl=node)
         class_prefix = "interface" if is_sam else node.get_class_prefix()
