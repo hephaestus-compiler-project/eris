@@ -470,7 +470,7 @@ class KotlinTranslator(BaseTranslator):
         if node.ret_type:
             res += ": " + self.get_type_name(node.ret_type)
         if body_res:
-            sign = "=" if is_expression and node.get_type() != kt.Unit else ""
+            sign = "=" if is_expression else ""
             res += " " + sign + "\n" + body_res
         self.ident = old_ident
         self.is_unit = prev_is_unit
