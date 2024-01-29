@@ -385,7 +385,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             }
             if fields:
                 f = utils.random.choice(fields)
-                out_type = self.api_graph.get_output_type(f)
+                out_type = self.api_graph.get_concrete_output_type(f)
                 kwargs.update({
                     "name": f.name,
                     "receiver": ast.Variable(local_var.name)
