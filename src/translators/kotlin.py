@@ -283,7 +283,7 @@ class KotlinTranslator(BaseTranslator):
                        extra_decl_res or companion_obj)
 
         if type_parameters_res:
-            res = "{}<{}>".format(res, type_parameters_res)
+            res = "{}<{}>".format(res, ", ".join(type_parameters_res))
         if superclasses:
             res += ": " + ", ".join(superclasses)
 
