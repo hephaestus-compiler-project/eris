@@ -74,6 +74,10 @@ class BuiltinFactory(ABC):
         pass
 
     @abstractmethod
+    def get_array_type_of(self, t, primitive: bool):
+        pass
+
+    @abstractmethod
     def get_function_type(self, nr_parameters=0):
         pass
 

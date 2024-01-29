@@ -59,6 +59,11 @@ class KotlinBuiltinFactory(bt.BuiltinFactory):
     def get_array_type(self):
         return ArrayType()
 
+    def get_array_type_of(self, t, primitive: bool):
+        if primitive:
+            return SpecializedArrayType().new([t])
+        return self.get_array_type().new([t])
+
     def get_function_type(self, nr_parameters=0, is_suspend=False):
         return FunctionType(nr_parameters, is_suspend)
 

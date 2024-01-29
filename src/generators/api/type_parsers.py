@@ -254,7 +254,10 @@ class JavaTypeParser(TypeParser):
         tf = self.bt_factory
         if str_t.endswith("[]"):
             str_t = str_t[:-2]
-            return tf.get_array_type().new([self.parse_type(str_t)])
+            t = self.parse_type(str_t)
+            primitive = str_t in ["char", "boolean", "byte", "int", "long",
+                                  "float", "double"]
+            return tf.get_array_type_of(t, primitive)
         elif str_t.endswith("..."):
             # TODO consider this as a vararg rather than a single type.
             return self.parse_type(str_t.split("...")[0])
@@ -468,7 +471,8 @@ class KotlinTypeParser(TypeParser):
             str_t = str_t[:-1]
         if str_t.startswith("kotlin.Array<"):
             str_t = str_t.split("kotlin.Array<")[1][:-1]
-            return tf.get_array_type().new([self.parse_type(str_t)])
+            t = self.parse_type(str_t)
+            return tf.get_array_type_of(t, False)
         else:
             return self._parse_type(str_t)
 
@@ -761,7 +765,8 @@ class ScalaTypeParser(TypeParser):
             return self.parse_type(str_t.split("=> ", 1)[1])
         if str_t.startswith("scala.Array["):
             str_t = str_t.split("scala.Array[")[1][:-1]
-            return tf.get_array_type().new([self.parse_type(str_t)])
+            t = self.parse_type(str_t)
+            return tf.get_array_type_of(t, False)
         if str_t.startswith("scala.Seq["):
             str_t = str_t.split("scala.Seq[")[1][:-1]
             return sc.SeqType().new([self.parse_type(str_t)])

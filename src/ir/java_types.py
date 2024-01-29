@@ -58,6 +58,9 @@ class JavaBuiltinFactory(bt.BuiltinFactory):
     def get_array_type(self):
         return ArrayType()
 
+    def get_array_type_of(self, t, primitive: bool):
+        return self.get_array_type().new([t])
+
     def get_big_integer_type(self):
         return IntegerType(primitive=False)
 
