@@ -131,7 +131,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         return forked_specs
 
     def _handle_nested_classes(self, specs: List[dict],
-                               included_ns: List[str]):
+                               included_ns: List[str]) -> set:
+        included_libs = set()
         for cls_name, spec in list(specs):
             # If the current namespace has parent classes, include these
             # classes to our list of specs.
@@ -145,6 +146,13 @@ class APIDeclarationGenerator(APIClientGenerator):
                 if nested_c not in included_ns:
                     specs.append((nested_c, self.api_docs[nested_c]))
                     included_ns.append(nested_c)
+                    t = (self.initial_api_graph.get_type_by_name(nested_c) or
+                         self.parse_builtin_type(nested_c))
+                    # Get the supertypes of ns
+                    included_libs.update({
+                        st.name for st in t.get_supertypes()
+                        if st != self.bt_factory.get_any_type()})
+        return included_libs
 
     def fork_api_spec(self, ns: str) -> dict:
         """
@@ -175,9 +183,10 @@ class APIDeclarationGenerator(APIClientGenerator):
         if ns not in selected_namespaces:
             selected_namespaces.append(ns)
         specs = [s for s in specs if s[0] in selected_namespaces]
-        self._handle_nested_classes(specs, selected_namespaces)
+        included_libs = self._handle_nested_classes(specs, selected_namespaces)
+        included_libs.update(all_names)
         forked_spec = self._fork_api_spec(specs, selected_namespaces)
-        for elem in all_names:
+        for elem in included_libs:
             if elem not in selected_namespaces:
                 forked_spec[elem] = self.api_docs[elem]
         return forked_spec

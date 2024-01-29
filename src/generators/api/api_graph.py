@@ -757,7 +757,6 @@ class APIGraph():
                                  for p in m.parameters]
                 if m.name == method.name and parent_params == child_params:
                     return True
-        lang = self.bt_factory.get_language()
         return False
 
     def is_field_overriden(self, receiver: tp.Type, field: Field) -> bool:
