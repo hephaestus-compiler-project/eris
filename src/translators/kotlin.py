@@ -1,7 +1,9 @@
 from src.ir import ast, kotlin_types as kt, types as tp, type_utils as tu
 from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
-from src.translators.utils import strip_fqn, get_modifier_list
+from src.translators.utils import (
+    strip_fqn, get_modifier_list, is_parent_interface,
+    get_class_type_from_context)
 
 
 def append_to(visit):
@@ -127,6 +129,7 @@ class KotlinTranslator(BaseTranslator):
 
     def visit_program(self, node):
         self.context = node.context
+        self.lib_spec = node.lib
         children = node.children()
         for c in children:
             c.accept(self)
@@ -246,8 +249,20 @@ class KotlinTranslator(BaseTranslator):
         def get_superclasses_interfaces():
             superclasses = []
             for cls_inst in node.superclasses:
+                cls_name = cls_inst.class_type.name
                 cls_inst = self.get_type_name(cls_inst.class_type)
-                superclasses.append(cls_inst)
+                class_type = get_class_type_from_context(
+                    cls_name, self.context, self._namespace, self.lib_spec)
+                is_interface = (class_type == ast.ClassDeclaration.INTERFACE or
+                                is_parent_interface(node.name, cls_name,
+                                                    self.lib_spec))
+                if is_interface:
+                    superclasses.append(cls_inst)
+                    continue
+                super_cls_name = cls_inst
+                if not node.constructors:
+                    super_cls_name += "()"
+                superclasses.append(super_cls_name)
             return superclasses
 
         old_ident = self.ident
