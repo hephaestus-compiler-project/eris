@@ -590,13 +590,15 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
             "java": JavaTypeParser,
             "kotlin": KotlinTypeParser
         }
-        mapped_types = {
-            k: (v, lambda str_t, parser: self.parse_type(
-                str_t, type_var_mappings=parser.class_type_name_map,
-                build_class_node=kwargs.get("build_class_node")
-            ))
-            for k, v in self.MAPPED_TYPES.items()
-        }
+        mapped_types = {}
+        if self.api_language == "kotlin":
+            mapped_types = {
+                k: (v, lambda str_t, parser: self.parse_type(
+                    str_t, type_var_mappings=parser.class_type_name_map,
+                    build_class_node=kwargs.get("build_class_node")
+                ))
+                for k, v in self.MAPPED_TYPES.items()
+            }
         args = [kwargs.get("type_var_mappings") or self.type_var_mappings,
                 self._current_func_type_var_map, self._class_type_var_map,
                 self.parsed_types, mapped_types]
@@ -632,7 +634,7 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
             return super().build_method_node(method_api, receiver_name)
 
         field_name = match.group(1)[0].lower() + match.group(1)[1:]
-        field_node = Field(field_name, receiver_name)
+        field_node = Field(field_name, receiver_name, {})
         self.graph.add_node(field_node)
         return field_node
 
