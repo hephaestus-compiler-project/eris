@@ -559,8 +559,11 @@ class APIDeclarationGenerator(APIClientGenerator):
             parent_namespace + (cls_name,), only_current=True).values())
         # Some class metadata. The class is static if it is not defined in
         # the global namespace and its parent is None.
-        metadata = {"is_static": (cls_spec["parent"] is None and
-                                  parent_namespace != ast.GLOBAL_NAMESPACE)}
+        metadata = {
+            "static": (cls_spec["parent"] is None and
+                       parent_namespace != ast.GLOBAL_NAMESPACE),
+            "functional": cls_spec["functional_interface"],
+        }
         cls = ast.ClassDeclaration(
             cls_name,
             superclasses=[ast.SuperClassInstantiation(st)
