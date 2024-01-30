@@ -1,5 +1,8 @@
+from functools import reduce
+
 from src.ir import ast, kotlin_types as kt, types as tp, type_utils as tu
 from src.transformations.base import change_namespace
+from src.generators.api.builder import KotlinAPIGraphBuilder
 from src.translators.base import BaseTranslator
 from src.translators.utils import (
     strip_fqn, get_modifier_list, is_parent_interface,
@@ -11,6 +14,16 @@ def append_to(visit):
         self._nodes_stack.append(node)
         visit(self, node)
         self._nodes_stack.pop()
+    return inner
+
+
+def java2kotlin_types(func):
+    def inner(self, t, *args):
+        res = func(self, t, *args)
+        mapped_types = KotlinAPIGraphBuilder.MAPPED_TYPES
+        res = reduce(lambda acc, x: acc.replace(x, mapped_types.get(x, x)),
+                     mapped_types.keys(), res)
+        return res
     return inner
 
 
@@ -81,6 +94,7 @@ class KotlinTranslator(BaseTranslator):
             return "in " + self.get_type_name(t_arg.bound)
 
     @strip_fqn
+    @java2kotlin_types
     def get_type_name(self, t):
         if t.is_wildcard():
             t = t.get_bound_rec()
