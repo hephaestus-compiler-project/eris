@@ -755,7 +755,16 @@ class APIGraph():
                     continue
                 parent_params = [tp.substitute_type(p.t, sub)
                                  for p in m.parameters]
-                if m.name == method.name and parent_params == child_params:
+                is_overriden = (
+                    m.name == method.name and
+                    len(parent_params) == len(child_params) and
+                    all(
+                        parent_params[i] == p or tu.unify_types(
+                            p, parent_params[i], self.bt_factory)
+                        for i, p in enumerate(child_params)
+                    )
+                )
+                if is_overriden:
                     return True
         return False
 

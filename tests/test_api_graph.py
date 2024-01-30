@@ -917,6 +917,36 @@ def test_is_overriden_method():
     assert not api_graph.is_method_overriden(t2, m3)
     assert api_graph.is_method_overriden(t2, m2)
 
+    # class A {
+    #  <T> fun m(T)
+    # }
+    # class B: A {
+    #  <E> fun m(E)
+    #  fun m(String)
+    # }
+    g = nx.DiGraph()
+    t1 = tp.SimpleClassifier("A")
+    t2 = tp.SimpleClassifier("B", [t1])
+    m1 = ag.Method("m", "A", [ag.Parameter(tp.TypeParameter("T"), False)],
+                   [tp.TypeParameter("T")], {})
+    m2 = ag.Method("m", "B", [ag.Parameter(tp.TypeParameter("E"), False)],
+                   [tp.TypeParameter("E")], {})
+    m3 = ag.Method("m", "B", [ag.Parameter(jt.String, False)], [], {})
+
+    g.add_node(t1)
+    g.add_node(t2)
+    g.add_node(m1)
+    g.add_node(m2)
+    g.add_node(m3)
+    g.add_edge(t1, m1)
+    g.add_edge(t2, m2)
+    g.add_edge(t2, m3)
+
+    api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
+    assert not api_graph.is_method_overriden(t1, m1)
+    assert not api_graph.is_method_overriden(t2, m3)
+    assert api_graph.is_method_overriden(t2, m2)
+
 
 def test_is_overriden_field():
     g = nx.DiGraph()
