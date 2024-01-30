@@ -10,7 +10,7 @@ import networkx as nx
 from src.config import cfg
 from src.ir import BUILTIN_FACTORIES, types as tp, kotlin_types as kt
 from src.ir.builtins import BuiltinFactory
-from src.generators.api.api_graph import (APIGraph, IN, OUT, Method,
+from src.generators.api.api_graph import (APIGraph, IN, OUT, APINode, Method,
                                           Constructor, Field, Parameter)
 from src.generators.api.type_parsers import (TypeParser, KotlinTypeParser,
                                              JavaTypeParser, ScalaTypeParser)
@@ -55,6 +55,7 @@ class APIGraphBuilder(ABC):
 
         self.parsed_types: Dict[str, tp.Type] = {}
         self.parent_cls: tp.Type = None
+        self.class_api: dict = None
         self.options = kwargs
 
     @abstractmethod
@@ -155,6 +156,7 @@ class APIGraphBuilder(ABC):
             return
         self.api_language = class_api.get("language", self.api_language)
         self.class_name = class_api["name"]
+        self.class_api = class_api
         class_node = self.build_class_node(class_api)
         self.graph.add_node(class_node, outer_class=self.parent_cls)
         self.class_nodes[self.class_name] = class_node
@@ -173,6 +175,7 @@ class APIGraphBuilder(ABC):
         else:
             self._is_func_interface = False
             self.class_name = None
+            self.class_api = None
             self.process_methods(class_api["methods"])
             self.process_fields(class_api["fields"])
 
@@ -201,6 +204,12 @@ class APIGraphBuilder(ABC):
                 self.graph.add_edge(self.parent_cls, field_node, label=IN)
             out_node, kwargs = self.get_api_outgoing_node(field_type)
             self.graph.add_edge(field_node, out_node, label=OUT, **kwargs)
+
+    def connect_method_with_output_type(self, method_api: dict,
+                                        method_node: APINode,
+                                        output_type: tp.Type):
+        out_node, kwargs = self.get_api_outgoing_node(output_type)
+        self.graph.add_edge(method_node, out_node, label=OUT, **kwargs)
 
     def process_methods(self, methods: List[dict]):
         for method_api in methods:
@@ -235,8 +244,8 @@ class APIGraphBuilder(ABC):
                 # Handle the members of non-static inner classes
                 self.graph.add_edge(self.parent_cls, method_node, label=IN)
 
-            out_node, kwargs = self.get_api_outgoing_node(output_type)
-            self.graph.add_edge(method_node, out_node, label=OUT, **kwargs)
+            self.connect_method_with_output_type(method_api, method_node,
+                                                 output_type)
             self._current_func_type_var_map = {}
             self.build_functional_interface(
                 method_api, getattr(method_node, "parameters", []),
@@ -613,6 +622,20 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
         ).parse_type(str_t)
         return parsed_t
 
+    def has_setter(self, field_name: str) -> bool:
+        if not self.class_api:
+            return False
+        return any(m_spec["name"] == f"set{field_name}"
+                   for m_spec in self.class_api["methods"])
+
+    def connect_method_with_output_type(self, method_api: dict,
+                                        method_node: APINode,
+                                        output_type: tp.Type):
+        if isinstance(method_node, Field):
+            output_type = kt.NullableType().new([output_type])
+        super().connect_method_with_output_type(method_api, method_node,
+                                                output_type)
+
     def build_method_node(self, method_api: dict,
                           receiver_name: str) -> Method:
         if not self.api_language == "java":
@@ -631,8 +654,12 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
         if not match or name in excluded_set or parameters or is_static:
             return super().build_method_node(method_api, receiver_name)
 
-        field_name = match.group(1)[0].lower() + match.group(1)[1:]
-        field_node = Field(field_name, receiver_name, {})
+        group = match.group(1)
+        field_name = group[0].lower() + group[1:]
+        field_node = Field(field_name, receiver_name, {
+            "open": True,
+            "final": not self.has_setter(group),
+        })
         self.graph.add_node(field_node)
         return field_node
 

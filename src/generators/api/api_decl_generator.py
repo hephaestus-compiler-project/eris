@@ -387,7 +387,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             if cls is not None:
                 fields = [f for f in self.api_graph.get_neighbors_of_node(cls)
                           if (isinstance(f, ag.Field) and
-                              not f.metadata.get("is_final", False))]
+                              not f.metadata.get("final", False))]
             out_type = local_var.get_type()
             kwargs = {
                 "name": local_var.name,
