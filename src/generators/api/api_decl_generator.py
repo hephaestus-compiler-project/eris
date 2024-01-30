@@ -186,8 +186,9 @@ class APIDeclarationGenerator(APIClientGenerator):
         included_libs = self._handle_nested_classes(specs, selected_namespaces)
         included_libs.update(all_names)
         forked_spec = self._fork_api_spec(specs, selected_namespaces)
+        keys = forked_spec.keys()
         for elem in included_libs:
-            if elem not in selected_namespaces:
+            if elem not in keys:
                 forked_spec[elem] = self.api_docs[elem]
         return forked_spec
 
@@ -608,8 +609,12 @@ class APIDeclarationGenerator(APIClientGenerator):
         api_namespace = self.api_namespaces[self.program_id - 1]
         forked_spec = self.fork_api_spec(api_namespace)
         # This is the list of namespaces that are explicitly defined in
-        # the program.
-        defined_namespaces = list(forked_spec.keys())
+        # the program, i.e., they reside in the pakcage specified by
+        # `self.package_name`.
+        defined_namespaces = [
+            k for k in forked_spec.keys()
+            if k.startswith(self.package_name)
+        ]
         self.api_graph = self.API_GRAPH_BUILDERS[self.language](
             self.language, **self.options).build(forked_spec)
 
