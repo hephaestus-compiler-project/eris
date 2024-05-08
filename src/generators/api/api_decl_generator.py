@@ -441,7 +441,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         func_name = m.name
         if "." in func_name:
             func_name = func_name.rsplit(".", 1)[1]
-        if func_name in self.api_graph.OBJECT_METHODS[self.language]:
+        if (func_name in self.api_graph.OBJECT_METHODS[self.language] and
+                not m.metadata.get("static")):
             # If it's a common object method, then do not re-define it.
             return None
         is_abstract = is_definition_abstract(ns_spec, m)
