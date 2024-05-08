@@ -188,8 +188,6 @@ class JavaTranslator(BaseTranslator):
             if get_boxed_void and isinstance(t, jt.VoidType):
                 return "Void"
             type_name = t.get_name()
-            if "." in type_name and t.is_type_var():
-                type_name = type_name.rsplit(".", 1)[1]
             if box:
                 return PRIMITIVES_TO_BOXED.get(type_name, type_name)
             return type_name
@@ -600,9 +598,7 @@ class JavaTranslator(BaseTranslator):
         if bound:
             bound_str = self.get_type_name(bound)
             bound = ' extends ' + PRIMITIVES_TO_BOXED.get(bound_str, bound_str)
-        name = node.name
-        if "." in name:
-            name = name.rsplit(".", 1)[1]
+        name = self.get_type_name(node)
         return "{name}{bound}".format(
             name=name,
             bound=bound

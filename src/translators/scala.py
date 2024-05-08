@@ -190,7 +190,7 @@ class ScalaTranslator(BaseTranslator):
                 if not node.is_invariant()
                 else ""
             ),
-            name=node.name,
+            name=self.get_type_name(node),
             bound=' <: ' + (
                 self.get_type_name(node.bound)
                 if node.bound is not None

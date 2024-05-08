@@ -47,6 +47,17 @@ def strip_fqn(func):
         context = self.context or Context()
         defined_classes = context.get_classes(self._namespace, glob=True)
         if type_name in defined_classes or t.is_type_var():
+            type_var_cycle = (
+                t.is_type_var() and
+                t.bound and
+                t.bound.is_type_var() and
+                type_name == t.bound.name.rsplit(".", 1)[1]
+            )
+            if type_var_cycle:
+                # Here, we handle cycles in type variables, e.g.,
+                # T1 extends T1
+                type_name = "F" + type_name[1:]
+
             return res.replace(t.name, type_name)
         return res
     return inner

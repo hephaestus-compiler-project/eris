@@ -343,9 +343,7 @@ class KotlinTranslator(BaseTranslator):
 
     @append_to
     def visit_type_param(self, node):
-        type_param_name = node.name
-        if "." in type_param_name:
-            type_param_name = type_param_name.rsplit(".", 1)[1]
+        type_param_name = self.get_type_name(node)
         self._children_res.append("{}{}{}{}".format(
             node.variance_to_string(),
             ' ' if node.variance != tp.Invariant else '',
