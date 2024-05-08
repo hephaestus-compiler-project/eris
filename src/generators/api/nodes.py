@@ -12,7 +12,7 @@ class Field(NamedTuple):
         return self.get_class_name() + "." + self.get_name()
 
     def __hash__(self):
-        return hash((self.name, self.cls, str(self.metadata)))
+        return hash((self.name, self.cls))
 
     def __eq__(self, other):
         return (self.__class__ == other.__class__ and
@@ -95,7 +95,7 @@ class Method(NamedTuple):
 
     def __hash__(self):
         return hash((self.name, self.cls, tuple(self.parameters),
-                     tuple(self.type_parameters), str(self.metadata)))
+                     tuple(self.type_parameters)))
 
     def __eq__(self, other):
         return (
@@ -137,7 +137,7 @@ class Constructor(NamedTuple):
     __repr__ = __str__
 
     def __hash__(self):
-        return hash((self.name, tuple(self.parameters), str(self.metadata)))
+        return hash((self.name, tuple(self.parameters)))
 
     def __eq__(self, other):
         return (
