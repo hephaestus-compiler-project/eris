@@ -229,7 +229,11 @@ class JavaTypeParser(TypeParser):
             if isinstance(t, tp.TypeConstructor):
                 # The type corresponds to a type constructor, but apparently,
                 # it's used as a raw type.
-                return self.bt_factory.get_raw_type(t)
+                if self.bt_factory.get_language() in ["java", "groovy"]:
+                    return self.bt_factory.get_raw_type(t)
+                else:
+                    return t.new([tp.WildCardType()
+                                  for _ in t.type_parameters])
             return t
         base, type_args_str = segs[0], segs[1][:-1]
         type_args = utils.top_level_split(type_args_str)

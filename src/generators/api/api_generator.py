@@ -56,8 +56,9 @@ class APIClientGenerator(Generator):
         super().__init__(language=language, logger=logger)
         if self.logger:
             self.logger.update_filename("api-generator")
-        self.api_graph = self.API_GRAPH_BUILDERS[language](
-            language, **options).build(api_docs)
+        self.api_builder = self.API_GRAPH_BUILDERS[language](
+            language, **options)
+        self.api_graph = self.api_builder.build(api_docs)
         api_rules_file = options.get("api-rules")
         kwargs = {}
         if api_rules_file:

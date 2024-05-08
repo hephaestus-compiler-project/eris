@@ -615,8 +615,10 @@ class APIDeclarationGenerator(APIClientGenerator):
             k for k in forked_spec.keys()
             if k.startswith(self.package_name)
         ]
-        self.api_graph = self.API_GRAPH_BUILDERS[self.language](
-            self.language, **self.options).build(forked_spec)
+        api_builder = self.API_GRAPH_BUILDERS[self.language](
+            self.language, **self.options)
+        api_builder.parsed_types = self.api_builder.parsed_types
+        self.api_graph = api_builder.build(forked_spec)
 
         program = self.create_program_from_spec(forked_spec,
                                                 defined_namespaces)
