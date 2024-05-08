@@ -1,4 +1,5 @@
 from functools import reduce
+import re
 
 from src.ir import ast, kotlin_types as kt, types as tp, type_utils as tu
 from src.transformations.base import change_namespace
@@ -21,8 +22,9 @@ def java2kotlin_types(func):
     def inner(self, t, *args):
         res = func(self, t, *args)
         mapped_types = KotlinAPIGraphBuilder.MAPPED_TYPES
-        res = reduce(lambda acc, x: acc.replace(x, mapped_types.get(x, x)),
-                     mapped_types.keys(), res)
+        res = reduce(lambda acc, x: re.sub(
+            re.compile(x.replace(".", "\\.") + "(?![A-Za-z.])"),
+            mapped_types.get(x, x), acc),  mapped_types.keys(), res)
         return res
     return inner
 

@@ -628,6 +628,12 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
         return any(m_spec["name"] == f"set{field_name}"
                    for m_spec in self.class_api["methods"])
 
+    def has_getter(self, field_name: str) -> bool:
+        if not self.class_api:
+            return False
+        return any(m_spec["name"] == f"get{field_name}"
+                   for m_spec in self.class_api["methods"])
+
     def connect_method_with_output_type(self, method_api: dict,
                                         method_node: APINode,
                                         output_type: tp.Type):
@@ -644,15 +650,28 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
         # If this method corresponds to a getter (e.g., getValue()), then
         # treat this method as a property (e.g., value).
         regex = re.compile("^get([A-Z].*)$")
+        setter_regex = re.compile("^set([A-Z].*)$")
         excluded_set = {
             "getOrElse"
         }
         name = method_api["name"]
-        match = regex.match(name)
         parameters = method_api["parameters"]
+        match = regex.match(name)
         is_static = method_api["is_static"]
-        if not match or name in excluded_set or parameters or is_static:
+        if match and (name in excluded_set or parameters or is_static):
+            # The method starts with 'get', but it's not a getter of a
+            # field.
             return super().build_method_node(method_api, receiver_name)
+        if not match:
+            # Now check if the method is a setter
+            match = setter_regex.match(name)
+            if not match:
+                return super().build_method_node(method_api, receiver_name)
+            group = match.group(1)
+            if self.has_getter(group):
+                return None
+            else:
+                return super().build_method_node(method_api, receiver_name)
 
         group = match.group(1)
         field_name = group[0].lower() + group[1:]
