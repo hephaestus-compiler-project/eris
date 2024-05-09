@@ -433,6 +433,14 @@ class APIDeclarationGenerator(APIClientGenerator):
                 body_block.append(node)
         return ast.Block(body_block[::-1])
 
+    def _skip_method_creation(self, m: ag.Method) -> bool:
+        blacklisted_obj_methods = self.api_graph.OBJECT_METHODS[self.language]
+        params = blacklisted_obj_methods.get(m.name)
+        if params is None:
+            return False
+        return (params == [p.t.name for p in m.parameters] and
+                not m.metadata.get("static"))
+
     def convert_method(self, m: ag.Method,
                        ns_spec: dict) -> ast.FunctionDeclaration:
         out_type = self.api_graph.get_concrete_output_type(m)
@@ -441,8 +449,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         func_name = m.name
         if "." in func_name:
             func_name = func_name.rsplit(".", 1)[1]
-        if (func_name in self.api_graph.OBJECT_METHODS[self.language] and
-                not m.metadata.get("static")):
+        if self._skip_method_creation(m):
             # If it's a common object method, then do not re-define it.
             return None
         is_abstract = is_definition_abstract(ns_spec, m)

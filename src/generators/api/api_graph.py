@@ -127,10 +127,26 @@ class APIGraph():
 
     # A list of common methods found in the Object/Any class.
     OBJECT_METHODS = {
-        "java": {"hashCode", "toString", "equals"},
-        "groovy": {"hashCode", "toString", "equals"},
-        "kotlin": {"hashCode", "toString", "equals"},
-        "scala": {"hashCode", "toString", "equals"},
+        "java": {
+            "hashCode": [],
+            "toString": [],
+            "equals": ["java.lang.Object"]
+        },
+        "groovy": {
+            "hashCode": [],
+            "toString": [],
+            "equals": ["java.lang.Object"]
+        },
+        "kotlin": {
+            "hashCode": [],
+            "toString": [],
+            "equals": ["java.lang.Object"]
+        },
+        "scala": {
+            "hashCode": [],
+            "toString": [],
+            "equals": ["java.lang.Object"]
+        },
     }
 
     def __init__(self, api_graph, subtyping_graph, functional_types,
