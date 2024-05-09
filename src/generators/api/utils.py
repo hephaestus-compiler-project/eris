@@ -121,6 +121,11 @@ def collect_constraints(target: tp.Type,
                 constraints[node].add(UpperBoundConstraint(
                     tp.substitute_type(node.bound, assignment_graph,
                                        substitute_bound=False)))
+    if any(k not in type_variables for k in constraints):
+        # Case: path: p0: T, target: Foo
+        # this creates a contstraint, but the path does not introduce any
+        # type variables
+        return None
 
     ordered_constraints = OrderedDict()
     for node in type_variables:
