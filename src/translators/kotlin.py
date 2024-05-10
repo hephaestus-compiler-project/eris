@@ -490,6 +490,8 @@ class KotlinTranslator(BaseTranslator):
         modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
                                        if k not in self.EXCLUDED_METADATA})
         if "abstract" not in modifiers and node.body is None:
+            if "override" in modifiers:
+                modifiers.remove("override")
             prefix += "abstract "
         prefix += " ".join(modifiers) + " " if modifiers else ""
         type_params = (
