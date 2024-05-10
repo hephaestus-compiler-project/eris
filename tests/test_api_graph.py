@@ -561,9 +561,9 @@ def test_get_function_refs_of():
     assert refs == [
         (
             ag.Method("m3", "java.Foo", [],
-                      [tp.TypeParameter("java.Foo.m3.T1")], FUNC_METADATA),
+                      [tp.TypeParameter("java.Foo.m3.F1")], FUNC_METADATA),
             {
-                tp.TypeParameter("java.Foo.m3.T1"): b.parse_type("java.lang.Integer")
+                tp.TypeParameter("java.Foo.m3.F1"): b.parse_type("java.lang.Integer")
             }
         ),
         (

@@ -253,7 +253,8 @@ class APIGraphBuilder(ABC):
 
     def rename_type_parameters(self, prefix: str,
                                type_parameters: List[str],
-                               type_name_map: OrderedDict):
+                               type_name_map: OrderedDict,
+                               type_param_name_suffix: str = "T"):
         # We use an OrderedDict because we need to store type parameters
         # in the order they appear in the corresponding definitions.
         for i, type_param_str in enumerate(type_parameters):
@@ -272,7 +273,7 @@ class APIGraphBuilder(ABC):
                     type_param.name, type_param.type_parameters,
                     type_param.variance))
             copied_t = deepcopy(type_param)
-            new_name = prefix + ".T" + str(i + 1)
+            new_name = prefix + "." + type_param_name_suffix + str(i + 1)
             copied_t.name = new_name
             copied_t.bound = None
             type_var_map = {k: copied_t for k in type_param_no_bounds}
@@ -385,7 +386,8 @@ class APIGraphBuilder(ABC):
         self._current_func_type_var_map = OrderedDict()
         self.rename_type_parameters(
             method_fqn, method_api["type_parameters"],
-            self._current_func_type_var_map
+            self._current_func_type_var_map,
+            type_param_name_suffix="F"
         )
         type_parameters = list(self._current_func_type_var_map.values())
         return type_parameters
