@@ -453,6 +453,21 @@ class APIGraph():
             return []
         return self.api_graph.neighbors(node)
 
+    def _get_abstract_targets(self, target: tp.Type) -> List[tp.Type]:
+        def _is_abstract(t):
+            return (
+                t.is_type_var() and
+                target.is_type_constructor() == t.is_type_constructor()
+                and not t.bound
+            )
+
+        abstract_types = set()
+        for k, v in self.api_graph.edges():
+            if (isinstance(v, tp.Type) and
+                    _is_abstract(v) and not isinstance(k, Variable)):
+                abstract_types.add(v)
+        return abstract_types
+
     def get_sources_and_target(
             self, target: tp.Type,
             target_selection: str) -> (List[APINode], APINode):
@@ -484,10 +499,7 @@ class APIGraph():
         if target_selection in ["all", "abstract"] or not in_graph:
             # If this option is not enabled we also consider APIs that return
             # a type variable as targets.
-            targets.extend(n for n in self.api_graph.nodes()
-                           if isinstance(n, tp.TypeParameter)
-                           and origin.is_type_constructor() == n.is_type_constructor()
-                           and not n.bound)
+            targets.extend(self._get_abstract_targets(origin))
         # Pick a random target
         target = utils.random.choice(targets)
         if target not in self.api_graph:
@@ -541,9 +553,9 @@ class APIGraph():
             for path in paths:
                 node_path = path
                 path = list(zip(path, path[1:]))
+                type_variables = _get_type_variables(path)
                 assignment_graph = au.compute_assignment_graph(self.api_graph,
                                                                path)
-                type_variables = _get_type_variables(path)
                 constraints = au.collect_constraints(origin, type_variables,
                                                      assignment_graph,
                                                      with_constraints or {},

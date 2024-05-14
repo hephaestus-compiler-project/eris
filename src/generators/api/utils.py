@@ -7,7 +7,7 @@ from src import utils
 from src.config import cfg
 from src.ir import types as tp, type_utils as tu
 from src.ir.builtins import BuiltinFactory
-from src.generators.api.nodes import Method
+from src.generators.api.nodes import Method, Constructor
 
 
 class UpperBoundConstraint(NamedTuple):
@@ -36,6 +36,10 @@ def compute_assignment_graph(api_graph: nx.DiGraph, path: list) -> OrderedDict:
                 assigned_t = type_v
             if type_k != assigned_t:
                 assignment_graph[type_k] = assigned_t
+            if type_k == assigned_t and not isinstance(source, (Constructor,
+                                                                Method)):
+                assignment_graph[type_k] = assigned_t
+
     return assignment_graph
 
 
@@ -117,15 +121,12 @@ def collect_constraints(target: tp.Type,
         else:
             if t.name != node.name:
                 constraints[node].add(EqualityConstraint(t))
+            if t.name == node.name and node in assignment_graph:
+                constraints[node].add(EqualityConstraint(t))
             if node.bound:
                 constraints[node].add(UpperBoundConstraint(
                     tp.substitute_type(node.bound, assignment_graph,
                                        substitute_bound=False)))
-    if any(k not in type_variables for k in constraints):
-        # Case: path: p0: T, target: Foo
-        # this creates a contstraint, but the path does not introduce any
-        # type variables
-        return None
 
     ordered_constraints = OrderedDict()
     for node in type_variables:
