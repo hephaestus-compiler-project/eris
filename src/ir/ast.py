@@ -1,5 +1,5 @@
 # pylint: disable=dangerous-default-value
-from typing import List, Set, Union
+from typing import List, Set, Union, NamedTuple
 from copy import deepcopy
 
 import src.ir.type_utils as tu
@@ -27,10 +27,27 @@ def check_default_eq(first, second):
         return second is None
 
 
+class TypePair(NamedTuple):
+    expected: types.Type
+    actual: types.Type
+
+
 class Expr(Node):
+
+    def __init__(self):
+        self.type_pair: TypePair = None
 
     def has_variable(self) -> bool:
         return False
+
+    def is_typed(self) -> bool:
+        return self.type_pair is not None
+
+    def mk_typed(self, typed: TypePair):
+        self.type_pair = typed
+
+    def get_type_info(self) -> TypePair:
+        return self.type_pair
 
 
 class Program(Node):
@@ -542,6 +559,7 @@ class Lambda(Expr):
                  ret_type: types.Type,
                  body: Node,
                  signature: types.ParameterizedType):
+        super().__init__()
         self.name = shadow_name
         self.params = params
         self.ret_type = ret_type
@@ -933,6 +951,7 @@ class ClassDeclaration(Declaration):
 
 class Constant(Expr):
     def __init__(self, literal: str):
+        super().__init__()
         self.literal = literal
 
     def children(self):
@@ -1020,6 +1039,7 @@ class StringConstant(Constant):
 
 class ArrayExpr(Expr):
     def __init__(self, array_type: types.Type, length: int, exprs: List[Expr]):
+        super().__init__()
         self.length = length
         self.array_type = array_type
         self.exprs = exprs
@@ -1047,6 +1067,7 @@ class ArrayExpr(Expr):
 
 class Variable(Expr):
     def __init__(self, name: str):
+        super().__init__()
         self.name = name
 
     def has_variable(self):
@@ -1073,6 +1094,7 @@ class Variable(Expr):
 class Conditional(Expr):
     def __init__(self, cond: Expr, true_branch: Block, false_branch: Block,
                  inferred_type: types.Type, is_expression: bool = True):
+        super().__init__()
         self.cond = cond
         self.true_branch = true_branch
         self.false_branch = false_branch
@@ -1151,6 +1173,7 @@ class BinaryOp(Expr):
     VALID_OPERATORS = None
 
     def __init__(self, lexpr: Expr, rexpr: Expr, operator: Operator):
+        super().__init__()
         if self.VALID_OPERATORS is not None:
             # pylint: disable=unsupported-membership-test
             # @theosotr should we keep this check? If we ant to keep it we may
@@ -1331,6 +1354,7 @@ class Is(BinaryOp):
 class New(Expr):
     def __init__(self, class_type: types.Type, args: List[Expr],
                  receiver: Expr = None):
+        super().__init__()
         self.class_type = class_type
         self.args = args
         self.receiver = receiver
@@ -1410,6 +1434,7 @@ class FunctionCall(Expr):
                  receiver: Expr = None,
                  type_args: List[types.Type] = [],
                  is_ref_call: bool = False):
+        super().__init__()
         self.func = func
         self.args = args
         self.receiver = receiver
@@ -1489,6 +1514,7 @@ class FunctionReference(Expr):
 
     def __init__(self, func: str, receiver: Expr, signature: types.Type,
                  function_type: types.ParameterizedType):
+        super().__init__()
         self.func = func
         self.receiver = receiver
         self.signature = signature
@@ -1522,6 +1548,7 @@ class FunctionReference(Expr):
 
 class Assignment(Expr):
     def __init__(self, name: str, expr: Expr, receiver: Expr = None):
+        super().__init__()
         self.name = name
         self.expr = expr
         self.receiver = receiver
