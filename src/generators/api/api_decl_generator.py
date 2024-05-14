@@ -369,25 +369,43 @@ class APIDeclarationGenerator(APIClientGenerator):
     def _generate_expr_from_node(self, node, depth=1, constraints=None):
         return super()._generate_expr_from_node(node, depth, constraints)
 
-    def generate_assignments(self, m: ag.Method,
-                             local_vars: List[ast.VariableDeclaration]):
+    def _get_mutable_local_vars(
+        self,
+        local_vars: List[ast.VariableDeclaration]
+    ) -> List[ast.VariableDeclaration]:
         """
-        Generate a set of random assignments that mutate the value of the given
-        local variables.
+        Get a random sample of mutable local variables.
         """
         mutable_vars = [v for v in local_vars if not v.is_final]
         if not mutable_vars:
             return []
         mutable_vars = utils.random.sample(
             mutable_vars, k=utils.random.integer(0, len(mutable_vars)))
+        return mutable_vars
+
+    def _get_fields_of_local_var(
+            self,
+            local_var: ast.VariableDeclaration
+    ) -> List[ag.Field]:
+        cls = self.api_graph.get_type_by_name(local_var.get_type().name)
+        fields = []
+        if cls is not None:
+            fields = [f for f in self.api_graph.get_neighbors_of_node(cls)
+                      if (isinstance(f, ag.Field) and
+                          not f.metadata.get("final", False))]
+            return fields
+        return []
+
+    def generate_assignments(self, m: ag.Method,
+                             local_vars: List[ast.VariableDeclaration]):
+        """
+        Generate a set of random assignments that mutate the value of the given
+        local variables.
+        """
         assignments = []
+        mutable_vars = self._get_mutable_local_vars(local_vars)
         for local_var in mutable_vars:
-            cls = self.api_graph.get_type_by_name(local_var.get_type().name)
-            fields = []
-            if cls is not None:
-                fields = [f for f in self.api_graph.get_neighbors_of_node(cls)
-                          if (isinstance(f, ag.Field) and
-                              not f.metadata.get("final", False))]
+            fields = self._get_fields_of_local_var(local_var)
             out_type = local_var.get_type()
             kwargs = {
                 "name": local_var.name,
@@ -396,6 +414,10 @@ class APIDeclarationGenerator(APIClientGenerator):
             if fields:
                 f = utils.random.choice(fields)
                 out_type = self.api_graph.get_concrete_output_type(f)
+                sub = {}
+                if local_var.get_type().is_parameterized():
+                    sub = local_var.get_type().get_type_variable_assignments()
+                out_type = tp.substitute_type(out_type, sub)
                 kwargs.update({
                     "name": f.name,
                     "receiver": ast.Variable(local_var.name)
@@ -456,7 +478,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         prev_ns = self.namespace
         self.namespace += (to_namespace(m),)
         body = None
-        self.api_graph.add_types(m.type_parameters)
+        #self.api_graph.add_types(m.type_parameters)
         self.add_local_variables(m)
         if not is_abstract:
             expr = self._generate_expr_from_node(out_type, 1)[0]
@@ -516,7 +538,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         }
         return converters[type(node)](node, ns_spec)
 
-    def create_components_of_namespace(self, ns: str, ns_spec: dict):
+    def create_components_of_namespace(self, ns: str, ns_spec: dict,
+                                       class_type: tp.Type):
         """
         Generate all components that reside in the given namespace `ns`.
         These components are either methods, fields/variables, or constructors.
@@ -533,6 +556,11 @@ class APIDeclarationGenerator(APIClientGenerator):
                 methods.append(decl)
             else:
                 variables.append(decl)
+
+        # Temporarily remove class type parameters from the context, because
+        # we need to deal with non-instance methods.
+        if class_type.is_type_constructor():
+            self.api_graph.remove_types(class_type.type_parameters)
         # Now consider static methods, static fields, or constructors
         for n in list(self.api_graph.get_api_nodes()):
             if isinstance(n, (ag.Method, ag.Field, ag.Constructor)):
@@ -549,6 +577,8 @@ class APIDeclarationGenerator(APIClientGenerator):
                         constructors.append(decl)
                     else:
                         variables.append(decl)
+        if class_type.is_type_constructor():
+            self.api_graph.add_types(class_type.type_parameters)
         return variables, methods, constructors
 
     def create_class_from_spec(self, api_spec: dict, class_type: tp.Type):
@@ -560,7 +590,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             self.api_graph.add_types(class_type.type_parameters)
         # Get the fields and methods included in this current class.
         fields, methods, constructors = self.create_components_of_namespace(
-            cls_name, cls_spec)
+            cls_name, cls_spec, class_type)
         self.namespace = parent_namespace
         # Get any other declarations (e.g., nested classes) included in
         # this class.
