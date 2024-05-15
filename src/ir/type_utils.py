@@ -1650,5 +1650,5 @@ def get_type_variables_of_type(
     if t.is_type_var():
         return [t]
     if t.is_wildcard() or t.is_parameterized():
-        return t.get_type_variables(bt_factory).keys()
+        return list(t.get_type_variables(bt_factory).keys())
     return []

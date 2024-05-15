@@ -371,7 +371,10 @@ class APIClientGenerator(Generator):
             self._add_node_to_parent(self.namespace, var_decl)
             if self.type_erasure_mode:
                 self.type_eraser.erase_var_type(var_decl, res)
-            return ExprRes(ast.Variable(var_name), res.type_var_map, res.path)
+            var_ref = ast.Variable(var_name)
+            var_ref.mk_typed(ast.TypePair(
+                expected=self.type_eraser.expected_type, actual=node))
+            return ExprRes(var_ref, res.type_var_map, res.path)
         return res
 
     def generate_expr_from_nodes(self, nodes: List[tp.Type],
@@ -403,6 +406,8 @@ class APIClientGenerator(Generator):
                 self.generate_expr(self.bt_factory.get_boolean_type()),
                 expr1, cond, cond_type)
             ret_type_var_map.update(type_var_map1)
+        cond.mk_typed(ast.TypePair(expected=self.type_eraser.expected_type,
+                                   actual=cond_type))
         return ExprRes(cond, ret_type_var_map, [cond_type])
 
     def generate_from_type_combination(self, api, receiver, parameters,
@@ -486,13 +491,15 @@ class APIClientGenerator(Generator):
         expr = self._generate_expr_from_node(ret_type, depth + 1)[0]
         decls = list(self.context.get_declarations(self.namespace,
                                                    True).values())
+        self.type_eraser.reset_target_type()
         var_decls = [d for d in decls
                      if not isinstance(d, ast.ParameterDeclaration)]
         body = expr if not var_decls else ast.Block(var_decls + [expr])
         lambda_expr = ast.Lambda(shadow_name, params, ret_type, body,
                                  func_type)
+        lambda_expr.mk_typed(ast.TypePair(
+            expected=self.type_eraser.expected_type, actual=func_type))
         self.namespace = prev_namespace
-        self.type_eraser.reset_target_type()
         if self.type_erasure_mode:
             self.type_eraser.erase_types(lambda_expr, func_type, [])
         for param in params:
@@ -534,8 +541,10 @@ class APIClientGenerator(Generator):
                 )
                 type_var_map.update(sub)
             rec_type = self.substitute_types([rec_type], type_var_map)[0]
+            new_expr = ast.New(rec_type, args=[])
+            new_expr.mk_typed(ast.TypePair(expected=None, actual=rec_type))
             rec = (
-                ast.New(rec_type, args=[])  # This is a constructor reference
+                new_expr
                 if isinstance(api, ag.Constructor)
                 else self._generate_expr_from_node(rec_type, depth + 1)[0]
             )
@@ -544,9 +553,15 @@ class APIClientGenerator(Generator):
             if isinstance(api, ag.Constructor) else api.name)
         func_type = tp.substitute_type(
             self.api_graph.get_functional_type(expr_type), type_var_map)
-        return ast.FunctionReference(api_name, receiver=rec,
-                                     signature=expr_type,
-                                     function_type=func_type)
+        func_ref = ast.FunctionReference(api_name, receiver=rec,
+                                         signature=expr_type,
+                                         function_type=func_type)
+        func_ref.mk_typed(ast.TypePair(
+            expected=self.type_eraser.expected_type,
+            actual=func_type
+
+        ))
+        return func_ref
 
     def generate_expr(self,
                       expr_type: tp.Type = None,
@@ -584,9 +599,12 @@ class APIClientGenerator(Generator):
         }
         generator = constant_candidates.get(expr_type.name.capitalize())
         if generator is not None:
-            return generator(expr_type)
+            expr = generator(expr_type)
         else:
-            return ast.BottomConstant(expr_type)
+            expr = ast.BottomConstant(expr_type)
+        expr.mk_typed(ast.TypePair(expected=self.type_eraser.expected_type,
+                                   actual=expr_type))
+        return expr
 
     def generate(self, context=None) -> ast.Program:
         program = next(self.programs_gen, None)
@@ -680,6 +698,14 @@ class APIClientGenerator(Generator):
             args.append(expr)
         return args
 
+    def _mk_api_expr_typed(self, expr: ast.FunctionCall,
+                           api: ag.APINode, type_var_map: dict):
+        out_type = self.api_graph.get_concrete_output_type(api)
+        out_type = tp.substitute_type(out_type, type_var_map)
+        expr.mk_typed(ast.TypePair(
+            expected=self.type_eraser.expected_type,
+            actual=out_type))
+
     def _generate_expression_from_path(self, path: list,
                                        depth: int, type_var_map) -> ast.Expr:
         def _instantiate_type_con(t: tp.Type):
@@ -707,10 +733,12 @@ class APIClientGenerator(Generator):
             type_args = [type_var_map[tpa] for tpa in elem.type_parameters]
             expr = ast.FunctionCall(elem.name, args=call_args,
                                     receiver=receiver, type_args=type_args)
+            self._mk_api_expr_typed(expr, elem, type_var_map)
             if elem.type_parameters and self.type_erasure_mode:
                 self.type_eraser.erase_types(expr, elem, args)
         elif isinstance(elem, ag.Field):
             expr = ast.FieldAccess(receiver, elem.name)
+            self._mk_api_expr_typed(expr, elem, type_var_map)
         elif isinstance(elem, ag.Constructor):
             cls_name = elem.get_class_name()
             con_type = self.api_graph.get_type_by_name(
@@ -721,10 +749,12 @@ class APIClientGenerator(Generator):
                                        depth + 1, type_var_map)
             call_args = [arg.expr for arg in args]
             expr = ast.New(con_type, call_args, receiver=receiver)
+            self._mk_api_expr_typed(expr, elem, type_var_map)
             if con_type.is_parameterized() and self.type_erasure_mode:
                 self.type_eraser.erase_types(expr, elem, args)
         elif isinstance(elem, ag.Variable):
-            return ast.Variable(elem.name)
+            expr = ast.Variable(elem.name)
+            self._mk_api_expr_typed(expr, elem, type_var_map)
         elif len(path) == 1:
             t = _instantiate_type_con(elem)
             expr = self.generate_expr(self.substitute_types([t],

@@ -426,7 +426,8 @@ class APIGraph():
         if var_type.is_parameterized():
             kwargs["constraint"] = var_type \
                 .get_type_variable_assignments()
-            target = self.get_type_by_name(var_type.name) or var_type
+            target = (self.get_type_by_name(var_type.name) or
+                      var_type.t_constructor)
         self.api_graph.add_node(source)
         self.api_graph.add_node(target)
         self.api_graph.add_edge(source, target, **kwargs)

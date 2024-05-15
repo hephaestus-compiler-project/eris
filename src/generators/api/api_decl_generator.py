@@ -435,6 +435,8 @@ class APIDeclarationGenerator(APIClientGenerator):
             # FIXME: This probability should be an option.
             if utils.random.bool(prob=0.2):
                 self.block_variables = True
+                self.type_eraser.with_target(
+                    self.bt_factory.get_boolean_type(primitive=True))
                 cond_expr = self._generate_expr_from_node(
                     self.bt_factory.get_boolean_type(primitive=True),
                     depth=2)[0]
@@ -481,6 +483,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         #self.api_graph.add_types(m.type_parameters)
         self.add_local_variables(m)
         if not is_abstract:
+            self.type_eraser.with_target(out_type)
             expr = self._generate_expr_from_node(out_type, 1)[0]
             decls = list(self.context.get_declarations(self.namespace,
                                                        True).values())
