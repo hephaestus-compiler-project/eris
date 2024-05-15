@@ -480,7 +480,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         prev_ns = self.namespace
         self.namespace += (to_namespace(m),)
         body = None
-        #self.api_graph.add_types(m.type_parameters)
+        self.api_graph.add_types(m.type_parameters)
         self.add_local_variables(m)
         if not is_abstract:
             self.type_eraser.with_target(out_type)
@@ -649,6 +649,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             return None
         api_namespace = self.api_namespaces[self.program_id - 1]
         forked_spec = self.fork_api_spec(api_namespace)
+        forked_spec.update(GROOVY_SPECIAL_METHODS)
         # This is the list of namespaces that are explicitly defined in
         # the program, i.e., they reside in the pakcage specified by
         # `self.package_name`.
