@@ -52,7 +52,7 @@ def get_nested_classes(fqn: str, spec: dict) -> List[str]:
 
 
 def to_namespace(m: ag.Method) -> str:
-    param_str = ", ".join([p.t.name for p in m.parameters])
+    param_str = ", ".join([str(p.t) for p in m.parameters])
     func_name = m.name
     if "." in func_name:
         func_name = func_name.rsplit(".", 1)[1]
@@ -353,7 +353,12 @@ class APIDeclarationGenerator(APIClientGenerator):
             )
         }
         symbol = m.metadata["symbol"]
-        return converters[symbol](args)
+        expr = converters[symbol](args)
+        out_type = self.api_graph.get_concrete_output_type(m)
+        out_type = tp.substitute_type(out_type, type_var_map)
+        expr.mk_typed(ast.TypePair(expected=self.type_eraser.expected_type,
+                                   actual=out_type))
+        return expr
 
     def _generate_expression_from_path(self, path: list, depth: int,
                                        type_var_map: dict) -> ast.Expr:
@@ -418,9 +423,12 @@ class APIDeclarationGenerator(APIClientGenerator):
                 if local_var.get_type().is_parameterized():
                     sub = local_var.get_type().get_type_variable_assignments()
                 out_type = tp.substitute_type(out_type, sub)
+                receiver = ast.Variable(local_var.name)
+                receiver.mk_typed(ast.TypePair(expected=(None, []),
+                                               actual=local_var.get_type()))
                 kwargs.update({
                     "name": f.name,
-                    "receiver": ast.Variable(local_var.name)
+                    "receiver": receiver
                 })
             expr = self.generate_expr(out_type)
             kwargs["expr"] = expr
@@ -647,6 +655,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         if self.program_id - 1 >= len(self.api_namespaces):
             self._has_next = False
             return None
+
         api_namespace = self.api_namespaces[self.program_id - 1]
         forked_spec = self.fork_api_spec(api_namespace)
         forked_spec.update(GROOVY_SPECIAL_METHODS)
