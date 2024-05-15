@@ -193,7 +193,8 @@ class JavaTranslator(BaseTranslator):
             return type_name
         if isinstance(t_constructor, jt.ArrayType):
             return "{}[{}]".format(self.get_type_name(t.type_args[0],
-                                                      False, box),
+                                                      False, box,
+                                                      for_array),
                                    "0" if for_array else "")
         if t.is_instance_type():
             return self.instance_type2str(t)

@@ -147,7 +147,8 @@ class GroovyTranslator(BaseTranslator):
             name = t.get_name()
             return name
         if isinstance(t_constructor, gt.ArrayType):
-            return "{}[{}]".format(self.get_type_name(t.type_args[0]),
+            return "{}[{}]".format(self.get_type_name(t.type_args[0],
+                                                      for_array=for_array),
                                    "0" if for_array else "")
         if t.is_instance_type():
             return self.instance_type2str(t)
