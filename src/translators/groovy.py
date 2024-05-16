@@ -8,7 +8,7 @@ from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
 from src.translators.utils import (
     get_modifier_list, get_class_type_from_context, strip_fqn,
-    is_parent_interface)
+    is_parent_interface, package_consistency)
 
 
 def append_to(visit):
@@ -47,8 +47,7 @@ class GroovyTranslator(BaseTranslator):
     executable = "Main.jar"
     ident_value = " "
 
-    def __init__(self, package=None,
-                 options={}):
+    def __init__(self, package=None, options={}):
         super().__init__(package, options)
         self.types = []
         self._children_res = []
@@ -137,6 +136,7 @@ class GroovyTranslator(BaseTranslator):
         else:
             return "? super " + self.get_type_name(t_arg.bound)
 
+    @package_consistency
     @strip_fqn
     def get_type_name(self, t, for_array: bool = False):
         if t.is_wildcard():
@@ -145,6 +145,7 @@ class GroovyTranslator(BaseTranslator):
         t_constructor = getattr(t, 't_constructor', None)
         if not t_constructor or isinstance(t, gt.RawType):
             name = t.get_name()
+
             return name
         if isinstance(t_constructor, gt.ArrayType):
             return "{}[{}]".format(self.get_type_name(t.type_args[0],
@@ -879,6 +880,7 @@ class GroovyTranslator(BaseTranslator):
         return res
 
     @append_to
+    @package_consistency
     def visit_field_access(self, node):
         old_ident = self.ident
         self.ident = 0
@@ -968,6 +970,7 @@ class GroovyTranslator(BaseTranslator):
         return res
 
     @append_to
+    @package_consistency
     def visit_func_call(self, node):
         prev_is = self._inside_is
         self._inside_is = False
@@ -1018,6 +1021,7 @@ class GroovyTranslator(BaseTranslator):
         return res
 
     @append_to
+    @package_consistency
     def visit_assign(self, node):
         old_ident = self.ident
         self.ident = 0

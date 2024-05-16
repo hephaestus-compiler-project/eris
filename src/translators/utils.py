@@ -1,3 +1,5 @@
+import re
+
 from src.ir.context import Context
 
 
@@ -59,5 +61,16 @@ def strip_fqn(func):
                 type_name = "F" + type_name[1:]
 
             return res.replace(t.name, type_name)
+        return res
+    return inner
+
+
+def package_consistency(func):
+    def inner(self, *args, **kwargs):
+        res = func(self, *args, **kwargs)
+        if self.package:
+            package_prefix = self.package.split(".", 1)[0]
+            new = re.sub(package_prefix + r"\.[a-z]+", self.package, res)
+            return new
         return res
     return inner
