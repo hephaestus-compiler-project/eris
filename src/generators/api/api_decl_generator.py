@@ -5,6 +5,7 @@ import re
 from typing import List, Tuple, Union
 
 from src import utils
+from src.enumerators.type_error import TypeErrorEnumerator
 from src.ir import ast, types as tp
 from src.ir.context import Context
 from src.generators.api import builder, api_graph as ag, matcher as match
@@ -109,6 +110,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             api_namespaces = [k for k in api_namespaces
                               if matcher.match(Namespace(k))]
         self.api_namespaces = utils.random.shuffle(api_namespaces)
+        self.programs_gen = self.compute_programs()
 
     def _fork_api_spec(self, specs: Tuple[str, dict],
                        selected_namespaces: List[str]) -> dict:
@@ -651,35 +653,34 @@ class APIDeclarationGenerator(APIClientGenerator):
             self.api_spec.update(self.api_docs)
         return ast.Program(self.context, self.language, lib=self.api_spec)
 
-    def generate(self, context=None) -> ast.Program:
-        if self.program_id - 1 >= len(self.api_namespaces):
-            self._has_next = False
-            return None
-
-        api_namespace = self.api_namespaces[self.program_id - 1]
-        forked_spec = self.fork_api_spec(api_namespace)
-        forked_spec.update(GROOVY_SPECIAL_METHODS)
-        # This is the list of namespaces that are explicitly defined in
-        # the program, i.e., they reside in the pakcage specified by
-        # `self.package_name`.
-        defined_namespaces = [
-            k for k in forked_spec.keys()
-            if k.startswith(self.package_name)
-        ]
-        api_builder = self.API_GRAPH_BUILDERS[self.language](
-            self.language, **self.options)
-        api_builder.parsed_types = self.api_builder.parsed_types
-        self.api_graph = api_builder.build(forked_spec)
-
-        program = self.create_program_from_spec(forked_spec,
-                                                defined_namespaces)
-        return program
+    def compute_programs(self) -> ast.Program:
+        for api_namespace in self.api_namespaces:
+            forked_spec = self.fork_api_spec(api_namespace)
+            forked_spec.update(GROOVY_SPECIAL_METHODS)
+            # This is the list of namespaces that are explicitly defined in
+            # the program, i.e., they reside in the pakcage specified by
+            # `self.package_name`.
+            defined_namespaces = [
+                k for k in forked_spec.keys()
+                if k.startswith(self.package_name)
+            ]
+            api_builder = self.API_GRAPH_BUILDERS[self.language](
+                self.language, **self.options)
+            api_builder.parsed_types = self.api_builder.parsed_types
+            self.api_graph = api_builder.build(forked_spec)
+            program = self.create_program_from_spec(forked_spec,
+                                                    defined_namespaces)
+            yield program  # This is a well-typed program
+            type_enum = TypeErrorEnumerator(program, self, self.bt_factory)
+            for p in type_enum.enumerate_programs():
+                if p is not None:
+                    self.error_injected = type_enum.error_injected
+                    yield p
 
     def has_next(self) -> bool:
         return self._has_next
 
     def prepare_next_program(self, program_id, package_name):
-        self.context = None
+        self.context = Context()
         self.error_injected = None
         self.package_name = package_name
-        self.program_id = program_id
