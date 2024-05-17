@@ -1,8 +1,8 @@
-from typing import NamedTuple
+from typing import NamedTuple, List
 
 from src.enumerators.updater import ProgramUpdate
 from src.enumerators.error import ErrorEnumerator
-from src.ir import ast, type_utils as tu
+from src.ir import ast, type_utils as tu, types as tp
 from src.ir.builtins import BuiltinFactory
 from src.generators import Generator
 
@@ -11,6 +11,62 @@ class Loc(NamedTuple):
     expr: ast.Expr
     parent: ast.Node
     index: int
+
+
+def get_type_filters(bt_factory: BuiltinFactory, t: tp.Type,
+                     types: List[tp.Type]) -> List[tp.Type]:
+
+    bytes_ = {bt_factory.get_byte_type(primitive=True),
+              bt_factory.get_byte_type(primitive=False)}
+    shorts = {bt_factory.get_short_type(primitive=True),
+              bt_factory.get_short_type(primitive=False)}
+    ints = {bt_factory.get_integer_type(primitive=True),
+            bt_factory.get_integer_type(primitive=False)}
+    longs = {bt_factory.get_long_type(primitive=True),
+             bt_factory.get_long_type(primitive=False)}
+    floats = {bt_factory.get_float_type(primitive=True),
+              bt_factory.get_float_type(primitive=False)}
+    doubles = {bt_factory.get_double_type(primitive=True),
+               bt_factory.get_double_type(primitive=False)}
+    booleans = {bt_factory.get_boolean_type(primitive=True),
+                bt_factory.get_boolean_type(primitive=False)}
+    chars = {bt_factory.get_char_type(primitive=True),
+             bt_factory.get_char_type(primitive=False)}
+    byte_p, byte_w = tuple(bytes_)
+    short_p, short_w = tuple(shorts)
+    int_p, int_w = tuple(ints)
+    long_p, long_w = tuple(longs)
+    float_p, float_w = tuple(floats)
+    double_p, double_w = tuple(doubles)
+    char_p, char_w = tuple(chars)
+    bool_p, bool_w = tuple(booleans)
+
+    # TODO for the rest of the languages
+    excluded_types = {
+        "groovy": {
+            byte_p: bytes_,
+            byte_w: bytes_,
+            short_p: bytes_ | shorts,
+            short_w: bytes_ | shorts,
+            int_p: bytes_ | shorts | ints,
+            int_w: bytes_ | shorts | ints,
+            long_p: bytes_ | shorts | ints | longs,
+            long_w: bytes_ | shorts | ints | longs,
+            float_p: bytes_ | shorts | ints | longs | floats,
+            float_w: bytes_ | shorts | ints | longs | floats,
+            double_p: bytes_ | shorts | ints | longs | floats | doubles,
+            double_w: bytes_ | shorts | ints | longs | floats | doubles,
+            char_p: chars,
+            char_w: chars,
+            bool_p: types,
+            bool_w: types,
+            bt_factory.get_string_type(): types
+        }
+    }
+    blacklisted_types = excluded_types.get(bt_factory.get_language())
+    if blacklisted_types is None:
+        return set()
+    return blacklisted_types.get(t, set())
 
 
 class TypeErrorEnumerator(ErrorEnumerator):
@@ -140,7 +196,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
             return None
         types = self.api_graph.get_reg_types()
         try:
-            for t in types:
+            excluded_types = get_type_filters(self.bt_factory, exp_t, types)
+            for t in {t for t in types if t not in excluded_types}:
                 if t.is_subtype(exp_t):
                     continue
                 if t.is_type_constructor():
@@ -159,6 +216,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         except Exception as e:
             self.program_gen.block_variables = False
             raise e
+        return None
 
     def add_err_message(self, loc, new_node, *args):
         exp_t = loc.expr.get_type_info()[0][0]
