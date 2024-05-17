@@ -11,12 +11,10 @@ from src.enumerators.updater import ProgramUpdate
 class ErrorEnumerator(ABC, DefaultVisitor):
     def __init__(self, program: ast.Program, program_gen: Generator,
                  bt_factory: BuiltinFactory):
-        self.initial_program = deepcopy(program)
-        self.program = program
+        self.program = deepcopy(program)
         self.program_gen = program_gen
         self.bt_factory = bt_factory
-        self.error_injected: bool = None
-        self._has_next: bool = True
+        self.error_injected: str = None
         self.programs_enum = self.enumerate_programs()
 
     @abstractmethod
@@ -42,17 +40,3 @@ class ErrorEnumerator(ABC, DefaultVisitor):
             yield from self.get_programs_with_error(loc)
             upd = ProgramUpdate(loc.index, loc.expr)
             upd.visit(loc.parent)
-
-    def has_next(self) -> bool:
-        return self._has_next
-
-    def reset_state(self):
-        self.program = deepcopy(self.initial_program)
-
-    def gen_next_program(self) -> ast.Program:
-        program = next(self.programs_enum, None)
-        if not program:
-            self._has_next = False
-            program = None
-
-        return program

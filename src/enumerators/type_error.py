@@ -77,7 +77,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         if isinstance(node.true_branch, ast.Expr):
             self.locations.append(Loc(node.true_branch, node, 1))
         if isinstance(node.false_branch, ast.Expr):
-            self.locations.append(Loc(node.false_branch, node, 1))
+            self.locations.append(Loc(node.false_branch, node, 2))
 
     def visit_new(self, node):
         super().visit_new(node)
