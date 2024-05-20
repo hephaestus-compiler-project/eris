@@ -13,7 +13,7 @@ class Loc(NamedTuple):
     index: int
 
 
-def get_type_filters(bt_factory: BuiltinFactory, t: tp.Type,
+def get_type_filters(bt_factory: BuiltinFactory, loc: Loc, t: tp.Type,
                      types: List[tp.Type]) -> List[tp.Type]:
 
     bytes_ = {bt_factory.get_byte_type(primitive=True),
@@ -66,7 +66,14 @@ def get_type_filters(bt_factory: BuiltinFactory, t: tp.Type,
     blacklisted_types = excluded_types.get(bt_factory.get_language())
     if blacklisted_types is None:
         return set()
-    return blacklisted_types.get(t, set())
+    blacklisted_types = blacklisted_types.get(t, set())
+    if isinstance(loc.parent, ast.ComparisonExpr):
+        # If the parent is a comparison expression, extend the list of
+        # the blacklisted types
+        blacklisted_types = (
+            excluded_types | bytes_ | shorts | ints | longs |
+            floats | doubles | chars | booleans)
+    return blacklisted_types
 
 
 class TypeErrorEnumerator(ErrorEnumerator):
@@ -193,7 +200,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
         exp_t, actual_t = loc.expr.get_type_info()
         types = self.api_graph.get_reg_types()
         try:
-            excluded_types = get_type_filters(self.bt_factory, exp_t, types)
+            excluded_types = get_type_filters(self.bt_factory, loc, exp_t,
+                                              types)
             for t in {t for t in types if t not in excluded_types}:
                 incompatible_t = self.get_incompatible_type(t, exp_t)
                 self.program_gen.block_variables = True
