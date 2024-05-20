@@ -238,6 +238,12 @@ parser.add_argument(
     help=("A file containing regular expressions for filtering compiler error "
           "messages")
 )
+parser.add_argument(
+    "--error-enumerator",
+    default=None,
+    choices=["type"],
+    help="Select a strategy for enumerating errors in a given program"
+)
 
 
 args = parser.parse_args()
@@ -256,9 +262,13 @@ args.options = {
             "erase-types": args.erase_types,
             "enable-expression-cache": args.enable_expression_cache,
             "path-search-strategy": args.path_search_strategy,
+            "library-path": args.library_path,
+            "error-enumerator": args.error_enumerator,
         },
         "api-decl": {
             "api-rules": args.api_rules,
+            "error-enumerator": args.error_enumerator,
+            "library-path": args.library_path,
         }
     },
     'Translator': {

@@ -5,9 +5,10 @@ import re
 from typing import List, Tuple, Union
 
 from src import utils
-from src.enumerators.type_error import TypeErrorEnumerator
+from src.enumerators import get_error_enumerator
 from src.ir import ast, types as tp
 from src.ir.context import Context
+from src.compilers import compile_program
 from src.generators.api import builder, api_graph as ag, matcher as match
 from src.generators.api.api_generator import APIClientGenerator
 from src.generators.api.special_methods import GROOVY_SPECIAL_METHODS
@@ -111,6 +112,8 @@ class APIDeclarationGenerator(APIClientGenerator):
                               if matcher.match(Namespace(k))]
         self.api_namespaces = utils.random.shuffle(api_namespaces)
         self.programs_gen = self.compute_programs()
+        self.ErrorEnumerator = get_error_enumerator(
+            self.options.get("error-enumerator"))
 
     def _fork_api_spec(self, specs: Tuple[str, dict],
                        selected_namespaces: List[str]) -> dict:
@@ -676,12 +679,24 @@ class APIDeclarationGenerator(APIClientGenerator):
             self.api_graph = api_builder.build(forked_spec)
             program = self.create_program_from_spec(forked_spec,
                                                     defined_namespaces)
-            yield program  # This is a well-typed program
-            type_enum = TypeErrorEnumerator(program, self, self.bt_factory)
-            for p in type_enum.enumerate_programs():
-                if p is not None:
-                    self.error_injected = type_enum.error_injected
-                    yield p
+            if not self.ErrorEnumerator:
+                yield program  # This is a well-typed program
+            else:
+                # We attempt to compile the program. The program is expected
+                # to compile. If this is not the case, then there's no need
+                # to proceed with error enumeration.
+                succeeded, _ = compile_program(
+                    self.bt_factory.get_language(), program,
+                    self.package_name,
+                    library_path=self.options.get("library-path"))
+                if not succeeded:
+                    continue
+                error_enum = self.ErrorEnumerator(program, self,
+                                                  self.bt_factory)
+                for p in error_enum.enumerate_programs():
+                    if p is not None:
+                        self.error_injected = error_enum.error_injected
+                        yield p
 
     def has_next(self) -> bool:
         return self._has_next
