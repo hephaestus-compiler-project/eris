@@ -215,7 +215,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
         return None
 
     def add_err_message(self, loc, new_node, *args):
-        exp_t, actual_t = loc.expr.get_type_info()
+        exp_t, _ = loc.expr.get_type_info()
+        actual_t = args[0]
         translator = self.program_gen.translator
         exp_t = translator.get_type_name(exp_t)
         actual_t = translator.get_type_name(actual_t)

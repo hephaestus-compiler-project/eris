@@ -30,13 +30,13 @@ class ErrorEnumerator(ABC, DefaultVisitor):
         pass
 
     @abstractmethod
-    def add_err_message(self, loc, new_node):
+    def add_err_message(self, loc, new_node, *args):
         pass
 
     def enumerate_programs(self):
         locations = self.get_candidate_program_locations()
         locations = self.filter_program_locations(locations)
         for loc in locations:
-            yield from self.get_programs_with_error(loc)
             upd = ProgramUpdate(loc.index, loc.expr)
             upd.visit(loc.parent)
+            yield from self.get_programs_with_error(loc)
