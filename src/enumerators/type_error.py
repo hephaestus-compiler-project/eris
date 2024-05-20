@@ -194,20 +194,14 @@ class TypeErrorEnumerator(ErrorEnumerator):
         try:
             excluded_types = get_type_filters(self.bt_factory, exp_t, types)
             for t in {t for t in types if t not in excluded_types}:
-                if t.is_subtype(exp_t):
-                    continue
-                if t.is_type_constructor():
-                    t = tu.instantiate_type_constructor(
-                        t, types, only_regular=True,
-                        rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
-                    if t is None:
-                        continue
+                incompatible_t = self.get_incompatible_type(t, exp_t)
                 self.program_gen.block_variables = True
-                expr = self.program_gen._generate_expr_from_node(t, depth=1)
+                expr = self.program_gen._generate_expr_from_node(
+                    incompatible_t, depth=1)
                 self.program_gen.block_variables = False
                 upd = ASTExprUpdate(loc.index, expr.expr)
                 upd.visit(loc.parent)
-                self.add_err_message(loc, expr.expr, t)
+                self.add_err_message(loc, expr.expr, incompatible_t)
                 yield self.program
         except Exception as e:
             self.program_gen.block_variables = False
@@ -215,6 +209,10 @@ class TypeErrorEnumerator(ErrorEnumerator):
         return None
 
     def add_err_message(self, loc, new_node, *args):
+        """
+        Adds an error message explaining the type error that has been
+        injected in the program.
+        """
         exp_t, _ = loc.expr.get_type_info()
         actual_t = args[0]
         translator = self.program_gen.translator
@@ -226,3 +224,20 @@ class TypeErrorEnumerator(ErrorEnumerator):
         translator._reset_state()
         msg = f"Expected type {exp_t}, but type {actual_t} given: {expr}"
         self.error_injected = msg
+
+    def get_incompatible_type(self, candidate_t: tp.Type,
+                              exp_t: tp.Type) -> bool:
+        """
+        Given a candidate type t1 and an expected type t2, this method checks
+        whether t1 is incompatible to t2.
+        """
+        if candidate_t.is_subtype(exp_t):
+            return None
+        if candidate_t.is_type_constructor():
+            types = self.api_graph.get_reg_types()
+            candidate_t = tu.instantiate_type_constructor(
+                candidate_t, types, only_regular=True,
+                rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
+            if candidate_t is None:
+                return None
+        return candidate_t
