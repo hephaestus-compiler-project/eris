@@ -182,8 +182,9 @@ class TypeErrorEnumerator(ErrorEnumerator):
                     self.bt_factory.get_any_type(),
                     self.bt_factory.get_boolean_type(),
                     self.bt_factory.get_boolean_type(primitive=True),
-                    self.bt_factory.get_string_type()
             ]:
+                continue
+            if t.name == "String":
                 continue
             filtered_locs.append(Loc(elem, parent, index))
         return filtered_locs
@@ -235,7 +236,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
             return None
         if candidate_t.is_type_constructor():
             types = self.api_graph.get_reg_types()
-            candidate_t = tu.instantiate_type_constructor(
+            candidate_t, _ = tu.instantiate_type_constructor(
                 candidate_t, types, only_regular=True,
                 rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
             if candidate_t is None:

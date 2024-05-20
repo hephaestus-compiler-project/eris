@@ -35,7 +35,10 @@ class ErrorEnumerator(ABC, DefaultVisitor):
     def enumerate_programs(self):
         locations = self.get_candidate_program_locations()
         locations = self.filter_program_locations(locations)
+        prev_loc = None
         for loc in locations:
-            upd = ASTExprUpdate(loc.index, loc.expr)
-            upd.visit(loc.parent)
+            if prev_loc:
+                upd = ASTExprUpdate(prev_loc.index, prev_loc.expr)
+                upd.visit(prev_loc.parent)
+            prev_loc = loc
             yield from self.get_programs_with_error(loc)
