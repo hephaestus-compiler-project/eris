@@ -67,7 +67,7 @@ def print_msg():
 
 def logging():
     compiler = COMPILERS[cli_args.language]
-    _, compiler = run_command(compiler.get_compiler_version())
+    _, compiler = utils.run_command(compiler.get_compiler_version())
     compiler = compiler.strip()
     print("{} {} ({})".format("stop_cond".ljust(21), cli_args.stop_cond,
                               (cli_args.seconds
@@ -99,40 +99,6 @@ def logging():
             compiler))
 
     STATS['Info']['compiler'] = compiler
-
-
-def run_command(arguments, get_stdout=True):
-    """Run a command
-    Args:
-        A list with the arguments to execute. For example ['ls', 'foo']
-    Returns:
-        return status, stderr.
-    """
-    is_groovy = arguments[0] == "groovyc"
-    if is_groovy:
-        tmp_src_dir = os.path.join(cli_args.test_directory, 'tmp')
-        utils.mkdir(tmp_src_dir)
-        old_cwd = os.getcwd()
-        os.chdir(tmp_src_dir)
-    try:
-        is_windows = os.name == 'nt'
-        sys_env = os.environ.copy()
-        sys_env['JAVA_OPTS'] = "-Xmx8g"
-        if not is_windows:
-            # FIXME the wildcard * maybe won't work in Windows
-            arguments = ' '.join(arguments)
-        cmd = sp.Popen(arguments, stdout=sp.PIPE,
-                       stderr=sp.STDOUT, shell=True, env=sys_env)
-        stdout, stderr = cmd.communicate()
-    except sp.CalledProcessError as err:
-        return False, err
-    if is_groovy:
-        os.chdir(old_cwd)
-    stderr = stderr.decode("utf-8") if stderr else ""
-    stdout = stdout.decode("utf-8") if stdout else ""
-    err = stdout if get_stdout else stderr
-    status = cmd.returncode == 0
-    return status, err
 
 
 def get_generator_dir(pid):
@@ -347,7 +313,8 @@ def _report_failed(pid, tid, compiler, oracle):
         program_file = os.path.join(get_transformations_dir(pid, tid),
                                     translator.get_filename())
         compiler = COMPILERS[cli_args.language](program_file)
-        status, _ = run_command(compiler.get_compiler_cmd())
+        status, _ = utils.run_command(compiler.get_compiler_cmd(),
+                                      envs={"JAVA_OPTS": "-Xmx8g"})
         if status == oracle:
             dst_file = os.path.join(cli_args.test_directory, 'tmp', str(pid),
                                     "initial_program.kt")
@@ -386,7 +353,7 @@ def check_oracle(dirname, oracles):
     command_args = compiler.get_compiler_cmd()
     # At this point, we run the compiler
     start_time = time.time()
-    _, err = run_command(command_args)
+    _, err = utils.run_command(command_args, envs={"JAVA_OPTS": "-Xmx8g"})
     compilation_time = time.time() - start_time
     # TODO In case there is an error in the compiler output and none of the
     # programs match with regex to that error, it means that something bad

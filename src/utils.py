@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Tuple, List
 import random
 import string
+import subprocess as sp
 import pickle
 import os
 import sys
@@ -28,6 +29,33 @@ def is_number(string_var):
         return True
     except ValueError:
         return False
+
+
+def run_command(arguments: List[str], get_stdout: bool = True,
+                envs: dict = None):
+    """Run a command
+    Args:
+        A list with the arguments to execute. For example ['ls', 'foo']
+    Returns:
+        return status, stderr.
+    """
+    try:
+        is_windows = os.name == 'nt'
+        sys_env = os.environ.copy()
+        sys_env.update(envs or {})
+        if not is_windows:
+            # FIXME the wildcard * maybe won't work in Windows
+            arguments = ' '.join(arguments)
+        cmd = sp.Popen(arguments, stdout=sp.PIPE,
+                       stderr=sp.STDOUT, shell=True, env=sys_env)
+        stdout, stderr = cmd.communicate()
+    except sp.CalledProcessError as err:
+        return False, err
+    stderr = stderr.decode("utf-8") if stderr else ""
+    stdout = stdout.decode("utf-8") if stdout else ""
+    err = stdout if get_stdout else stderr
+    status = cmd.returncode == 0
+    return status, err
 
 
 def top_level_split(s: str, signs: Tuple[str] = (["<"], [">"]),
