@@ -28,8 +28,6 @@ class ProgramUpdate(DefaultVisitor):
         node.receiver = self.new_node
 
     def visit_array_expr(self, node):
-        if len(node.exprs) > self.index:
-            return
         node.exprs[self.index] = self.new_node
 
     def visit_logical_expr(self, node):
@@ -65,8 +63,6 @@ class ProgramUpdate(DefaultVisitor):
             node.false_branch = self.new_node
 
     def visit_new(self, node):
-        if len(node.args) > self.index:
-            return
         node.args[self.index] = self.new_node
 
     def visit_field_access(self, node):
