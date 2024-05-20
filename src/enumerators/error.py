@@ -3,9 +3,8 @@ from copy import deepcopy
 
 from src.ir import ast
 from src.ir.builtins import BuiltinFactory
-from src.ir.visitors import DefaultVisitor
+from src.ir.visitors import DefaultVisitor, ASTExprUpdate
 from src.generators import Generator
-from src.enumerators.updater import ProgramUpdate
 
 
 class ErrorEnumerator(ABC, DefaultVisitor):
@@ -37,6 +36,6 @@ class ErrorEnumerator(ABC, DefaultVisitor):
         locations = self.get_candidate_program_locations()
         locations = self.filter_program_locations(locations)
         for loc in locations:
-            upd = ProgramUpdate(loc.index, loc.expr)
+            upd = ASTExprUpdate(loc.index, loc.expr)
             upd.visit(loc.parent)
             yield from self.get_programs_with_error(loc)

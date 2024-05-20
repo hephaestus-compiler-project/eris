@@ -1,9 +1,9 @@
 from typing import NamedTuple, List
 
-from src.enumerators.updater import ProgramUpdate
 from src.enumerators.error import ErrorEnumerator
 from src.ir import ast, type_utils as tu, types as tp
 from src.ir.builtins import BuiltinFactory
+from src.ir.visitors import ASTExprUpdate
 from src.generators import Generator
 
 
@@ -205,7 +205,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 self.program_gen.block_variables = True
                 expr = self.program_gen._generate_expr_from_node(t, depth=1)
                 self.program_gen.block_variables = False
-                upd = ProgramUpdate(loc.index, expr.expr)
+                upd = ASTExprUpdate(loc.index, expr.expr)
                 upd.visit(loc.parent)
                 self.add_err_message(loc, expr.expr, t)
                 yield self.program
