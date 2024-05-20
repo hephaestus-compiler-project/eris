@@ -358,7 +358,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         expr = converters[symbol](args)
         out_type = self.api_graph.get_concrete_output_type(m)
         out_type = tp.substitute_type(out_type, type_var_map)
-        expr.mk_typed(ast.TypePair(expected=self.type_eraser.expected_type,
+        expr.mk_typed(ast.TypePair(expected=self.peek_expected_type(),
                                    actual=out_type))
         return expr
 
@@ -426,7 +426,7 @@ class APIDeclarationGenerator(APIClientGenerator):
                     sub = local_var.get_type().get_type_variable_assignments()
                 out_type = tp.substitute_type(out_type, sub)
                 receiver = ast.Variable(local_var.name)
-                receiver.mk_typed(ast.TypePair(expected=(None, []),
+                receiver.mk_typed(ast.TypePair(expected=None,
                                                actual=local_var.get_type()))
                 kwargs.update({
                     "name": f.name,
@@ -447,9 +447,13 @@ class APIDeclarationGenerator(APIClientGenerator):
                 self.block_variables = True
                 self.type_eraser.with_target(
                     self.bt_factory.get_boolean_type(primitive=True))
+                self.push_target_type(self.bt_factory.get_boolean_type(
+                    primitive=True))
                 cond_expr = self._generate_expr_from_node(
                     self.bt_factory.get_boolean_type(primitive=True),
                     depth=2)[0]
+                self.type_eraser.reset_target_type()
+                self.pop_target_type()
                 self.block_variables = False
                 base_expr = ast.Block(body_block[::-1])
                 alt_expr = self.generate_expr(block_type)
@@ -504,6 +508,8 @@ class APIDeclarationGenerator(APIClientGenerator):
             body = expr if not var_decls else ast.Block(
                 var_decls + assignments + [expr])
             body = self.add_control_flow(body, out_type)
+            self.type_eraser.reset_target_type()
+            self.pop_target_type()
         self.remove_local_variables(m)
         func = ast.FunctionDeclaration(
             name=func_name,

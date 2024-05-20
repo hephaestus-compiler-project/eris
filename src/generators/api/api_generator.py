@@ -87,6 +87,20 @@ class APIClientGenerator(Generator):
         # needed, if in certain points we want to block the creation of
         # local variables.
         self.block_variables: bool = False
+        self._expected_types: list = []
+
+    def push_target_type(self, t: tp.Type):
+        self._expected_types.append(t)
+
+    def pop_target_type(self):
+        if self._expected_types:
+            self._expected_types = self._expected_types[:-1]
+
+    def peek_expected_type(self) -> tp.Type:
+        if self._expected_types:
+            return self._expected_types[-1]
+        else:
+            return None
 
     def log_api_graph_statistics(self, matcher=None):
         if self.logger is None:
@@ -348,15 +362,22 @@ class APIClientGenerator(Generator):
                                 depth: int = 1) -> ExprRes:
         is_func = func_ref and self.api_graph.get_functional_type(
             node) is not None
+        create_var = self.create_variable()
+        if create_var:
+            # Push the expected type of the variable we are going to create.
+            self.push_target_type(node)
         res = (
-            ExprRes(self.generate_function_expr(node, constraints or {},
-                                                depth),
-                    {}, [node])
+            ExprRes(
+                self.generate_function_expr(node, constraints or {}, depth),
+                {}, [node]
+            )
             if is_func and utils.random.bool(cfg.prob.function_expr)
             else self._generate_expr_from_node(
                 node, depth, {} if func_ref else (constraints or {}))
         )
-        if node and self.create_variable():
+        if create_var:
+            self.pop_target_type()
+        if node and create_var:
             var_name = gu.gen_identifier("lower")
             if node.is_type_constructor():
                 node = node.new(node.type_parameters)
@@ -373,7 +394,7 @@ class APIClientGenerator(Generator):
                 self.type_eraser.erase_var_type(var_decl, res)
             var_ref = ast.Variable(var_name)
             var_ref.mk_typed(ast.TypePair(
-                expected=self.type_eraser.expected_type, actual=node))
+                expected=self.peek_expected_type(), actual=node))
             return ExprRes(var_ref, res.type_var_map, res.path)
         return res
 
@@ -406,7 +427,7 @@ class APIClientGenerator(Generator):
                 self.generate_expr(self.bt_factory.get_boolean_type()),
                 expr1, cond, cond_type)
             ret_type_var_map.update(type_var_map1)
-        cond.mk_typed(ast.TypePair(expected=self.type_eraser.expected_type,
+        cond.mk_typed(ast.TypePair(expected=self.peek_expected_type(),
                                    actual=cond_type))
         return ExprRes(cond, ret_type_var_map, [cond_type])
 
@@ -487,18 +508,20 @@ class APIClientGenerator(Generator):
             _, type_vars = self.type_eraser.expected_type
             self.type_eraser.reset_target_type()
             self.type_eraser.with_target(func_type, type_vars)
+        self.push_target_type(ret_type)
         self.type_eraser.with_target(ret_type)
         expr = self._generate_expr_from_node(ret_type, depth + 1)[0]
         decls = list(self.context.get_declarations(self.namespace,
                                                    True).values())
         self.type_eraser.reset_target_type()
+        self.pop_target_type()
         var_decls = [d for d in decls
                      if not isinstance(d, ast.ParameterDeclaration)]
         body = expr if not var_decls else ast.Block(var_decls + [expr])
         lambda_expr = ast.Lambda(shadow_name, params, ret_type, body,
                                  func_type)
         lambda_expr.mk_typed(ast.TypePair(
-            expected=self.type_eraser.expected_type, actual=func_type))
+            expected=self.peek_expected_type(), actual=func_type))
         self.namespace = prev_namespace
         if self.type_erasure_mode:
             self.type_eraser.erase_types(lambda_expr, func_type, [])
@@ -557,7 +580,7 @@ class APIClientGenerator(Generator):
                                          signature=expr_type,
                                          function_type=func_type)
         func_ref.mk_typed(ast.TypePair(
-            expected=self.type_eraser.expected_type,
+            expected=self.peek_expected_type(),
             actual=func_type
 
         ))
@@ -570,6 +593,16 @@ class APIClientGenerator(Generator):
                       exclude_var=False,
                       gen_bottom=False,
                       sam_coercion=False) -> ast.Expr:
+
+        def array_gen(array_t: tp.Type) -> ast.Expr:
+            array_t = tu.substitute_invariant_wildcard_with(
+                array_t, [self.bt_factory.get_any_type()]).to_variance_free()
+            self.push_target_type(array_t.type_args[0])
+            expr = self.gen_array_expr(array_t, only_leaves=True,
+                                       subtype=False)
+            self.pop_target_type()
+            return expr
+
         void_type = type(self.bt_factory.get_void_type())
         if isinstance(expr_type, void_type) and getattr(expr_type, "primitive",
                                                         False):
@@ -589,20 +622,14 @@ class APIClientGenerator(Generator):
             self.bt_factory.get_char_type().name: gens.gen_char_constant,
             self.bt_factory.get_string_type().name: gens.gen_string_constant,
             self.bt_factory.get_boolean_type().name: gens.gen_bool_constant,
-            self.bt_factory.get_array_type().name: (
-                lambda x: self.gen_array_expr(
-                    tu.substitute_invariant_wildcard_with(
-                        x, [self.bt_factory.get_any_type()]
-                    ),
-                    only_leaves=True, subtype=False)
-            ),
+            self.bt_factory.get_array_type().name: array_gen
         }
         generator = constant_candidates.get(expr_type.name.capitalize())
         if generator is not None:
             expr = generator(expr_type)
         else:
             expr = ast.BottomConstant(expr_type)
-        expr.mk_typed(ast.TypePair(expected=self.type_eraser.expected_type,
+        expr.mk_typed(ast.TypePair(expected=self.peek_expected_type(),
                                    actual=expr_type))
         return expr
 
@@ -691,10 +718,12 @@ class APIClientGenerator(Generator):
                     param_types[i] = tu.instantiate_type_constructor(
                         param_t, self.api_graph.get_reg_types(), True,
                         rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
+            self.push_target_type(tp.substitute_type(param, type_var_map))
             expr = self.generate_expr_from_nodes(param_types, {},
                                                  func_ref=True,
                                                  depth=depth)
             self.type_eraser.reset_target_type()
+            self.pop_target_type()
             args.append(expr)
         return args
 
@@ -703,7 +732,7 @@ class APIClientGenerator(Generator):
         out_type = self.api_graph.get_concrete_output_type(api)
         out_type = tp.substitute_type(out_type, type_var_map)
         expr.mk_typed(ast.TypePair(
-            expected=self.type_eraser.expected_type,
+            expected=self.peek_expected_type(),
             actual=out_type))
 
     def _generate_expression_from_path(self, path: list,

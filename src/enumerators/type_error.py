@@ -175,9 +175,9 @@ class TypeErrorEnumerator(ErrorEnumerator):
             if not elem.is_typed():
                 continue
             exp_t, actual_t = elem.get_type_info()
-            if exp_t[0] is None:
+            if exp_t is None:
                 continue
-            t = exp_t[0]
+            t = exp_t
             if t in [
                     self.bt_factory.get_any_type(),
                     self.bt_factory.get_boolean_type(),
@@ -190,10 +190,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def get_programs_with_error(self, loc):
         exp_t, actual_t = loc.expr.get_type_info()
-        exp_t, type_vars = exp_t
-        if type_vars:
-            # TODO
-            return None
         types = self.api_graph.get_reg_types()
         try:
             excluded_types = get_type_filters(self.bt_factory, exp_t, types)
@@ -219,8 +215,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         return None
 
     def add_err_message(self, loc, new_node, *args):
-        exp_t = loc.expr.get_type_info()[0][0]
-        actual_t = args[0]
+        exp_t, actual_t = loc.expr.get_type_info()
         translator = self.program_gen.translator
         exp_t = translator.get_type_name(exp_t)
         actual_t = translator.get_type_name(actual_t)
