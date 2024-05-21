@@ -114,6 +114,11 @@ class TypeErrorEnumerator(ErrorEnumerator):
         for i, expr in enumerate(node.exprs):
             self.locations.append(Loc(expr, node, i))
 
+    def visit_binary_expr(self, node):
+        super().visit_binary_expr(node)
+        self.locations.append(Loc(node.lexpr, node, 0))
+        self.locations.append(Loc(node.lexpr, node, 1))
+
     def visit_logical_expr(self, node):
         super().visit_logical_expr(node)
         self.locations.append(Loc(node.lexpr, node, 0))
