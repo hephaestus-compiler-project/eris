@@ -1168,7 +1168,7 @@ class Operator(Node):
                 self.is_not == other.is_not)
 
 
-class BinaryOp(Expr):
+class BinaryExpr(Expr):
     ALL_OPERATORS = None
     VALID_OPERATORS = None
 
@@ -1200,14 +1200,14 @@ class BinaryOp(Expr):
             str(self.lexpr), str(self.operator), str(self.rexpr))
 
     def is_equal(self, other):
-        if isinstance(other, BinaryOp):
+        if isinstance(other, BinaryExpr):
             return (self.lexpr.is_equal(other.lexpr) and
                     self.rexpr.is_equal(other.rexpr) and
                     self.operator == other.operator)
         return False
 
 
-class LogicalExpr(BinaryOp):
+class LogicalExpr(BinaryExpr):
     ALL_OPERATORS = [
         Operator('&&'),
         Operator('||')
@@ -1232,7 +1232,7 @@ class LogicalExpr(BinaryOp):
     }
 
 
-class EqualityExpr(BinaryOp):
+class EqualityExpr(BinaryExpr):
     ALL_OPERATORS = [
         Operator('=='),
         Operator('==='),
@@ -1263,7 +1263,7 @@ class EqualityExpr(BinaryOp):
     }
 
 
-class ComparisonExpr(BinaryOp):
+class ComparisonExpr(BinaryExpr):
     ALL_OPERATORS = [
         Operator('>'),
         Operator('>='),
@@ -1298,7 +1298,7 @@ class ComparisonExpr(BinaryOp):
     }
 
 
-class ArithExpr(BinaryOp):
+class ArithExpr(BinaryExpr):
     ALL_OPERATORS = [
         Operator('+'),
         Operator('-'),
@@ -1333,7 +1333,7 @@ class ArithExpr(BinaryOp):
     }
 
 
-class Is(BinaryOp):
+class Is(BinaryExpr):
     def __init__(self, expr: Expr, etype: types.Type, is_not=False):
         operator = Operator('is', is_not=is_not)
         super().__init__(expr, etype, operator)
@@ -1347,7 +1347,7 @@ class Is(BinaryOp):
     def update_children(self, children):
         # We want to call the update_children of expr
         # pylint: disable=bad-super-call
-        super(BinaryOp, self).update_children(children)
+        super(BinaryExpr, self).update_children(children)
         self.lexpr = children[0]
 
 

@@ -972,7 +972,7 @@ class JavaTranslator(BaseTranslator):
         )
 
     @append_to
-    def visit_binary_op(self, node):
+    def visit_binary_expr(self, node):
         old_ident = self.ident
         self.ident = 0
         children = node.children()
@@ -990,16 +990,16 @@ class JavaTranslator(BaseTranslator):
         return res
 
     def visit_logical_expr(self, node):
-        self.visit_binary_op(node)
+        self.visit_binary_expr(node)
 
     def visit_equality_expr(self, node):
-        self.visit_binary_op(node)
+        self.visit_binary_expr(node)
 
     def visit_comparison_expr(self, node):
-        self.visit_binary_op(node)
+        self.visit_binary_expr(node)
 
     def visit_arith_expr(self, node):
-        self.visit_binary_op(node)
+        self.visit_binary_expr(node)
 
     @append_to
     def visit_conditional(self, node):

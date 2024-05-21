@@ -29,6 +29,7 @@ class ASTVisitor():
             ast.ArrayExpr: self.visit_array_expr,
             ast.BooleanConstant: self.visit_boolean_constant,
             ast.Variable: self.visit_variable,
+            ast.BinaryExpr: self.visit_binary_expr,
             ast.LogicalExpr: self.visit_logical_expr,
             ast.EqualityExpr: self.visit_equality_expr,
             ast.ComparisonExpr: self.visit_comparison_expr,
@@ -115,6 +116,9 @@ class ASTVisitor():
 
     def visit_variable(self, node):
         raise NotImplementedError('visit_variable() must be implemented')
+
+    def visit_binary_expr(self, node):
+        raise NotImplementedError("visit_binary_expr() must be implemented")
 
     def visit_logical_expr(self, node):
         raise NotImplementedError('visit_logical_expr() must be implemented')
@@ -221,6 +225,9 @@ class DefaultVisitor(ASTVisitor):
     def visit_variable(self, node):
         return self._visit_node(node)
 
+    def visit_binary_expr(self, node):
+        return self._visit_node(node)
+
     def visit_logical_expr(self, node):
         return self._visit_node(node)
 
@@ -296,29 +303,23 @@ class ASTExprUpdate(DefaultVisitor):
     def visit_array_expr(self, node):
         node.exprs[self.index] = self.new_node
 
-    def visit_logical_expr(self, node):
+    def visit_binary_expr(self, node):
         if self.index == 0:
             node.lexpr = self.new_node
         else:
             node.rexpr = self.new_node
+
+    def visit_logical_expr(self, node):
+        self.visit_binary_expr(node)
 
     def visit_equality_expr(self, node):
-        if self.index == 0:
-            node.lexpr = self.new_node
-        else:
-            node.rexpr = self.new_node
+        self.visit_binary_expr(node)
 
     def visit_comparison_expr(self, node):
-        if self.index == 0:
-            node.lexpr = self.new_node
-        else:
-            node.rexpr = self.new_node
+        self.visit_binary_expr(node)
 
     def visit_arith_expr(self, node):
-        if self.index == 0:
-            node.lexpr = self.new_node
-        else:
-            node.rexpr = self.new_node
+        self.visit_binary_expr(node)
 
     def visit_conditional(self, node):
         if self.index == 0:

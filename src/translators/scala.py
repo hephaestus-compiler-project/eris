@@ -439,7 +439,7 @@ class ScalaTranslator(BaseTranslator):
         self._children_res.append(" " * self.ident + node.name)
 
     @append_to
-    def visit_binary_op(self, node):
+    def visit_binary_expr(self, node):
         old_ident = self.ident
         self.ident = 0
         children = node.children()
@@ -466,7 +466,7 @@ class ScalaTranslator(BaseTranslator):
         self._children_res.append(res)
 
     def visit_logical_expr(self, node):
-        self.visit_binary_op(node)
+        self.visit_binary_expr(node)
 
     def visit_equality_expr(self, node):
         prev = self._cast_integers
@@ -480,14 +480,14 @@ class ScalaTranslator(BaseTranslator):
         # d == 2.toShort()
         # XXX
         # self._cast_integers = True
-        self.visit_binary_op(node)
+        self.visit_binary_expr(node)
         self._cast_integers = prev
 
     def visit_comparison_expr(self, node):
-        self.visit_binary_op(node)
+        self.visit_binary_expr(node)
 
     def visit_arith_expr(self, node):
-        self.visit_binary_op(node)
+        self.visit_binary_expr(node)
 
     @append_to
     def visit_conditional(self, node):
