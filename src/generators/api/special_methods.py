@@ -161,6 +161,38 @@ GROOVY_SPECIAL_METHODS = {
                     "is_special": True,
                 }
             },
+            {
+                "name": "[]",
+                "parameters": [
+                    "T[]",
+                    "int"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "[]",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "[]",
+                "parameters": [
+                    "java.util.List<T>",
+                    "int"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "[]",
+                    "is_special": True,
+                }
+            },
         ]
     }
 }

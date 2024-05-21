@@ -352,6 +352,8 @@ class APIDeclarationGenerator(APIClientGenerator):
                                                   ast.Operator("<=")),
             "?:": lambda args: ast.BinaryExpr(args[0].expr, args[1].expr,
                                               ast.Operator("?:")),
+            "[]": lambda args: ast.BinaryExpr(args[0].expr, args[1].expr,
+                                              ast.Operator("[]", wrap=True)),
             "_if_": lambda args: ast.Conditional(
                 args[0].expr, args[1].expr, args[2].expr,
                 inferred_type=(args[1].path[-1]

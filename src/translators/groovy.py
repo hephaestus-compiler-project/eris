@@ -772,12 +772,27 @@ class GroovyTranslator(BaseTranslator):
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        res = "{ident}({left} {operator} {right})".format(
-            ident=self.get_ident(old_ident=old_ident),
-            left=children_res[0],
-            operator=node.operator,
-            right=children_res[1]
-        )
+        if not node.operator.wrap:
+            res = "{ident}({left} {operator} {right})".format(
+                ident=self.get_ident(old_ident=old_ident),
+                left=children_res[0],
+                operator=node.operator,
+                right=children_res[1]
+            )
+        else:
+            paren1, paren2 = (
+                ("(", ")") if isinstance(node.lexpr, ast.BottomConstant)
+                else ("", "")
+            )
+            res = "{ident}{p1}{left}{p2}{operator1}{right}{operator2}".format(
+                ident=self.get_ident(old_ident=old_ident),
+                left=children_res[0],
+                p1=paren1,
+                p2=paren2,
+                operator1=node.operator.name[:-1],
+                operator2=node.operator.name[-1],
+                right=children_res[1]
+            )
         self.ident = old_ident
         return res
 

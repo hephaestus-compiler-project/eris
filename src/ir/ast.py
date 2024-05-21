@@ -1139,9 +1139,10 @@ class Conditional(Expr):
 
 
 class Operator(Node):
-    def __init__(self, name: str, is_not=False):
+    def __init__(self, name: str, is_not=False, wrap=False):
         self.name = name
         self.is_not = is_not
+        self.wrap = wrap
 
     def children(self):
         return []
@@ -1152,10 +1153,11 @@ class Operator(Node):
     def __eq__(self, other):
         return (self.__class__ == other.__class__ and
                 self.name == other.name and
-                self.is_not == other.is_not)
+                self.is_not == other.is_not and
+                self.wrap == other.wrap)
 
     def __hash__(self):
-        hash(str(self.__class__) + str(self.name) + str(self.is_not))
+        hash((str(self.__class__), self.name, self.is_not, self.wrap))
 
     def __str__(self):
         if self.is_not:
@@ -1165,7 +1167,8 @@ class Operator(Node):
     def is_equal(self, other):
         return (self.__class__ == other.__class__ and
                 self.name == other.name and
-                self.is_not == other.is_not)
+                self.is_not == other.is_not and
+                self.wrap == other.wrap)
 
 
 class BinaryExpr(Expr):
