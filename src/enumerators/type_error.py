@@ -76,6 +76,21 @@ def get_type_filters(bt_factory: BuiltinFactory, loc: Loc, t: tp.Type,
     return blacklisted_types
 
 
+def type_similarity(t: tp.Type, target: tp.Type,
+                    bt_factory: BuiltinFactory) -> float:
+    """
+    Computes the distance of type t from the given target type. The distance
+    is based on common ancestors. This means that the more common ancestors
+    the type t has with target, the greater the similarity score is.
+
+    The type similarity metric is based on the Jaccard index.
+    """
+    a = {a.name for a in t.get_supertypes() if a != bt_factory.get_any_type()}
+    b = {a.name for a in target.get_supertypes()
+         if a != bt_factory.get_any_type()}
+    return len(a & b) / len(a | b)
+
+
 class TypeErrorEnumerator(ErrorEnumerator):
 
     def __init__(self, program: ast.Program, program_gen: Generator,
@@ -207,7 +222,13 @@ class TypeErrorEnumerator(ErrorEnumerator):
         try:
             excluded_types = get_type_filters(self.bt_factory, loc, exp_t,
                                               types)
-            for t in {t for t in types if t not in excluded_types}:
+            candidate_types = {t for t in types if t not in excluded_types}
+            candidate_types = sorted(
+                list(candidate_types),
+                key=lambda x: type_similarity(x, exp_t, self.bt_factory),
+                reverse=True
+            )
+            for t in candidate_types:
                 incompatible_t = self.get_incompatible_type(t, exp_t)
                 self.program_gen.block_variables = True
                 expr = self.program_gen._generate_expr_from_node(
