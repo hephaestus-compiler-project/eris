@@ -71,7 +71,7 @@ def get_type_filters(bt_factory: BuiltinFactory, loc: Loc, t: tp.Type,
         # If the parent is a comparison expression, extend the list of
         # the blacklisted types
         blacklisted_types = (
-            excluded_types | bytes_ | shorts | ints | longs |
+            blacklisted_types | bytes_ | shorts | ints | longs |
             floats | doubles | chars | booleans)
     return blacklisted_types
 
