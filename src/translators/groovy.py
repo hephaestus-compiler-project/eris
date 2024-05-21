@@ -780,8 +780,11 @@ class GroovyTranslator(BaseTranslator):
                 right=children_res[1]
             )
         else:
+            is_empty_array = (isinstance(node.lexpr, ast.ArrayExpr) and
+                              not node.lexpr.exprs)
             paren1, paren2 = (
-                ("(", ")") if isinstance(node.lexpr, ast.BottomConstant)
+                ("(", ")")
+                if isinstance(node.lexpr, ast.BottomConstant) or is_empty_array
                 else ("", "")
             )
             res = "{ident}{p1}{left}{p2}{operator1}{right}{operator2}".format(
