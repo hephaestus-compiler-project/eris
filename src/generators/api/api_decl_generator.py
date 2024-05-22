@@ -1,4 +1,5 @@
 from collections import namedtuple
+from copy import deepcopy
 import json
 import functools
 import re
@@ -159,6 +160,17 @@ class APIDeclarationGenerator(APIClientGenerator):
                         if st != self.bt_factory.get_any_type()})
         return included_libs
 
+    def _add_missing_api_specs(self, forked_spec: dict):
+        for k, v in self.api_docs.items():
+            if k in forked_spec:
+                continue
+            copied_v = deepcopy(v)
+            # For performance reasons, we don't include the specification
+            # of the included methods.
+            copied_v["methods"] = []
+            copied_v["fields"] = []
+            forked_spec[k] = copied_v
+
     def fork_api_spec(self, ns: str) -> dict:
         """
         Given a namespace (e.g., a class name), we find all the namespaces
@@ -195,6 +207,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         for elem in included_libs:
             if elem not in keys:
                 forked_spec[elem] = self.api_docs[elem]
+        self._add_missing_api_specs(forked_spec)
         return forked_spec
 
     def add_local_variables(self, m: ag.Method):
