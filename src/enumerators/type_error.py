@@ -198,9 +198,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def filter_program_locations(self, locations):
         filtered_locs = []
-        for loc in locations:
-            if isinstance(loc.parent, ast.BinaryExpr) and loc.parent.operator.name == "[]" and loc.index == 1 and loc.expr.get_type_info()[0].is_parameterized():
-                import pdb; pdb.set_trace()
         for elem, parent, index in locations:
             if not elem.is_typed():
                 continue
