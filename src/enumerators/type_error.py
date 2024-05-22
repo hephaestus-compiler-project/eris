@@ -93,11 +93,14 @@ def type_similarity(t: tp.Type, target: tp.Type,
 
 
 class TypeErrorEnumerator(ErrorEnumerator):
+    name = "TypeErrorEnumerator"
 
     def __init__(self, program: ast.Program, program_gen: ProgramGenerator,
                  bt_factory: BuiltinFactory):
         self.locations = []
         self.api_graph = program_gen.api_graph
+        self.error_loc = None
+        self.new_node = None
         super().__init__(program, program_gen, bt_factory)
 
     def visit_block(self, node):
@@ -215,8 +218,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 continue
             if t.name == "String":
                 continue
-            if not t.is_parameterized():
-                continue
             filtered_locs.append(Loc(elem, parent, index))
         return filtered_locs
 
@@ -243,29 +244,51 @@ class TypeErrorEnumerator(ErrorEnumerator):
                     self.program_gen.block_variables = False
                     upd = ASTExprUpdate(loc.index, expr.expr)
                     upd.visit(loc.parent)
-                    self.add_err_message(loc, expr.expr, incompatible_t)
+                    self.add_err_message(loc, expr.expr)
                     yield self.program
         except Exception as e:
             self.program_gen.block_variables = False
             raise e
         return None
 
-    def add_err_message(self, loc, new_node, *args):
-        """
-        Adds an error message explaining the type error that has been
-        injected in the program.
-        """
+    @property
+    def error_explanation(self):
+        if self.error_loc is None:
+            return
+        loc = self.error_loc
+        new_node = self.new_node
         exp_t, _ = loc.expr.get_type_info()
-        actual_t = args[0]
+        actual_t = new_node.get_type_info()[1]
+
+        # Get the string representation of types
         translator = self.program_gen.translator
         exp_t = translator.get_type_name(exp_t)
         actual_t = translator.get_type_name(actual_t)
+
+        # Get the string representation of expressions
         translator.context = self.program.context
         translator.visit(new_node)
         expr = translator._children_res[-1]
         translator._reset_state()
-        msg = f"Expected type {exp_t}, but type {actual_t} given: {expr}"
-        self.error_injected = msg
+        translator.context = self.program.context
+        translator.visit(loc.expr)
+        previous_expr = translator._children_res[-1]
+        translator._reset_state()
+
+        msg = (f"Added type error using {self.name}:\n"
+               f" - Expected type: {exp_t}\n"
+               f" - Actual type: {actual_t}\n"
+               f" - Previous expression {previous_expr}\n"
+               f" - New expression {expr}\n")
+        return msg
+
+    def add_err_message(self, loc, new_node):
+        """
+        Adds an error message explaining the type error that has been
+        injected in the program.
+        """
+        self.error_loc = loc
+        self.new_node = new_node
 
     def get_incompatible_type(self, candidate_t: tp.Type,
                               exp_t: tp.Type) -> bool:

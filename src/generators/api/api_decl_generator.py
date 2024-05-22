@@ -13,6 +13,7 @@ from src.compilers import compile_program
 from src.generators.api import builder, api_graph as ag, matcher as match
 from src.generators.api.api_generator import APIClientGenerator
 from src.generators.api.special_methods import GROOVY_SPECIAL_METHODS
+from src.modules.logging import log
 
 
 def get_base_api_name(fqn: str, spec: dict):
@@ -680,9 +681,9 @@ class APIDeclarationGenerator(APIClientGenerator):
         return ast.Program(self.context, self.language, lib=self.api_spec)
 
     def compute_programs(self) -> ast.Program:
-        for api_namespace in self.api_namespaces:
+        for i, api_namespace in enumerate(self.api_namespaces):
             forked_spec = self.fork_api_spec(api_namespace)
-            forked_spec.update(GROOVY_SPECIAL_METHODS)
+            #forked_spec.update(GROOVY_SPECIAL_METHODS)
             # This is the list of namespaces that are explicitly defined in
             # the program, i.e., they reside in the pakcage specified by
             # `self.package_name`.
@@ -696,6 +697,8 @@ class APIDeclarationGenerator(APIClientGenerator):
             self.api_graph = api_builder.build(forked_spec)
             program = self.create_program_from_spec(forked_spec,
                                                     defined_namespaces)
+            msg = f"Generated skeleton program {i + 1} using namespace {api_namespace}"
+            log(self.logger, msg)
             if not self.ErrorEnumerator:
                 yield program  # This is a well-typed program
             else:
@@ -707,13 +710,24 @@ class APIDeclarationGenerator(APIClientGenerator):
                     self.package_name,
                     library_path=self.options.get("library-path"))
                 if not succeeded:
+                    log(self.logger,
+                        f"Skeleton program {i + 1} unexpectedly failed")
                     continue
                 error_enum = self.ErrorEnumerator(program, self,
                                                   self.bt_factory)
-                for p in error_enum.enumerate_programs():
+                flag = False
+                for j, p in enumerate(error_enum.enumerate_programs()):
                     if p is not None:
-                        self.error_injected = error_enum.error_injected
+                        flag = True
+                        self.error_injected = error_enum.error_explanation
+                        msg = (f"Enumerating error program {j + 1}"
+                               f" for skeleton {i + 1}\n")
+                        log(self.logger, msg)
+                        log(self.logger, self.error_injected)
                         yield p
+                if not flag:
+                    msg = f"No error added to skeleton {i + 1}"
+                    log(self.logger, msg)
 
     def has_next(self) -> bool:
         return self._has_next
