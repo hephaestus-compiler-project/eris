@@ -1,10 +1,10 @@
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Generator
 
 from src.enumerators.error import ErrorEnumerator
 from src.ir import ast, type_utils as tu, types as tp
 from src.ir.builtins import BuiltinFactory
 from src.ir.visitors import ASTExprUpdate
-from src.generators import Generator
+from src.generators import Generator as ProgramGenerator
 
 
 class Loc(NamedTuple):
@@ -93,7 +93,7 @@ def type_similarity(t: tp.Type, target: tp.Type,
 
 class TypeErrorEnumerator(ErrorEnumerator):
 
-    def __init__(self, program: ast.Program, program_gen: Generator,
+    def __init__(self, program: ast.Program, program_gen: ProgramGenerator,
                  bt_factory: BuiltinFactory):
         self.locations = []
         self.api_graph = program_gen.api_graph
@@ -132,7 +132,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
     def visit_binary_expr(self, node):
         super().visit_binary_expr(node)
         self.locations.append(Loc(node.lexpr, node, 0))
-        self.locations.append(Loc(node.lexpr, node, 1))
+        self.locations.append(Loc(node.rexpr, node, 1))
 
     def visit_logical_expr(self, node):
         super().visit_logical_expr(node)
@@ -198,6 +198,9 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def filter_program_locations(self, locations):
         filtered_locs = []
+        for loc in locations:
+            if isinstance(loc.parent, ast.BinaryExpr) and loc.parent.operator.name == "[]" and loc.index == 1 and loc.expr.get_type_info()[0].is_parameterized():
+                import pdb; pdb.set_trace()
         for elem, parent, index in locations:
             if not elem.is_typed():
                 continue
@@ -209,9 +212,12 @@ class TypeErrorEnumerator(ErrorEnumerator):
                     self.bt_factory.get_any_type(),
                     self.bt_factory.get_boolean_type(),
                     self.bt_factory.get_boolean_type(primitive=True),
+                    self.bt_factory.get_void_type()
             ]:
                 continue
             if t.name == "String":
+                continue
+            if not t.is_parameterized():
                 continue
             filtered_locs.append(Loc(elem, parent, index))
         return filtered_locs
@@ -229,15 +235,18 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 reverse=True
             )
             for t in candidate_types:
-                incompatible_t = self.get_incompatible_type(t, exp_t)
-                self.program_gen.block_variables = True
-                expr = self.program_gen._generate_expr_from_node(
-                    incompatible_t, depth=1)
-                self.program_gen.block_variables = False
-                upd = ASTExprUpdate(loc.index, expr.expr)
-                upd.visit(loc.parent)
-                self.add_err_message(loc, expr.expr, incompatible_t)
-                yield self.program
+                incompatible_types = self.get_incompatible_type(t, exp_t)
+                if incompatible_types is None:
+                    continue
+                for incompatible_t in incompatible_types:
+                    self.program_gen.block_variables = True
+                    expr = self.program_gen._generate_expr_from_node(
+                        incompatible_t, depth=1)
+                    self.program_gen.block_variables = False
+                    upd = ASTExprUpdate(loc.index, expr.expr)
+                    upd.visit(loc.parent)
+                    self.add_err_message(loc, expr.expr, incompatible_t)
+                    yield self.program
         except Exception as e:
             self.program_gen.block_variables = False
             raise e
@@ -266,13 +275,71 @@ class TypeErrorEnumerator(ErrorEnumerator):
         Given a candidate type t1 and an expected type t2, this method checks
         whether t1 is incompatible to t2.
         """
-        if candidate_t.is_subtype(exp_t):
+        if not candidate_t.is_type_constructor():
+            if not candidate_t.is_subtype(exp_t):
+                yield candidate_t
+            return
+
+        t = candidate_t.new([tp.WildCardType()
+                             for _ in candidate_t.type_parameters])
+        if t.is_subtype(exp_t) and t.name != exp_t.name:
             return None
-        if candidate_t.is_type_constructor():
-            types = self.api_graph.get_reg_types()
+
+        yield from self.gen_incompatible_type_constructor_instantiations(
+            exp_t, candidate_t
+        )
+
+    def gen_incompatible_type_constructor_instantiations(
+        self,
+        exp_t: tp.Type,
+        type_con: tp.TypeConstructor,
+    ) -> Generator[tp.ParameterizedType, None, None]:
+        """
+        Given an expected type and a type constructor T, this function yields
+        various instantiations of T so that the resulting parameterized type
+        is not compatible with the given expected type.
+        """
+        len_ = len(type_con.type_parameters)
+        types = self.api_graph.get_reg_types()
+        if len_ > 1:
+            # TODO: Support enumeration of type constructors with more than one
+            # type parameters.
             candidate_t, _ = tu.instantiate_type_constructor(
-                candidate_t, types, only_regular=True,
+                type_con, types, only_regular=True,
                 rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
-            if candidate_t is None:
-                return None
-        return candidate_t
+            yield candidate_t
+            return
+        if not exp_t.is_parameterized():
+            supertypes = [t for t in exp_t.get_supertypes()
+                          if t.name == candidate_t.name]
+            if not supertypes:
+                candidate_t, _ = tu.instantiate_type_constructor(
+                    type_con, types, only_regular=True,
+                    rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
+                yield candidate_t
+                return
+        if exp_t.has_wildcards():
+            # TODO
+            return
+        type_arg = exp_t.type_args[0]
+        if type_con != self.bt_factory.get_array_type():
+            # Wildcards
+            yield type_con.new([tp.WildCardType()])
+            yield type_con.new([tp.WildCardType(bound=type_arg,
+                                                variance=tp.Covariant)])
+            yield type_con.new([tp.WildCardType(bound=type_arg,
+                                                variance=tp.Contravariant)])
+
+        # Nested
+        yield type_con.new([exp_t])
+        if type_arg.is_parameterized():
+
+            yield type_con.new([type_arg.type_args[0]])
+        candidate_types = sorted(
+            [t for t in types if not t.is_subtype(type_arg)],  # FIXME,
+            key=lambda x: type_similarity(x, type_arg, self.bt_factory),
+            reverse=True
+        )
+        len_ = min(5, len(candidate_types))  # TODO add option/magic number
+        for t in candidate_types[:len_]:
+            yield type_con.new([t])
