@@ -1,3 +1,4 @@
+import itertools
 from typing import NamedTuple, List, Generator
 
 from src.enumerators.error import ErrorEnumerator
@@ -286,6 +287,34 @@ class TypeErrorEnumerator(ErrorEnumerator):
             exp_t, candidate_t
         )
 
+    def get_type_parameter_instantiations(self, type_arg: tp.Type,
+                                          exp_t: tp.Type,
+                                          type_con: tp.TypeConstructor,
+                                          types: List[tp.Type]):
+        instantiations = []
+        if type_con != self.bt_factory.get_array_type():
+            # Wildcards
+            instantiations.extend([
+                tp.WildCardType(),
+                tp.WildCardType(bound=type_arg, variance=tp.Covariant),
+                tp.WildCardType(bound=type_arg, variance=tp.Contravariant),
+            ])
+
+        # Nested
+        instantiations.append(exp_t)
+        if type_arg.is_parameterized():
+            instantiations.append(type_arg.type_args[0])
+
+        candidate_types = sorted(
+            [t for t in types if not t.is_subtype(type_arg)],  # FIXME consider variance and upper bounds,
+            key=lambda x: type_similarity(x, type_arg, self.bt_factory),
+            reverse=True
+        )
+        len_ = min(5, len(candidate_types))  # TODO add option/magic number
+        for t in candidate_types[:len_]:
+            instantiations.append(t)
+        return instantiations
+
     def gen_incompatible_type_constructor_instantiations(
         self,
         exp_t: tp.Type,
@@ -296,47 +325,23 @@ class TypeErrorEnumerator(ErrorEnumerator):
         various instantiations of T so that the resulting parameterized type
         is not compatible with the given expected type.
         """
-        len_ = len(type_con.type_parameters)
         types = self.api_graph.get_reg_types()
-        if len_ > 1:
-            # TODO: Support enumeration of type constructors with more than one
-            # type parameters.
-            candidate_t, _ = tu.instantiate_type_constructor(
-                type_con, types, only_regular=True,
-                rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
-            yield candidate_t
-            return
         if not exp_t.is_parameterized():
             supertypes = [t for t in exp_t.get_supertypes()
-                          if t.name == candidate_t.name]
+                          if t.name == type_con.name]
             if not supertypes:
                 candidate_t, _ = tu.instantiate_type_constructor(
-                    type_con, types, only_regular=True,
+                    type_con, types,
+                    only_regular=True,
                     rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
                 yield candidate_t
                 return
         if exp_t.has_wildcards():
             # TODO
             return
-        type_arg = exp_t.type_args[0]
-        if type_con != self.bt_factory.get_array_type():
-            # Wildcards
-            yield type_con.new([tp.WildCardType()])
-            yield type_con.new([tp.WildCardType(bound=type_arg,
-                                                variance=tp.Covariant)])
-            yield type_con.new([tp.WildCardType(bound=type_arg,
-                                                variance=tp.Contravariant)])
-
-        # Nested
-        yield type_con.new([exp_t])
-        if type_arg.is_parameterized():
-
-            yield type_con.new([type_arg.type_args[0]])
-        candidate_types = sorted(
-            [t for t in types if not t.is_subtype(type_arg)],  # FIXME,
-            key=lambda x: type_similarity(x, type_arg, self.bt_factory),
-            reverse=True
-        )
-        len_ = min(5, len(candidate_types))  # TODO add option/magic number
-        for t in candidate_types[:len_]:
-            yield type_con.new([t])
+        instantiations = []
+        for type_arg in exp_t.type_args:
+            instantiations.append(self.get_type_parameter_instantiations(
+                type_arg, exp_t, type_con, types))
+        for comb in itertools.product(*instantiations):
+            yield type_con.new(comb)
