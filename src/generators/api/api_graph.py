@@ -175,6 +175,7 @@ class APIGraph():
                      getattr(t, "primive", False))
             )
         ]
+        self.types.append(self.bt_factory.get_array_type())
         self.type_constructors = [t for t in self.types
                                   if t.is_type_constructor()]
 
