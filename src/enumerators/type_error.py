@@ -1,6 +1,8 @@
 import itertools
 from typing import NamedTuple, List, Generator
 
+from src import utils
+from src.enumerators import type_abstractions as ta
 from src.enumerators.error import ErrorEnumerator
 from src.ir import ast, type_utils as tu, types as tp
 from src.ir.builtins import BuiltinFactory
@@ -298,12 +300,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def get_programs_with_error(self, loc):
         exp_t, actual_t = loc.expr.get_type_info()
-        types = self.api_graph.get_reg_types()
         try:
-            excluded_types = self.get_type_filters(loc, exp_t, types)
-            excluded_types = {t.name for t in excluded_types}
-            candidate_types = {t for t in types
-                               if t.name not in excluded_types}
+            candidate_types = self.get_representative_types(loc, exp_t)
             candidate_types = sorted(
                 list(candidate_types),
                 key=lambda x: type_similarity(x, exp_t, self.bt_factory),
@@ -313,6 +311,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 incompatible_types = self.get_incompatible_type(t, exp_t)
                 if incompatible_types is None:
                     continue
+                incompatible_types = list(incompatible_types)
                 for incompatible_t in incompatible_types:
                     self.program_gen.block_variables = True
                     expr = self.program_gen._generate_expr_from_node(
@@ -326,6 +325,24 @@ class TypeErrorEnumerator(ErrorEnumerator):
             self.program_gen.block_variables = False
             raise e
         return None
+
+    def get_representative_types(self, loc: Loc, exp_t: tp.Type):
+        types = self.api_graph.get_reg_types()
+        # Abstract every type included in the set.
+        types_map = {t: ta.to_type_abstraction(t, self.bt_factory)
+                     for t in types}
+        abstractions = set(types_map.values())
+        # Group types based on their abstraction
+        type_classes = [[k for k, v in types_map.items()
+                        if v == x] for x in abstractions]
+        excluded_types = self.get_type_filters(loc, exp_t, types)
+        candidate_types = []
+        for type_class in type_classes:
+            type_class = [t for t in type_class
+                          if t not in excluded_types]
+            if type_class:
+                candidate_types.append(utils.random.choice(type_class))
+        return candidate_types
 
     @property
     def error_explanation(self):
