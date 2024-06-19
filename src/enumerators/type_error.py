@@ -36,6 +36,8 @@ def type_similarity(t: tp.Type, target: tp.Type,
 class TypeErrorEnumerator(ErrorEnumerator):
     name = "TypeErrorEnumerator"
 
+    NUMBER_OF_TYPE_PARAMETER_INSTANTIATIONS = 5
+
     def __init__(self, program: ast.Program, program_gen: ProgramGenerator,
                  bt_factory: BuiltinFactory):
         self.locations = []
@@ -426,7 +428,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
             key=lambda x: type_similarity(x, type_arg, self.bt_factory),
             reverse=True
         )
-        len_ = min(5, len(candidate_types))  # TODO add option/magic number
+        len_ = min(self.NUMBER_OF_TYPE_PARAMETER_INSTANTIATIONS,
+                   len(candidate_types))
         for t in candidate_types[:len_]:
             instantiations.append(t)
         return instantiations
