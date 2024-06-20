@@ -8,6 +8,7 @@ from src.ir import ast, type_utils as tu, types as tp
 from src.ir.builtins import BuiltinFactory
 from src.ir.visitors import ASTExprUpdate
 from src.generators import Generator as ProgramGenerator
+from src.generators.api import nodes
 
 
 class Loc(NamedTuple):
@@ -309,8 +310,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 key=lambda x: type_similarity(x, exp_t, self.bt_factory),
                 reverse=True
             )
-            for t in candidate_types:
-                incompatible_types = self.get_incompatible_type(t, exp_t)
+            for t in self.api_graph.get_reg_types():
+                incompatible_types = self.get_incompatible_type(t, exp_t, loc)
                 if incompatible_types is None:
                     continue
                 incompatible_types = list(incompatible_types)
@@ -385,14 +386,56 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self.error_loc = loc
         self.new_node = new_node
 
+    def has_applicable_method(self, candidate_t: tp.Type,
+                              func_call: ast.FunctionCall,
+                              index: int) -> bool:
+        """
+        This method checks whether the given candidate type can be given
+        as an argument of another overloaded method. If this is the case,
+        it will result in a well-typed program, as another (valid) method
+        will be resolved by the compiler.
+        """
+        # We do this check only when the parent expression is a function call.
+        if not isinstance(func_call, ast.FunctionCall):
+            return False
+
+        # ... that takes at least one parameter, and the current index does
+        # not correspond to the receiver of the method.
+        if not func_call.args or (func_call.receiver and index == 0):
+            return False
+
+        func_name, cls = func_call.func, None
+        segs = func_name.rsplit(".", 1)
+        if len(segs) == 2:
+            cls, func_name = tuple(segs)
+        # Create a dump method with the same name. Find its overloaded methods.
+        dump_method = nodes.Method(func_name, cls, [], [], {})
+        overloaded_methods = self.api_graph.get_overloaded_methods(
+            func_call.receiver.get_type_info()[1], dump_method)
+        if len(overloaded_methods) < 2:
+            return False
+        param_index = index if func_call.receiver is None else index - 1
+        # There is an applicable method for the given candidate type when
+        # the following conditions are met:
+        #   * The given candidate type matches with the expected formal
+        #     parameter type of the method in the same index.
+        #   * The overloaded method has the same number of parameters as the
+        #     number of the given arguments in the funtion.
+        return any(m for m, _ in overloaded_methods
+                   if len(m.parameters) > param_index
+                   and candidate_t.is_subtype(m.parameters[param_index].t)
+                   and len(m.paremeters) == len(func_call.args))
+
     def get_incompatible_type(self, candidate_t: tp.Type,
-                              exp_t: tp.Type) -> bool:
+                              exp_t: tp.Type, loc: Loc) -> bool:
         """
         Given a candidate type t1 and an expected type t2, this method checks
         whether t1 is incompatible to t2.
         """
         if not candidate_t.is_type_constructor():
-            if not candidate_t.is_subtype(exp_t):
+            if (not candidate_t.is_subtype(exp_t) and
+                    not self.has_applicable_method(candidate_t, loc.parent,
+                                                   loc.index)):
                 yield candidate_t
             return
 
