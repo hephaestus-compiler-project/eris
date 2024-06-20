@@ -683,7 +683,7 @@ class APIDeclarationGenerator(APIClientGenerator):
     def compute_programs(self) -> ast.Program:
         for i, api_namespace in enumerate(self.api_namespaces):
             forked_spec = self.fork_api_spec(api_namespace)
-            #forked_spec.update(GROOVY_SPECIAL_METHODS)
+            forked_spec.update(GROOVY_SPECIAL_METHODS)
             # This is the list of namespaces that are explicitly defined in
             # the program, i.e., they reside in the pakcage specified by
             # `self.package_name`.
