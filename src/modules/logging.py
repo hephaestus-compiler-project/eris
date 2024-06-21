@@ -1,4 +1,5 @@
 import os
+import traceback
 
 from src.utils import mkdir
 
@@ -38,6 +39,27 @@ class Logger():
             with open(self.filename, 'a') as out:
                 out.write(str(msg))
                 out.write('\n')
+
+
+def log_error(logger, exc):
+    if logger is None:
+        return
+    err = str(traceback.format_exc())
+    log(logger, err)
+
+
+def log_onerror(func):
+    def inner(*args, **kwargs):
+        try:
+            res = func(*args, **kwargs)
+            return res
+        except Exception as e:
+            self = args[0]
+            if self.logger is None:
+                return None
+            log_error(self.logger, e)
+
+    return inner
 
 
 def log(logger: Logger, msg: str):

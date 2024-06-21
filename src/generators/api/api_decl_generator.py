@@ -13,7 +13,7 @@ from src.compilers import compile_program
 from src.generators.api import builder, api_graph as ag, matcher as match
 from src.generators.api.api_generator import APIClientGenerator
 from src.generators.api.special_methods import GROOVY_SPECIAL_METHODS
-from src.modules.logging import log
+from src.modules.logging import log, log_onerror, log_error
 
 
 def get_base_api_name(fqn: str, spec: dict):
@@ -680,54 +680,83 @@ class APIDeclarationGenerator(APIClientGenerator):
             self.api_spec.update(self.api_docs)
         return ast.Program(self.context, self.language, lib=self.api_spec)
 
+    @log_onerror
+    def generate_well_typed_program(self, api_namespace: str,
+                                    program_id: int) -> ast.Program:
+        """
+        Generates a well-typed program from the given API namespace.
+        """
+        forked_spec = self.fork_api_spec(api_namespace)
+        forked_spec.update(GROOVY_SPECIAL_METHODS)
+        # This is the list of namespaces that are explicitly defined in
+        # the program, i.e., they reside in the pakcage specified by
+        # `self.package_name`.
+        defined_namespaces = [
+            k for k in forked_spec.keys()
+            if k.startswith(self.package_name)
+        ]
+        api_builder = self.API_GRAPH_BUILDERS[self.language](
+            self.language, **self.options)
+        api_builder.parsed_types = self.api_builder.parsed_types
+        self.api_graph = api_builder.build(forked_spec)
+        program = self.create_program_from_spec(forked_spec,
+                                                defined_namespaces)
+        msg = (f"Generated skeleton program {program_id} using "
+               "namespace {api_namespace}")
+        log(self.logger, msg)
+        return program
+
+    def generate_ill_typed_programs(self, program: ast.Program,
+                                    program_id: int):
+        """
+        Generates all ill-typed programs that stem from the given well-typed
+        one.
+        """
+        # We first attempt to compile the program. The program is expected
+        # to compile. If this is not the case, then there's no need
+        # to proceed with error enumeration.
+        succeeded, _ = compile_program(
+            self.bt_factory.get_language(), program,
+            self.package_name,
+            library_path=self.options.get("library-path"))
+        if not succeeded:
+            log(self.logger,
+                f"Skeleton program {program_id} unexpectedly does not compile")
+            return None
+        error_enum = self.ErrorEnumerator(program, self,
+                                          self.bt_factory)
+        flag = False
+        try:
+            for j, p in enumerate(error_enum.enumerate_programs()):
+                if p is not None:
+                    flag = True
+                    self.error_injected = error_enum.error_explanation
+                    msg = (f"Enumerating error program {j + 1}"
+                           f" for skeleton {program_id}\n")
+                    log(self.logger, msg)
+                    log(self.logger, self.error_injected)
+                    yield p
+            if not flag:
+                msg = f"No error added to skeleton {program_id}"
+                log(self.logger, msg)
+        except Exception as exc:
+            log_error(self.logger, exc)
+
     def compute_programs(self) -> ast.Program:
         for i, api_namespace in enumerate(self.api_namespaces):
-            forked_spec = self.fork_api_spec(api_namespace)
-            forked_spec.update(GROOVY_SPECIAL_METHODS)
-            # This is the list of namespaces that are explicitly defined in
-            # the program, i.e., they reside in the pakcage specified by
-            # `self.package_name`.
-            defined_namespaces = [
-                k for k in forked_spec.keys()
-                if k.startswith(self.package_name)
-            ]
-            api_builder = self.API_GRAPH_BUILDERS[self.language](
-                self.language, **self.options)
-            api_builder.parsed_types = self.api_builder.parsed_types
-            self.api_graph = api_builder.build(forked_spec)
-            program = self.create_program_from_spec(forked_spec,
-                                                    defined_namespaces)
-            msg = f"Generated skeleton program {i + 1} using namespace {api_namespace}"
-            log(self.logger, msg)
+            program_id = i + 1
+            program = self.generate_well_typed_program(api_namespace,
+                                                       program_id)
+
+            if program is None:
+                continue
             if not self.ErrorEnumerator:
                 yield program  # This is a well-typed program
             else:
-                # We attempt to compile the program. The program is expected
-                # to compile. If this is not the case, then there's no need
-                # to proceed with error enumeration.
-                succeeded, _ = compile_program(
-                    self.bt_factory.get_language(), program,
-                    self.package_name,
-                    library_path=self.options.get("library-path"))
-                if not succeeded:
-                    log(self.logger,
-                        f"Skeleton program {i + 1} unexpectedly failed")
-                    continue
-                error_enum = self.ErrorEnumerator(program, self,
-                                                  self.bt_factory)
-                flag = False
-                for j, p in enumerate(error_enum.enumerate_programs()):
-                    if p is not None:
-                        flag = True
-                        self.error_injected = error_enum.error_explanation
-                        msg = (f"Enumerating error program {j + 1}"
-                               f" for skeleton {i + 1}\n")
-                        log(self.logger, msg)
-                        log(self.logger, self.error_injected)
-                        yield p
-                if not flag:
-                    msg = f"No error added to skeleton {i + 1}"
-                    log(self.logger, msg)
+                # Enumerate all ill-typed programs that stem from the given
+                # skeleton program.
+                yield from self.generate_ill_typed_programs(program,
+                                                            program_id)
 
     def has_next(self) -> bool:
         return self._has_next
