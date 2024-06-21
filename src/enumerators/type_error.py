@@ -410,8 +410,11 @@ class TypeErrorEnumerator(ErrorEnumerator):
             cls, func_name = tuple(segs)
         # Create a dump method with the same name. Find its overloaded methods.
         dump_method = nodes.Method(func_name, cls, [], [], {})
+        receiver_type = None
+        if func_call.receiver:
+            receiver_type = func_call.receiver.get_type_info()[1]
         overloaded_methods = self.api_graph.get_overloaded_methods(
-            func_call.receiver.get_type_info()[1], dump_method)
+            receiver_type, dump_method)
         if len(overloaded_methods) < 2:
             return False
         param_index = index if func_call.receiver is None else index - 1
