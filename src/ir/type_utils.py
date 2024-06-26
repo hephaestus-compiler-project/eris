@@ -1115,7 +1115,7 @@ def get_type_hint(expr, context: ctx.Context, namespace: Tuple[str],
         if isinstance(expr, ast.StringConstant):
             return _return_type_hint(factory.get_string_type())
 
-        if isinstance(expr, ast.BinaryOp):
+        if isinstance(expr, ast.BinaryExpr):
             return _return_type_hint(factory.get_boolean_type())
 
         if isinstance(expr, ast.New):
