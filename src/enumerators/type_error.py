@@ -28,6 +28,8 @@ def type_similarity(t: tp.Type, target: tp.Type,
 
     The type similarity metric is based on the Jaccard index.
     """
+    if target is None:
+        return 0
     a = {a.name for a in t.get_supertypes() if a != bt_factory.get_any_type()}
     b = {a.name for a in target.get_supertypes()
          if a != bt_factory.get_any_type()}
@@ -211,6 +213,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def get_type_filters(self, loc: Loc, t: tp.Type,
                          types: List[tp.Type]) -> List[tp.Type]:
+        if t is None:
+            return set()
         builtins = self.get_builtin_types()
 
         bytes_ = {self.bt_factory.get_byte_type(primitive=True),
@@ -282,8 +286,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
             if not elem.is_typed():
                 continue
             exp_t, actual_t = elem.get_type_info()
-            if exp_t is None:
-                continue
             t = exp_t
             if t in [
                     self.bt_factory.get_any_type(),
@@ -292,13 +294,13 @@ class TypeErrorEnumerator(ErrorEnumerator):
                     self.bt_factory.get_void_type()
             ]:
                 continue
-            if t.name == "String":
+            if (t is not None
+                    and t.name == self.bt_factory.get_string_type().name):
                 continue
             cached_elem = (type(parent), exp_t, depth, index)
             if cached_elem not in cache:
                 filtered_locs.append(Loc(elem, parent, index, depth))
                 cache.add(cached_elem)
-
         return filtered_locs
 
     def get_programs_with_error(self, loc):
@@ -310,7 +312,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 key=lambda x: type_similarity(x, exp_t, self.bt_factory),
                 reverse=True
             )
-            for t in self.api_graph.get_reg_types():
+            for t in candidate_types:
                 incompatible_types = self.get_incompatible_type(t, exp_t, loc)
                 if incompatible_types is None:
                     continue
@@ -429,12 +431,57 @@ class TypeErrorEnumerator(ErrorEnumerator):
                    and candidate_t.is_subtype(m.parameters[param_index].t)
                    and len(m.paremeters) == len(func_call.args))
 
+    def get_incompatible_type_of_receiver(self, candidate_t: tp.Type,
+                                          loc: Loc):
+        assert (isinstance(loc.parent, ast.FunctionReference)
+                and loc.parent.receiver is not None)
+        func_name, cls = loc.parent.func, None
+        segs = func_name.rsplit(".", 1)
+        if len(segs) == 2:
+            cls, func_name = tuple(segs)
+        # Create a dummy method with the same name. Find its overloaded methods.
+        dummy_method = nodes.Method(func_name, cls, [], [], {})
+        receiver_type = loc.parent.receiver.get_type_info()[1]
+        if not receiver_type.is_parameterized():
+            return None
+        overloaded_methods = self.api_graph.get_overloaded_methods(
+            receiver_type, dummy_method)
+        if len(overloaded_methods) > 1:
+            # TODO handle overloaded methods
+            return None
+        method = tuple(overloaded_methods)[0][0]
+        type_variables = set()
+        for p in method.parameters:
+            if p.t.is_type_var():
+                type_variables.add(p.t)
+            if p.t.is_parameterized():
+                type_variables.update(p.t.get_type_variables())
+        type_variables = set(
+            receiver_type.t_constructor.type_parameters) & type_variables
+        if not type_variables:
+            return None
+        sub = receiver_type.get_type_variable_assignments()
+        types = self.api_graph.get_reg_types()
+        type_var_instantiations = {}
+        for type_var in type_variables:
+            type_arg = sub[type_var]
+            for new_type_arg in self.get_type_parameter_instantiations(
+                    type_arg, receiver_type, receiver_type.t_constructor,
+                    types):
+                index = receiver_type.t_constructor.type_parameters.index(
+                    type_var)
+                type_args = list(receiver_type.type_args)
+                type_args[index] = new_type_arg
+                yield receiver_type.t_constructor.new(type_args)
+
     def get_incompatible_type(self, candidate_t: tp.Type,
                               exp_t: tp.Type, loc: Loc) -> bool:
         """
         Given a candidate type t1 and an expected type t2, this method checks
         whether t1 is incompatible to t2.
         """
+        if isinstance(loc.parent, ast.FunctionReference):
+            yield from self.get_incompatible_type_of_receiver(candidate_t, loc)
         if not candidate_t.is_type_constructor():
             if (not candidate_t.is_subtype(exp_t) and
                     not self.has_applicable_method(candidate_t, loc.parent,
