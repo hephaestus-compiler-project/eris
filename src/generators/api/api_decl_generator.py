@@ -527,7 +527,9 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.add_local_variables(m)
         if not is_abstract:
             self.type_eraser.with_target(out_type)
+            self.push_target_type(out_type)
             expr = self._generate_expr_from_node(out_type, 1)[0]
+            self.pop_target_type()
             decls = list(self.context.get_declarations(self.namespace,
                                                        True).values())
             var_decls = [d for d in decls

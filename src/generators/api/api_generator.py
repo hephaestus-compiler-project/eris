@@ -363,9 +363,8 @@ class APIClientGenerator(Generator):
         is_func = func_ref and self.api_graph.get_functional_type(
             node) is not None
         create_var = self.create_variable()
-        if create_var:
-            # Push the expected type of the variable we are going to create.
-            self.push_target_type(node)
+        # Push the expected type of the variable we are going to create.
+        self.push_target_type(node)
         res = (
             ExprRes(
                 self.generate_function_expr(node, constraints or {}, depth),
@@ -375,8 +374,7 @@ class APIClientGenerator(Generator):
             else self._generate_expr_from_node(
                 node, depth, {} if func_ref else (constraints or {}))
         )
-        if create_var:
-            self.pop_target_type()
+        self.pop_target_type()
         if node and create_var:
             var_name = gu.gen_identifier("lower")
             if node.is_type_constructor():
@@ -651,6 +649,8 @@ class APIClientGenerator(Generator):
     def _get_target_selection(self, target: tp.Type) -> str:
         # In case of arrays we don't examine abstract output types because
         # we don't want to instantiate type variables with array types.
+        if target is None:
+            import pdb; pdb.set_trace()
         is_array = target.name == self.bt_factory.get_array_type().name
         return "concrete" if is_array else "all"
 
@@ -732,8 +732,7 @@ class APIClientGenerator(Generator):
         out_type = self.api_graph.get_concrete_output_type(api)
         out_type = tp.substitute_type(out_type, type_var_map)
         expr.mk_typed(ast.TypePair(
-            expected=self.peek_expected_type(),
-            actual=out_type))
+            expected=None, actual=out_type))
 
     def _generate_expression_from_path(self, path: list,
                                        depth: int, type_var_map) -> ast.Expr:
@@ -757,8 +756,7 @@ class APIClientGenerator(Generator):
             args = self._generate_args(parameters,
                                        [[p] for p in parameters],
                                        depth + 1, type_var_map)
-            call_args = [ast.CallArgument(arg.expr)
-                         for arg in args]
+            call_args = [ast.CallArgument(arg.expr) for arg in args]
             type_args = [type_var_map[tpa] for tpa in elem.type_parameters]
             expr = ast.FunctionCall(elem.name, args=call_args,
                                     receiver=receiver, type_args=type_args)
@@ -788,6 +786,7 @@ class APIClientGenerator(Generator):
             t = _instantiate_type_con(elem)
             expr = self.generate_expr(self.substitute_types([t],
                                                             type_var_map)[0])
+            expr.mk_typed(ast.TypePair(expected=None, actual=t))
         else:
             return receiver
         return expr
