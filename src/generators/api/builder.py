@@ -500,7 +500,8 @@ class APIGraphBuilder(ABC):
         if not super_types:
             super_types.add(self.parse_type(ROOT_CLASSES[self.api_language]))
         super_types = list(super_types)
-        class_node.supertypes = super_types
+        if class_node != self.bt_factory.get_any_type():
+            class_node.supertypes = super_types
         return class_node
 
     def build_subtyping_relations(self, class_api: dict):
