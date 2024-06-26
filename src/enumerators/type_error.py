@@ -291,7 +291,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
                     self.bt_factory.get_any_type(),
                     self.bt_factory.get_boolean_type(),
                     self.bt_factory.get_boolean_type(primitive=True),
-                    self.bt_factory.get_void_type()
+                    self.bt_factory.get_void_type(primitive=True),
+                    self.bt_factory.get_void_type(primitive=False)
             ]:
                 continue
             if (t is not None

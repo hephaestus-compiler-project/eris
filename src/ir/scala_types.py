@@ -13,7 +13,7 @@ class ScalaBuiltinFactory(bt.BuiltinFactory):
     def get_builtin(self):
         return ScalaBuiltin
 
-    def get_void_type(self):
+    def get_void_type(self, primitive=True):
         return UnitType()
 
     def get_any_type(self):

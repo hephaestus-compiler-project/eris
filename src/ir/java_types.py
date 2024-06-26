@@ -16,8 +16,8 @@ class JavaBuiltinFactory(bt.BuiltinFactory):
     def get_builtin(self):
         return JavaBuiltin
 
-    def get_void_type(self):
-        return VoidType(primitive=True)
+    def get_void_type(self, primitive=True):
+        return VoidType(primitive=primitive)
 
     def get_any_type(self):
         return ObjectType()
