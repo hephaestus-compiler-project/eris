@@ -3,11 +3,11 @@ from copy import deepcopy
 
 from src.ir import ast
 from src.ir.builtins import BuiltinFactory
-from src.ir.visitors import DefaultVisitor, ASTExprUpdate
+from src.ir.visitors import ASTExprUpdate
 from src.generators import Generator
 
 
-class ErrorEnumerator(ABC, DefaultVisitor):
+class ErrorEnumerator(ABC):
     def __init__(self, program: ast.Program, program_gen: Generator,
                  bt_factory: BuiltinFactory):
         self.program = deepcopy(program)

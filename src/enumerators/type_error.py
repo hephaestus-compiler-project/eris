@@ -1,22 +1,15 @@
 import itertools
-from typing import NamedTuple, List, Generator
+from typing import List, Generator
 
 from src import utils
 from src.enumerators import type_abstractions as ta
+from src.enumerators.analyses import Loc, ExprLocationAnalysis
 from src.enumerators.error import ErrorEnumerator
 from src.ir import ast, type_utils as tu, types as tp
 from src.ir.builtins import BuiltinFactory
 from src.ir.visitors import ASTExprUpdate
 from src.generators import Generator as ProgramGenerator
 from src.generators.api import nodes
-
-
-class Loc(NamedTuple):
-    expr: ast.Expr
-    parent: ast.Node
-    index: int
-    depth: int
-
 
 
 def type_similarity(t: tp.Type, target: tp.Type,
@@ -50,143 +43,45 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self.depth = 0
         super().__init__(program, program_gen, bt_factory)
 
-    def visit_block(self, node):
-        super().visit_block(node)
-        for i, elem in enumerate(node.body):
-            if isinstance(elem, ast.Expr):
-                self.locations.append(Loc(elem, node, i, self.depth))
+    @property
+    def error_explanation(self):
+        if self.error_loc is None:
+            return
+        loc = self.error_loc
+        new_node = self.new_node
+        exp_t, prev_actual_t = loc.expr.get_type_info()
+        actual_t = new_node.get_type_info()[1]
 
-    def visit_var_decl(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_var_decl(node)
-        self.depth = prev_depth
-        self.locations.append(Loc(node.expr, node, 0, self.depth))
+        # Get the string representation of types
+        translator = self.program_gen.translator
+        exp_t = translator.get_type_name(exp_t or prev_actual_t)
+        actual_t = translator.get_type_name(actual_t)
 
-    def visit_func_decl(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_func_decl(node)
-        self.depth = prev_depth
-        if node.body and isinstance(node.body, ast.Expr):
-            self.locations.append(Loc(node.body, node, 0, self.depth))
+        # Get the string representation of expressions
+        translator.context = self.program.context
+        translator.visit(new_node)
+        expr = translator._children_res[-1]
+        translator._reset_state()
+        translator.context = self.program.context
+        translator.visit(loc.expr)
+        previous_expr = translator._children_res[-1]
+        translator._reset_state()
 
-    def visit_lambda(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_lambda(node)
-        self.depth = prev_depth
-        if isinstance(node.body, ast.Expr):
-            self.locations.append(Loc(node.body, node, 0, self.depth))
+        msg = (f"Added type error using {self.name}:\n"
+               f" - Expected type: {exp_t}\n"
+               f" - Actual type: {actual_t}\n"
+               f" - Previous expression {previous_expr}\n"
+               f" - New expression {expr}\n"
+               f" - Receiver location: {self.error_loc.is_receiver_loc()}\n")
+        return msg
 
-    def visit_func_ref(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_func_ref(node)
-        self.depth = prev_depth
-        if node.receiver:
-            self.locations.append(Loc(node.receiver, node, 0, self.depth))
-
-    def visit_array_expr(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_array_expr(node)
-        self.depth = prev_depth
-        for i, expr in enumerate(node.exprs):
-            self.locations.append(Loc(expr, node, i, self.depth))
-
-    def visit_binary_expr(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_binary_expr(node)
-        self.depth = prev_depth
-        self.locations.append(Loc(node.lexpr, node, 0, self.depth))
-        self.locations.append(Loc(node.rexpr, node, 1, self.depth))
-
-    def visit_logical_expr(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_logical_expr(node)
-        self.depth = prev_depth
-        self.locations.append(Loc(node.lexpr, node, 0, self.depth))
-        self.locations.append(Loc(node.rexpr, node, 1, self.depth))
-
-    def visit_equality_expr(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_equality_expr(node)
-        self.depth = prev_depth
-        self.locations.append(Loc(node.lexpr, node, 0, self.depth))
-        self.locations.append(Loc(node.rexpr, node, 1, self.depth))
-
-    def visit_comparison_expr(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_comparison_expr(node)
-        self.depth = prev_depth
-        self.locations.append(Loc(node.lexpr, node, 0, self.depth))
-        self.locations.append(Loc(node.rexpr, node, 1, self.depth))
-
-    def visit_arith_expr(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_arith_expr(node)
-        self.depth = prev_depth
-        self.locations.append(Loc(node.lexpr, node, 0, self.depth))
-        self.locations.append(Loc(node.rexpr, node, 1, self.depth))
-
-    def visit_conditional(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_conditional(node)
-        self.depth = prev_depth
-        self.locations.append(Loc(node.cond, node, 0, self.depth))
-        if isinstance(node.true_branch, ast.Expr):
-            self.locations.append(Loc(node.true_branch, node, 1, self.depth))
-        if isinstance(node.false_branch, ast.Expr):
-            self.locations.append(Loc(node.false_branch, node, 2, self.depth))
-
-    def visit_new(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_new(node)
-        self.depth = prev_depth
-        for i, e in enumerate(node.args):
-            self.locations.append(Loc(e, node, i, self.depth))
-
-    def visit_field_access(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_field_access(node)
-        self.depth = prev_depth
-        if node.expr:
-            self.locations.append(Loc(node.expr, node, 0, self.depth))
-
-    def visit_func_call(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_func_call(node)
-        self.depth = prev_depth
-        j = 0
-        if node.receiver:
-            self.locations.append(Loc(node.receiver, node, 0, self.depth))
-            j = 1
-        for i, p in enumerate(node.args):
-            if isinstance(p, ast.CallArgument):
-                self.locations.append(Loc(p.expr, node, i + j, self.depth))
-            else:
-                self.locations.append(Loc(p, node, i + j, self.depth))
-
-    def visit_assign(self, node):
-        prev_depth = self.depth
-        self.depth += 1
-        super().visit_assign(node)
-        self.depth = prev_depth
-        j = 0
-        if node.receiver:
-            self.locations.append(Loc(node.receiver, node, j, self.depth))
-            j = 1
-        self.locations.append(Loc(node.expr, node, j, self.depth))
+    def add_err_message(self, loc, new_node):
+        """
+        Adds an error message explaining the type error that has been
+        injected in the program.
+        """
+        self.error_loc = loc
+        self.new_node = new_node
 
     def get_builtin_types(self):
         byte = self.bt_factory.get_byte_type()
@@ -267,7 +162,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         if blacklisted_types is None:
             return set()
         blacklisted_types = blacklisted_types.get(t, set())
-        if isinstance(loc.parent, ast.ComparisonExpr):
+        if isinstance(loc.parent, (ast.ComparisonExpr, ast.ArithExpr)):
             # If the parent is a comparison expression, extend the list of
             # the blacklisted types
             blacklisted_types = (
@@ -276,8 +171,9 @@ class TypeErrorEnumerator(ErrorEnumerator):
         return blacklisted_types
 
     def get_candidate_program_locations(self):
-        self.visit_program(self.program)
-        return self.locations
+        analysis = ExprLocationAnalysis()
+        analysis.visit_program(self.program)
+        return analysis.locations
 
     def filter_program_locations(self, locations):
         filtered_locs = []
@@ -304,29 +200,34 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 cache.add(cached_elem)
         return filtered_locs
 
+    def enumerate_incompatible_typings(self, loc):
+        if loc.is_receiver_loc():
+            # For receiver expression, we have a different logic to enumerate
+            # the incompatible typings.
+            yield from self.get_incompatible_type_of_receiver(loc)
+            return
+        exp_t, actual_t = loc.expr.get_type_info()
+        candidate_types = self.get_representative_types(loc, exp_t)
+        candidate_types = sorted(
+            list(candidate_types),
+            key=lambda x: type_similarity(x, exp_t, self.bt_factory),
+            reverse=True
+        )
+        for i, t in enumerate(candidate_types):
+            yield from self.get_incompatible_type(t, exp_t, loc)
+
     def get_programs_with_error(self, loc):
         exp_t, actual_t = loc.expr.get_type_info()
         try:
-            candidate_types = self.get_representative_types(loc, exp_t)
-            candidate_types = sorted(
-                list(candidate_types),
-                key=lambda x: type_similarity(x, exp_t, self.bt_factory),
-                reverse=True
-            )
-            for t in candidate_types:
-                incompatible_types = self.get_incompatible_type(t, exp_t, loc)
-                if incompatible_types is None:
-                    continue
-                incompatible_types = list(incompatible_types)
-                for incompatible_t in incompatible_types:
-                    self.program_gen.block_variables = True
-                    expr = self.program_gen._generate_expr_from_node(
-                        incompatible_t, depth=1)
-                    self.program_gen.block_variables = False
-                    upd = ASTExprUpdate(loc.index, expr.expr)
-                    upd.visit(loc.parent)
-                    self.add_err_message(loc, expr.expr)
-                    yield self.program
+            for incompatible_t in self.enumerate_incompatible_typings(loc):
+                self.program_gen.block_variables = True
+                expr = self.program_gen._generate_expr_from_node(
+                    incompatible_t, depth=1)
+                self.program_gen.block_variables = False
+                upd = ASTExprUpdate(loc.index, expr.expr)
+                upd.visit(loc.parent)
+                self.add_err_message(loc, expr.expr)
+                yield self.program
         except Exception as e:
             self.program_gen.block_variables = False
             raise e
@@ -350,45 +251,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 candidate_types.append(utils.random.choice(type_class))
         return candidate_types
 
-    @property
-    def error_explanation(self):
-        if self.error_loc is None:
-            return
-        loc = self.error_loc
-        new_node = self.new_node
-        exp_t, _ = loc.expr.get_type_info()
-        actual_t = new_node.get_type_info()[1]
-
-        # Get the string representation of types
-        translator = self.program_gen.translator
-        exp_t = translator.get_type_name(exp_t)
-        actual_t = translator.get_type_name(actual_t)
-
-        # Get the string representation of expressions
-        translator.context = self.program.context
-        translator.visit(new_node)
-        expr = translator._children_res[-1]
-        translator._reset_state()
-        translator.context = self.program.context
-        translator.visit(loc.expr)
-        previous_expr = translator._children_res[-1]
-        translator._reset_state()
-
-        msg = (f"Added type error using {self.name}:\n"
-               f" - Expected type: {exp_t}\n"
-               f" - Actual type: {actual_t}\n"
-               f" - Previous expression {previous_expr}\n"
-               f" - New expression {expr}\n")
-        return msg
-
-    def add_err_message(self, loc, new_node):
-        """
-        Adds an error message explaining the type error that has been
-        injected in the program.
-        """
-        self.error_loc = loc
-        self.new_node = new_node
-
     def has_applicable_method(self, candidate_t: tp.Type,
                               func_call: ast.FunctionCall,
                               index: int) -> bool:
@@ -411,13 +273,14 @@ class TypeErrorEnumerator(ErrorEnumerator):
         segs = func_name.rsplit(".", 1)
         if len(segs) == 2:
             cls, func_name = tuple(segs)
-        # Create a dummy method with the same name. Find its overloaded methods.
+        # Create a dummy method with the same name.
+        # Find its overloaded methods.
         dummy_method = nodes.Method(func_name, cls, [], [], {})
         receiver_type = None
         if func_call.receiver:
             receiver_type = func_call.receiver.get_type_info()[1]
         overloaded_methods = self.api_graph.get_overloaded_methods(
-            receiver_type, dummy_method)
+            receiver_type, dummy_method, override_checks_with_self=False)
         if len(overloaded_methods) < 2:
             return False
         param_index = index if func_call.receiver is None else index - 1
@@ -432,21 +295,21 @@ class TypeErrorEnumerator(ErrorEnumerator):
                    and candidate_t.is_subtype(m.parameters[param_index].t)
                    and len(m.paremeters) == len(func_call.args))
 
-    def get_incompatible_type_of_receiver(self, candidate_t: tp.Type,
-                                          loc: Loc):
-        assert (isinstance(loc.parent, ast.FunctionReference)
-                and loc.parent.receiver is not None)
+    def get_incompatible_type_of_receiver(self, loc: Loc):
+        assert loc.parent.receiver is not None, (
+            "Assertion failed: parent location does not contain a receiver")
         func_name, cls = loc.parent.func, None
         segs = func_name.rsplit(".", 1)
         if len(segs) == 2:
             cls, func_name = tuple(segs)
-        # Create a dummy method with the same name. Find its overloaded methods.
+        # Create a dummy method with the same name.
+        # Find its overloaded methods.
         dummy_method = nodes.Method(func_name, cls, [], [], {})
         receiver_type = loc.parent.receiver.get_type_info()[1]
         if not receiver_type.is_parameterized():
             return None
         overloaded_methods = self.api_graph.get_overloaded_methods(
-            receiver_type, dummy_method)
+            receiver_type, dummy_method, override_checks_with_self=False)
         if len(overloaded_methods) > 1:
             # TODO handle overloaded methods
             return None
@@ -463,7 +326,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
             return None
         sub = receiver_type.get_type_variable_assignments()
         types = self.api_graph.get_reg_types()
-        type_var_instantiations = {}
         for type_var in type_variables:
             type_arg = sub[type_var]
             for new_type_arg in self.get_type_parameter_instantiations(
@@ -481,8 +343,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
         Given a candidate type t1 and an expected type t2, this method checks
         whether t1 is incompatible to t2.
         """
-        if isinstance(loc.parent, ast.FunctionReference):
-            yield from self.get_incompatible_type_of_receiver(candidate_t, loc)
         if not candidate_t.is_type_constructor():
             if (not candidate_t.is_subtype(exp_t) and
                     not self.has_applicable_method(candidate_t, loc.parent,
