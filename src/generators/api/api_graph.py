@@ -651,7 +651,8 @@ class APIGraph():
 
     def _get_overloaded_method_from_extension(
         self, receiver: tp.Type, method: Union[Method, Constructor],
-        overloaded_methods: Set[Tuple[Method, bool]]
+        overloaded_methods: Set[Tuple[Method, bool]],
+        override_checks_with_self: bool
     ) -> Set[Tuple[Method, bool]]:
         methods = set()
         for supertype in {st for st in receiver.get_supertypes()
@@ -685,14 +686,21 @@ class APIGraph():
                     not_overriden = all(
                         not au.is_overriden(m, om, sub)
                         for om, _ in overloaded_methods
-                    ) and not au.is_overriden(m, method, sub)
+                    )
+                    # If override_checks_with_self is False, then we disable
+                    # the override checks with the given method `method`.
+                    if override_checks_with_self:
+                        not_overriden = (not_overriden and
+                                         not au.is_overriden(m, method, sub))
+
                     if method.name == m.name and not_overriden:
                         methods.add((m, True))
         return methods
 
     def _get_overloaded_method_from_inheritance(
         self, receiver: tp.Type, method: Union[Method, Constructor],
-        overloaded_methods: Set[Tuple[Method, bool]]
+        overloaded_methods: Set[Tuple[Method, bool]],
+        override_checks_with_self: bool
     ) -> Set[Tuple[Method, bool]]:
         methods = set()
         for supertype in {st for st in receiver.get_supertypes()
@@ -716,13 +724,19 @@ class APIGraph():
                 not_overriden = all(
                     not au.is_overriden(m, om, sub)
                     for om, _ in overloaded_methods
-                ) and not au.is_overriden(m, method, sub)
+                )
+                # If override_checks_with_self is False, then we disable
+                # the override checks with the given method `method`.
+                if override_checks_with_self:
+                    not_overriden = (not_overriden and
+                                     not au.is_overriden(m, method, sub))
                 if method.name == m.name and not_overriden:
                     methods.add((m, False))
         return methods
 
     def get_overloaded_methods(self, receiver: tp.Type,
-                               method: Union[Method, Constructor]
+                               method: Union[Method, Constructor],
+                               override_checks_with_self: bool = True
                                ) -> Set[Tuple[Method, bool]]:
         if not isinstance(method, (Method, Constructor)):
             # This is not a callable.
@@ -751,12 +765,15 @@ class APIGraph():
                            for m in self.api_graph.neighbors(base_t)
                            if (isinstance(m, (Method, Constructor))
                                and m.name == method.name  # Same name
-                               and not au.is_overriden(method, m, sub))
+                               and (
+                                not override_checks_with_self or
+                                not au.is_overriden(method, m, sub)
+                               ))
                             })
         methods.update(self._get_overloaded_method_from_inheritance(
-            receiver, method, methods))
+            receiver, method, methods, override_checks_with_self))
         methods.update(self._get_overloaded_method_from_extension(
-            receiver, method, methods))
+            receiver, method, methods, override_checks_with_self))
         return methods
 
     def is_method_overriden(self, receiver: tp.Type,
