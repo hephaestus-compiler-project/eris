@@ -776,7 +776,22 @@ class APIGraph():
             receiver, method, methods, override_checks_with_self))
         return methods
 
-    def get_field(self, receiver_type: tp.Type, field_name: str) -> Field:
+    def get_field(self, receiver_type: tp.Type,
+                  field_name: str) -> (Field, dict):
+        """
+        Based on the given receiver type and field name, this method
+        retrieves the corresponding field declaration along with a type
+        substitution that maps the field type at declaration site to
+        the corresponding types related to the given receiver.
+
+        For example:
+
+        A<T> { T f }
+        B<X> : A<X>
+        C<K>: B<K>
+
+        get_field(C<String>, "f") = (Field("f", "A"), {T: K})
+        """
         if receiver_type is None:
             return None
         base_t = receiver_type
@@ -788,17 +803,22 @@ class APIGraph():
         if base_t in self.api_graph:
             for f in self.api_graph.neighbors(base_t):
                 if isinstance(f, Field) and f.name == field_name:
-                    return f
-        for supertype in {st for st in receiver_type.get_supertypes()
-                          if st != receiver_type}:
+                    return f, {}
+        sub = {}
+        for supertype in {st for st in base_t.get_supertypes()
+                          if st != base_t}:
+            # Get the substitution of the supertype and its type constructor
+            # (if present).
             if supertype.is_parameterized():
+                sub = supertype.get_type_variable_assignments()
+                sub = {k: sub.get(v, v) for k, v in sub.items()}
                 supertype = self.get_type_by_name(
                     supertype.name) or supertype.t_constructor
             if supertype not in self.api_graph:
                 continue
             for f in self.api_graph.neighbors(supertype):
                 if isinstance(f, Field) and f.name == field_name:
-                    return f
+                    return f, sub
         return None
 
     def is_method_overriden(self, receiver: tp.Type,
