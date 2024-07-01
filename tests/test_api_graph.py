@@ -856,6 +856,44 @@ def test_get_overloaded_methods_with_receiver():
     assert methods == set()
 
 
+def test_get_field():
+    # class A {  }
+    # class B : A { Int f; }
+    # get_field(B) == f
+    g = nx.DiGraph()
+    t1 = tp.SimpleClassifier("A")
+    t2 = tp.SimpleClassifier("B", supertypes=[t1])
+    f1 = ag.Field("f", "B", {})
+
+    g.add_node(t1)
+    g.add_node(t2)
+    g.add_node(f1)
+    g.add_edge(t2, f1)
+
+    api_graph = ag.APIGraph(g, nx.DiGraph(), [], kt.KotlinBuiltinFactory())
+    assert api_graph.get_field(None, "f") is None
+    assert api_graph.get_field(t1, "f") is None
+    assert api_graph.get_field(t2, "f") == f1
+
+    # class A { Int f; }
+    # class B : A {}
+    # get_field(B) == f
+    g = nx.DiGraph()
+    t1 = tp.SimpleClassifier("A")
+    t2 = tp.SimpleClassifier("B", supertypes=[t1])
+    f1 = ag.Field("f", "A", {})
+
+    g.add_node(t1)
+    g.add_node(t2)
+    g.add_node(f1)
+    g.add_edge(t1, f1)
+
+    api_graph = ag.APIGraph(g, nx.DiGraph(), [], kt.KotlinBuiltinFactory())
+    assert api_graph.get_field(None, "f") is None
+    assert api_graph.get_field(t1, "f") == f1
+    assert api_graph.get_field(t2, "f") == f1
+
+
 def test_is_overriden_method():
     # class A {
     #  fun m()

@@ -776,6 +776,31 @@ class APIGraph():
             receiver, method, methods, override_checks_with_self))
         return methods
 
+    def get_field(self, receiver_type: tp.Type, field_name: str) -> Field:
+        if receiver_type is None:
+            return None
+        base_t = receiver_type
+        if receiver_type.is_parameterized():
+            # Get the type constructor in order to retrieve the definitions
+            # of the corresponding class
+            base_t = self.get_type_by_name(receiver_type.name) or \
+                receiver_type.t_constructor
+        if base_t in self.api_graph:
+            for f in self.api_graph.neighbors(base_t):
+                if isinstance(f, Field) and f.name == field_name:
+                    return f
+        for supertype in {st for st in receiver_type.get_supertypes()
+                          if st != receiver_type}:
+            if supertype.is_parameterized():
+                supertype = self.get_type_by_name(
+                    supertype.name) or supertype.t_constructor
+            if supertype not in self.api_graph:
+                continue
+            for f in self.api_graph.neighbors(supertype):
+                if isinstance(f, Field) and f.name == field_name:
+                    return f
+        return None
+
     def is_method_overriden(self, receiver: tp.Type,
                             method: Method) -> bool:
         """
