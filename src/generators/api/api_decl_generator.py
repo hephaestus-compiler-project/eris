@@ -19,7 +19,7 @@ from src.modules.logging import log, log_onerror, log_error
 def get_extra_api_components(spec: dict, predicate):
     sub_spec = {}
     for k, v in spec.items():
-        if predicate(k):
+        if predicate(v):
             sub_spec[k] = v
     return sub_spec
 
@@ -699,7 +699,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         forked_spec = self.fork_api_spec(api_namespace)
         forked_spec.update(GROOVY_SPECIAL_METHODS)
         forked_spec.update(get_extra_api_components(
-            self.api_docs, lambda x: x.startswith("java.util.function")))
+            self.api_docs, lambda x: x.get("functional_interface", False)))
         # This is the list of namespaces that are explicitly defined in
         # the program, i.e., they reside in the pakcage specified by
         # `self.package_name`.
