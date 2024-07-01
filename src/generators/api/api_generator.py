@@ -265,7 +265,7 @@ class APIClientGenerator(Generator):
         type_var_map = {t: encoding.type_var_map[t]
                         for t in get_type_variables_of_callable(
                         self.api_graph, encoding.api)}
-        for m, is_extension in overloaded_methods:
+        for m, is_extension, _ in overloaded_methods:
             is_m_ambiguous = au.is_typing_seq_ambiguous(encoding.api, m,
                                                         typing_seq[1:-1],
                                                         type_var_map)

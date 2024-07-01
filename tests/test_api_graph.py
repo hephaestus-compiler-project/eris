@@ -706,9 +706,18 @@ def test_get_overloaded_methods():
     g.add_edge(t1, m3)
 
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
-    assert api_graph.get_overloaded_methods(t1, m1) == {(m2, False), (m3, False)}
-    assert api_graph.get_overloaded_methods(t1, m2) == {(m1, False), (m3, False)}
-    assert api_graph.get_overloaded_methods(t1, m3) == {(m1, False), (m2, False)}
+    assert api_graph.get_overloaded_methods(t1, m1) == {
+        ag.OverloadedResult(m2, False, frozenset()),
+        ag.OverloadedResult(m3, False, frozenset())
+    }
+    assert api_graph.get_overloaded_methods(t1, m2) == {
+        ag.OverloadedResult(m1, False, frozenset()),
+        ag.OverloadedResult(m3, False, frozenset())
+    }
+    assert api_graph.get_overloaded_methods(t1, m3) == {
+        ag.OverloadedResult(m1, False, frozenset()),
+        ag.OverloadedResult(m2, False, frozenset())
+    }
     assert api_graph.get_overloaded_methods(t1, t1) == set()
 
     # Do the same using a parameterized type as a reciever
@@ -728,9 +737,18 @@ def test_get_overloaded_methods():
 
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
     rec = t1.new([bt.Integer])
-    assert api_graph.get_overloaded_methods(rec, m1) == {(m2, False), (m3, False)}
-    assert api_graph.get_overloaded_methods(rec, m2) == {(m1, False), (m3, False)}
-    assert api_graph.get_overloaded_methods(rec, m3) == {(m1, False), (m2, False)}
+    assert api_graph.get_overloaded_methods(rec, m1) == {
+        ag.OverloadedResult(m2, False, frozenset()),
+        ag.OverloadedResult(m3, False, frozenset())
+    }
+    assert api_graph.get_overloaded_methods(rec, m2) == {
+        ag.OverloadedResult(m1, False, frozenset()),
+        ag.OverloadedResult(m3, False, frozenset())
+    }
+    assert api_graph.get_overloaded_methods(rec, m3) == {
+        ag.OverloadedResult(m1, False, frozenset()),
+        ag.OverloadedResult(m2, False, frozenset())
+    }
     assert api_graph.get_overloaded_methods(rec, t1) == set()
 
 
@@ -754,13 +772,22 @@ def test_get_overloaded_methods_inheritance():
     g.add_edge(t2, m4)
 
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
-    assert api_graph.get_overloaded_methods(t1, m1) == {(m2, False)}
-    assert api_graph.get_overloaded_methods(t1, m2) == {(m1, False)}
-    assert api_graph.get_overloaded_methods(t2, m3) == {(m1, False), (m4, False)}
-    assert api_graph.get_overloaded_methods(t2, m4) == {(m1, False), (m3, False)}
+    assert api_graph.get_overloaded_methods(t1, m1) == {
+        ag.OverloadedResult(m2, False, frozenset())}
+    assert api_graph.get_overloaded_methods(t1, m2) == {
+        ag.OverloadedResult(m1, False, frozenset())}
+    assert api_graph.get_overloaded_methods(t2, m3) == {
+        ag.OverloadedResult(m1, False, frozenset()),
+        ag.OverloadedResult(m4, False, frozenset())
+    }
+    assert api_graph.get_overloaded_methods(t2, m4) == {
+        ag.OverloadedResult(m1, False, frozenset()),
+        ag.OverloadedResult(m3, False, frozenset())
+    }
 
     # Do the same using a parameterized type as a reciever
     g = nx.DiGraph()
+    type_param = tp.TypeParameter("T")
     t1 = tp.TypeConstructor("A", [tp.TypeParameter("T")])
     t2 = tp.TypeConstructor("B", [tp.TypeParameter("T")],
                             supertypes=[t1.new([bt.String])])
@@ -783,10 +810,19 @@ def test_get_overloaded_methods_inheritance():
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
     rec1 = t1.new([bt.Integer])
     rec2 = t2.new([bt.Float])
-    assert api_graph.get_overloaded_methods(rec1, m1) == {(m2, False)}
-    assert api_graph.get_overloaded_methods(rec1, m2) == {(m1, False)}
-    assert api_graph.get_overloaded_methods(rec2, m3) == {(m1, False), (m4, False)}
-    assert api_graph.get_overloaded_methods(rec2, m4) == {(m1, False), (m3, False)}
+    sub = {type_param: bt.String}
+    assert api_graph.get_overloaded_methods(rec1, m1) == {
+        ag.OverloadedResult(m2, False, frozenset())}
+    assert api_graph.get_overloaded_methods(rec1, m2) == {
+        ag.OverloadedResult(m1, False, frozenset())}
+    assert api_graph.get_overloaded_methods(rec2, m3) == {
+        ag.OverloadedResult(m4, False, frozenset()),
+        ag.OverloadedResult(m1, False, frozenset(sub.items())),
+    }
+    assert api_graph.get_overloaded_methods(rec2, m4) == {
+        ag.OverloadedResult(m1, False, frozenset(sub.items())),
+        ag.OverloadedResult(m3, False, frozenset())
+    }
 
     # class A<T> {fun foo(x: T)//m1}
     # class B : A<Int> { fun foo(x: Int) }
@@ -807,15 +843,54 @@ def test_get_overloaded_methods_inheritance():
     assert api_graph.get_overloaded_methods(rec, m1) == set()
     assert api_graph.get_overloaded_methods(rec, m2) == set()
 
+    # class A<T> { fun m() }
+    # class B<X> : A<X> {}
+    # class C<K> : B<K> {}
+    g = nx.DiGraph()
+    type_param1 = tp.TypeParameter("T")
+    type_param2 = tp.TypeParameter("X")
+    type_param3 = tp.TypeParameter("K")
+    t1 = tp.TypeConstructor("A", [type_param1])
+    t2 = tp.TypeConstructor("B", [type_param2],
+                            supertypes=[t1.new([type_param2])])
+    t3 = tp.TypeConstructor("C", [type_param3],
+                            supertypes=[t2.new([type_param3])])
+    m1 = ag.Method("m", "A", [], [], {})
+
+    g.add_node(t1)
+    g.add_node(t2)
+    g.add_node(t3)
+    g.add_node(m1)
+    g.add_edge(t1, m1)
+
+    api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
+
+    rec1 = t1.new([jt.String])
+    rec2 = t2.new([jt.String])
+    rec3 = t3.new([jt.String])
+    assert api_graph.get_overloaded_methods(
+            rec1, m1, override_checks_with_self=False) == {
+        ag.OverloadedResult(m1, False, frozenset())
+    }
+    sub = {type_param1: type_param2}
+    assert api_graph.get_overloaded_methods(
+            rec2, m1, override_checks_with_self=False) == {
+        ag.OverloadedResult(m1, False, frozenset(sub.items()))
+    }
+    sub = {type_param3: type_param2}
+
+
 def test_get_overloaded_methods_with_receiver():
     # class A<T> { fun m(x: T)//m1 }
     # class B<T> : A<T> { fun m(x: Int)//m2 }
     # get_overloaded_methods(B<String>, m1) == {m2}
     g = nx.DiGraph()
-    t1 = tp.TypeConstructor("A", [tp.TypeParameter("T1")])
-    t2 = tp.TypeConstructor("B", [tp.TypeParameter("T2")],
-                            supertypes=[t1.new([tp.TypeParameter("T2")])])
-    m1 = ag.Method("m", "A", [ag.Parameter(tp.TypeParameter("T1"), False)], [],
+    type_param1 = tp.TypeParameter("T1")
+    type_param2 = tp.TypeParameter("T2")
+    t1 = tp.TypeConstructor("A", [type_param1])
+    t2 = tp.TypeConstructor("B", [type_param2],
+                            supertypes=[t1.new([type_param2])])
+    m1 = ag.Method("m", "A", [ag.Parameter(type_param1, False)], [],
                    {})
     m2 = ag.Method("m", "B", [ag.Parameter(kt.Integer, False)], [],
                    {})
@@ -831,7 +906,9 @@ def test_get_overloaded_methods_with_receiver():
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], kt.KotlinBuiltinFactory())
     rec = t2.new([kt.String])
     methods = api_graph.get_overloaded_methods(rec, m1)
-    assert methods == {(m2, True)}
+    sub = {type_param2: kt.String}
+    assert methods == {
+        ag.OverloadedResult(m2, True, frozenset(sub.items()))}
 
     # class A<T> { fun m(x: T) }
     # A<Int>.m(x: Int)
