@@ -1,7 +1,7 @@
 import itertools
-from typing import List, Generator
+from typing import List, Generator, Set
 
-from src import utils
+from src import utils, config as cfg
 from src.enumerators import type_abstractions as ta
 from src.enumerators.analyses import Loc, ExprLocationAnalysis
 from src.enumerators.error import ErrorEnumerator
@@ -33,6 +33,10 @@ class TypeErrorEnumerator(ErrorEnumerator):
     name = "TypeErrorEnumerator"
 
     NUMBER_OF_TYPE_PARAMETER_INSTANTIATIONS = 5
+
+    NO_EXCLUSION = 0
+    EXCLUDE_SUBTYPES = 1
+    EXCLUDE_SUPERTYPES = 2
 
     def __init__(self, program: ast.Program, program_gen: ProgramGenerator,
                  bt_factory: BuiltinFactory):
@@ -198,7 +202,22 @@ class TypeErrorEnumerator(ErrorEnumerator):
             if cached_elem not in cache:
                 filtered_locs.append(Loc(elem, parent, index, depth))
                 cache.add(cached_elem)
+        filtered_locs = [f for f in filtered_locs
+                         if f.is_receiver_loc()]
         return filtered_locs
+
+    def _get_exclusion_strategies(self,
+                                  variances: Set[tp.Variance]) -> Set[int]:
+        exclusion_strategies = set()
+        for variance in variances:
+            if variance.is_invariant():
+                continue
+            if variance.is_covariant():
+                exclusion_strategies.add(self.EXCLUDE_SUBTYPES)
+
+            if variance.is_contravariant():
+                exclusion_strategies.add(self.EXCLUDE_SUPERTYPES)
+        return exclusion_strategies
 
     def enumerate_incompatible_typings(self, loc):
         if loc.is_receiver_loc():
@@ -233,8 +252,19 @@ class TypeErrorEnumerator(ErrorEnumerator):
             raise e
         return None
 
-    def get_representative_types(self, loc: Loc, exp_t: tp.Type):
-        types = self.api_graph.get_reg_types()
+    def get_representative_types(self, loc: Loc, exp_t: tp.Type,
+                                 exclude_strategy: Set[int] = None):
+        types = set()
+        for t in self.api_graph.get_reg_types():
+            if not exclude_strategy:
+                types.add(t)
+            if self.EXCLUDE_SUBTYPES in exclude_strategy:
+                if not t.is_subtype(exp_t):
+                    types.add(t)
+            if self.EXCLUDE_SUPERTYPES in exclude_strategy:
+                if t not in exp_t.get_supertypes():
+                    types.add(t)
+
         # Abstract every type included in the set.
         types_map = {t: ta.to_type_abstraction(t, self.bt_factory)
                      for t in types}
@@ -250,6 +280,23 @@ class TypeErrorEnumerator(ErrorEnumerator):
             if type_class:
                 candidate_types.append(utils.random.choice(type_class))
         return candidate_types
+
+    def get_declarations_of_receiver(self, expr: ast.Expr):
+        assert isinstance(expr, (ast.FunctionCall, ast.FieldAccess,
+                                 ast.Assignment))
+        if isinstance(expr, ast.FunctionCall):
+            func_name, cls = expr.func, None
+            segs = func_name.rsplit(".", 1)
+            if len(segs) == 2:
+                cls, func_name = tuple(segs)
+            # Create a dummy method with the same name.
+            # Find its overloaded methods.
+            dummy_method = nodes.Method(func_name, cls, [], [], {})
+            receiver_type = None
+            if expr.receiver:
+                receiver_type = expr.receiver.get_type_info()[1]
+            return [m for m, _ in self.api_graph.get_overloaded_methods(
+                receiver_type, dummy_method, override_checks_with_self=False)]
 
     def has_applicable_method(self, candidate_t: tp.Type,
                               func_call: ast.FunctionCall,
@@ -268,19 +315,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         # not correspond to the receiver of the method.
         if not func_call.args or (func_call.receiver and index == 0):
             return False
-
-        func_name, cls = func_call.func, None
-        segs = func_name.rsplit(".", 1)
-        if len(segs) == 2:
-            cls, func_name = tuple(segs)
-        # Create a dummy method with the same name.
-        # Find its overloaded methods.
-        dummy_method = nodes.Method(func_name, cls, [], [], {})
-        receiver_type = None
-        if func_call.receiver:
-            receiver_type = func_call.receiver.get_type_info()[1]
-        overloaded_methods = self.api_graph.get_overloaded_methods(
-            receiver_type, dummy_method, override_checks_with_self=False)
+        overloaded_methods = self.get_declarations_of_receiver(func_call)
         if len(overloaded_methods) < 2:
             return False
         param_index = index if func_call.receiver is None else index - 1
@@ -290,52 +325,52 @@ class TypeErrorEnumerator(ErrorEnumerator):
         #     parameter type of the method in the same index.
         #   * The overloaded method has the same number of parameters as the
         #     number of the given arguments in the funtion.
-        return any(m for m, _ in overloaded_methods
+        return any(m for m in overloaded_methods
                    if len(m.parameters) > param_index
                    and candidate_t.is_subtype(m.parameters[param_index].t)
                    and len(m.paremeters) == len(func_call.args))
 
     def get_incompatible_type_of_receiver(self, loc: Loc):
+        """
+        Based on a given location that corresponds to a receiver expression,
+        this method produces a type that is an forms an incompatible receiver.
+        """
         assert loc.parent.receiver is not None, (
             "Assertion failed: parent location does not contain a receiver")
-        func_name, cls = loc.parent.func, None
-        segs = func_name.rsplit(".", 1)
-        if len(segs) == 2:
-            cls, func_name = tuple(segs)
-        # Create a dummy method with the same name.
-        # Find its overloaded methods.
-        dummy_method = nodes.Method(func_name, cls, [], [], {})
-        receiver_type = loc.parent.receiver.get_type_info()[1]
-        if not receiver_type.is_parameterized():
-            return None
-        overloaded_methods = self.api_graph.get_overloaded_methods(
-            receiver_type, dummy_method, override_checks_with_self=False)
-        if len(overloaded_methods) > 1:
+        declarations = self.get_declarations_of_receiver(loc.parent)
+        if len(declarations) > 1:
             # TODO handle overloaded methods
             return None
-        method = tuple(overloaded_methods)[0][0]
+        receiver_type = loc.parent.receiver.get_type_info()[1]
+        method = declarations[0]
         type_variables = set()
         for p in method.parameters:
             if p.t.is_type_var():
                 type_variables.add(p.t)
             if p.t.is_parameterized():
-                type_variables.update(p.t.get_type_variables())
+                type_variables.update(p.t.get_type_variables(
+                    cfg.cfg.bt_factory))
         type_variables = set(
             receiver_type.t_constructor.type_parameters) & type_variables
         if not type_variables:
             return None
         sub = receiver_type.get_type_variable_assignments()
-        types = self.api_graph.get_reg_types()
+        rec_t, type_con = receiver_type, receiver_type.t_constructor
+        # Get the functional type of the receiver type
+        receiver_type = (self.api_graph.get_functional_type(receiver_type)
+                         or receiver_type)
+        mapped_type_vars = {}
+        for k, v in receiver_type.get_type_variable_assignments().items():
+            if v in type_variables:
+                mapped_type_vars.setdefault(v, set()).add(k.variance)
         for type_var in type_variables:
             type_arg = sub[type_var]
             for new_type_arg in self.get_type_parameter_instantiations(
-                    type_arg, receiver_type, receiver_type.t_constructor,
-                    types):
-                index = receiver_type.t_constructor.type_parameters.index(
-                    type_var)
-                type_args = list(receiver_type.type_args)
+                    type_arg, loc, type_con, mapped_type_vars[type_var]):
+                type_args = list(rec_t.type_args)
+                index = type_con.type_parameters.index(type_var)
                 type_args[index] = new_type_arg
-                yield receiver_type.t_constructor.new(type_args)
+                yield type_con.new(type_args)
 
     def get_incompatible_type(self, candidate_t: tp.Type,
                               exp_t: tp.Type, loc: Loc) -> bool:
@@ -360,32 +395,32 @@ class TypeErrorEnumerator(ErrorEnumerator):
         )
 
     def get_type_parameter_instantiations(self, type_arg: tp.Type,
-                                          exp_t: tp.Type,
+                                          loc: Loc,
                                           type_con: tp.TypeConstructor,
-                                          types: List[tp.Type]):
+                                          variances: Set[tp.Variance]):
         instantiations = []
         if type_con != self.bt_factory.get_array_type():
             # Wildcards
-            instantiations.extend([
-                tp.WildCardType(),
-                tp.WildCardType(bound=type_arg, variance=tp.Covariant),
-                tp.WildCardType(bound=type_arg, variance=tp.Contravariant),
-            ])
+            instantiations.append(tp.WildCardType())
+            if tp.Covariant in variances:
+                instantiations.append(tp.WildCardType(type_arg,
+                                                      tp.Contravariant))
+            if tp.Contravariant in variances:
+                instantiations.append(tp.WildCardType(type_arg, tp.Covariant))
 
+        exp_t = loc.expr.get_type_info()[1]
         # Nested
         instantiations.append(exp_t)
         if type_arg.is_parameterized():
             instantiations.append(type_arg.type_args[0])
-
+        candidate_types = self.get_representative_types(
+            loc, exp_t, self._get_exclusion_strategies(variances))
         candidate_types = sorted(
-            [t for t in types if not t.is_subtype(type_arg)],  # FIXME consider variance and upper bounds,
-            key=lambda x: type_similarity(x, type_arg, self.bt_factory),
+            list(candidate_types),
+            key=lambda x: type_similarity(x, exp_t, self.bt_factory),
             reverse=True
         )
-        len_ = min(self.NUMBER_OF_TYPE_PARAMETER_INSTANTIATIONS,
-                   len(candidate_types))
-        for t in candidate_types[:len_]:
-            instantiations.append(t)
+        instantiations.extend(candidate_types)
         return instantiations
 
     def gen_incompatible_type_constructor_instantiations(
