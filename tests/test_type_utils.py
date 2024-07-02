@@ -1514,3 +1514,60 @@ def test_merge_substitutions():
     assert tutils.merge_substitutions({t1: kt.Short}, {t1: kt.Integer}) == {
         t1: kt.Number
     }
+
+
+def test_get_type_substitution_of_parent():
+    t1 = tp.SimpleClassifier("A")
+    t2 = tp.SimpleClassifier("B", supertypes=[t1])
+
+    assert tutils.get_type_substitution_of_parent(t1, t2) == {}
+    assert tutils.get_type_substitution_of_parent(t2, t1) == {}
+
+    t2 = tp.TypeConstructor("B", [tp.TypeParameter("T")],
+                            supertypes=[t1])
+    assert tutils.get_type_substitution_of_parent(t1, t2) == {}
+    assert tutils.get_type_substitution_of_parent(t2, t1) == {}
+
+    type_param1 = tp.TypeParameter("T")
+    type_param2 = tp.TypeParameter("T2")
+    type_param3 = tp.TypeParameter("T3")
+
+    t1 = tp.TypeConstructor("A", [type_param1])
+    t2 = tp.TypeConstructor("B", [type_param2],
+                            supertypes=[t1.new([kt.String])])
+    assert tutils.get_type_substitution_of_parent(t1, t2) == {type_param1: kt.String}
+    assert tutils.get_type_substitution_of_parent(t2, t1) == {}
+
+    t2 = tp.TypeConstructor("B", [type_param2],
+                            supertypes=[t1.new([type_param2])])
+    t3 = tp.TypeConstructor("C", [type_param3],
+                            supertypes=[t2.new([kt.String])])
+    assert tutils.get_type_substitution_of_parent(t1, t2) == {type_param1: type_param2}
+    assert tutils.get_type_substitution_of_parent(t2, t3) == {type_param2: kt.String}
+    assert tutils.get_type_substitution_of_parent(t1, t3) == {
+        type_param1: kt.String, type_param2: kt.String
+    }
+
+    t2 = tp.TypeConstructor("B", [type_param2],
+                            supertypes=[t1.new([kt.Integer])])
+    t3 = tp.TypeConstructor("C", [type_param1],
+                            supertypes=[t2.new([kt.String])])
+    assert tutils.get_type_substitution_of_parent(t1, t3) == {
+        type_param1: kt.Integer, type_param2: kt.String
+    }
+
+    type_param4 = tp.TypeParameter("T4")
+    t4 = tp.TypeConstructor("D", [type_param1])
+    t2 = tp.TypeConstructor("B", [type_param2],
+                            supertypes=[
+                                t4.new([kt.Integer]),
+                                t1.new([type_param2])
+                            ])
+    t3 = tp.TypeConstructor("C", [type_param3],
+                            supertypes=[t2.new([type_param3])])
+    assert tutils.get_type_substitution_of_parent(t1, t3) == {
+        type_param1: type_param3, type_param2: type_param3
+    }
+    assert tutils.get_type_substitution_of_parent(t4, t3) == {
+        type_param1: kt.Integer, type_param2: type_param3
+    }

@@ -28,7 +28,10 @@ and the second for contravariance.
 
 
 def select_random_type(types: List[tp.Type], uniform=True) -> tp.Type:
-    assert len(types) != 0
+    try:
+        assert len(types) != 0
+    except:
+        import pdb; pdb.set_trace()
     if uniform:
         return utils.random.choice(types)
     type_vars, reg_types = [], []
@@ -1652,3 +1655,47 @@ def get_type_variables_of_type(
     if t.is_wildcard() or t.is_parameterized():
         return list(t.get_type_variables(bt_factory).keys())
     return []
+
+
+def get_type_substitution_of_parent(parent: tp.Type, child: tp.Type) -> dict:
+    """
+    Given a parent and a child, this method produces a type substitution
+    that replaces the type parameters of the parent with all those types
+    that are involved in the type hierarchy of child.
+
+    Examples:
+
+    A<T>
+    B<X> : A<X>
+
+    get_type_substitution_of_parent(A<T>, B<X>) = {T: X}
+
+    A<T>
+    B<X> : A<T>
+    C<K> : C<K>
+
+    get_type_substitution_of_parent(B<X>, C<K>) = {X: K}
+    get_type_substitution_of_parent(A<T>, C<K>) = {T: K}
+    """
+    if not parent.is_parameterized() and not parent.is_type_constructor():
+        return {}
+
+    sub = {}
+    parent_found = False
+    stack = [child]
+    while stack:
+        child = stack.pop()
+        for supertype in child.supertypes:
+            if supertype == child:
+                continue
+            if supertype.is_parameterized():
+                type_var_assignments = \
+                    supertype.get_type_variable_assignments()
+                sub.update(type_var_assignments)
+                sub = {k: sub.get(v, v) for k, v in sub.items()}
+            if supertype.name == parent.name:
+                parent_found = True
+                break
+            if supertype not in stack:
+                stack.append(supertype)
+    return sub if parent_found else {}
