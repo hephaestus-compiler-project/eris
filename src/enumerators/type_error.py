@@ -203,7 +203,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 filtered_locs.append(Loc(elem, parent, index, depth))
                 cache.add(cached_elem)
         filtered_locs = [f for f in filtered_locs
-                         if f.is_receiver_loc()]
+                         if f.is_receiver_loc() and isinstance(f.parent, ast.FunctionReference)]
         return filtered_locs
 
     def _get_exclusion_strategies(self,
@@ -289,7 +289,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         associated with this expression.
         """
         assert isinstance(expr, (ast.FunctionCall, ast.FieldAccess,
-                                 ast.Assignment))
+                                 ast.Assignment, ast.FunctionReference))
         if expr.receiver is None:
             return []
         receiver_type = expr.receiver.get_type_info()[1]
