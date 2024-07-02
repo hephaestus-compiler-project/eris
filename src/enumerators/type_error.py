@@ -197,8 +197,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
             if cached_elem not in cache:
                 filtered_locs.append(Loc(elem, parent, index, depth))
                 cache.add(cached_elem)
-        filtered_locs = [f for f in filtered_locs
-                         if f.is_receiver_loc()]
         return filtered_locs
 
     def _get_exclusion_strategies(self,
