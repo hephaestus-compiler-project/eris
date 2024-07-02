@@ -563,12 +563,12 @@ class APIClientGenerator(Generator):
                 type_var_map.update(sub)
             rec_type = self.substitute_types([rec_type], type_var_map)[0]
             new_expr = ast.New(rec_type, args=[])
-            new_expr.mk_typed(ast.TypePair(expected=None, actual=rec_type))
             rec = (
                 new_expr
                 if isinstance(api, ag.Constructor)
                 else self._generate_expr_from_node(rec_type, depth + 1)[0]
             )
+            rec.mk_typed(ast.TypePair(expected=None, actual=rec_type))
         api_name = (
             ast.FunctionReference.NEW_REF
             if isinstance(api, ag.Constructor) else api.name)
