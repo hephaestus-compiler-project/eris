@@ -132,40 +132,35 @@ class TypeErrorEnumerator(ErrorEnumerator):
                     builtins["boolean"]}
         chars = {self.bt_factory.get_char_type(primitive=True),
                  builtins["char"]}
-        byte_p, byte_w = tuple(bytes_)
-        short_p, short_w = tuple(shorts)
-        int_p, int_w = tuple(ints)
-        long_p, long_w = tuple(longs)
-        float_p, float_w = tuple(floats)
-        double_p, double_w = tuple(doubles)
-        char_p, char_w = tuple(chars)
-        bool_p, bool_w = tuple(booleans)
+        byte_ = tuple(bytes_)[0]
+        short_ = tuple(shorts)[0]
+        int_ = tuple(ints)[0]
+        long_ = tuple(longs)[0]
+        float_ = tuple(floats)[0]
+        double_ = tuple(doubles)[0]
+        char_ = tuple(chars)[0]
+        bool_ = tuple(booleans)[0]
+        string = self.bt_factory.get_string_type()
 
         # TODO for the rest of the languages
         excluded_types = {
             "groovy": {
-                byte_p: bytes_,
-                byte_w: bytes_,
-                short_p: bytes_ | shorts,
-                short_w: bytes_ | shorts,
-                int_p: bytes_ | shorts | ints,
-                int_w: bytes_ | shorts | ints,
-                long_p: bytes_ | shorts | ints | longs,
-                long_w: bytes_ | shorts | ints | longs,
-                float_p: bytes_ | shorts | ints | longs | floats,
-                float_w: bytes_ | shorts | ints | longs | floats,
-                double_p: bytes_ | shorts | ints | longs | floats | doubles,
-                double_w: bytes_ | shorts | ints | longs | floats | doubles,
-                char_p: chars,
-                char_w: chars,
-                bool_p: types,
-                bool_w: types,
+                byte_.name: bytes_,
+                short_.name: bytes_ | shorts,
+                int_.name: bytes_ | shorts | ints,
+                long_.name: bytes_ | shorts | ints | longs,
+                float_.name: bytes_ | shorts | ints | longs | floats,
+                double_.name: bytes_ | shorts | ints | longs | floats | doubles,
+                char_.name: chars,
+                bool_.name: types,
+                string.name: types,
+
             }
         }
         blacklisted_types = excluded_types.get(self.bt_factory.get_language())
         if blacklisted_types is None:
             return set()
-        blacklisted_types = blacklisted_types.get(t, set())
+        blacklisted_types = blacklisted_types.get(t.name, set())
         if isinstance(loc.parent, (ast.ComparisonExpr, ast.ArithExpr)):
             # If the parent is a comparison expression, extend the list of
             # the blacklisted types
@@ -254,8 +249,12 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def get_representative_types(self, loc: Loc, exp_t: tp.Type,
                                  exclude_strategy: Set[int] = None):
+        type_pool = self.api_graph.get_reg_types()
+        excluded_types = self.get_type_filters(loc, exp_t, type_pool)
         types = set()
-        for t in self.api_graph.get_reg_types():
+        for t in type_pool:
+            if t in excluded_types:
+                continue
             if not exclude_strategy:
                 types.add(t)
             if self.EXCLUDE_SUBTYPES in exclude_strategy:
@@ -272,7 +271,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
         # Group types based on their abstraction
         type_classes = [[k for k, v in types_map.items()
                         if v == x] for x in abstractions]
-        excluded_types = self.get_type_filters(loc, exp_t, types)
         candidate_types = []
         for type_class in type_classes:
             type_class = [t for t in type_class
@@ -479,7 +477,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         if type_arg.is_parameterized():
             instantiations.append(type_arg.type_args[0])
         candidate_types = self.get_representative_types(
-            loc, exp_t, self._get_exclusion_strategies(variances))
+            loc, type_arg, self._get_exclusion_strategies(variances))
         candidate_types = sorted(
             list(candidate_types),
             key=lambda x: type_similarity(x, exp_t, self.bt_factory),
