@@ -873,7 +873,7 @@ def test_get_field():
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], kt.KotlinBuiltinFactory())
     assert api_graph.get_field(None, "f") is None
     assert api_graph.get_field(t1, "f") is None
-    assert api_graph.get_field(t2, "f") == (f1, {})
+    assert api_graph.get_field(t2, "f") == f1
 
     # class A { Int f; }
     # class B : A {}
@@ -890,8 +890,8 @@ def test_get_field():
 
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], kt.KotlinBuiltinFactory())
     assert api_graph.get_field(None, "f") is None
-    assert api_graph.get_field(t1, "f") == (f1, {})
-    assert api_graph.get_field(t2, "f") == (f1, {})
+    assert api_graph.get_field(t1, "f") == f1
+    assert api_graph.get_field(t2, "f") == f1
 
 
 def test_get_field_parameterized():
@@ -910,8 +910,8 @@ def test_get_field_parameterized():
 
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], kt.KotlinBuiltinFactory())
     assert api_graph.get_field(None, "f") is None
-    assert api_graph.get_field(t1, "f") == (f1, {})
-    assert api_graph.get_field(t2, "f") == (f1, {tp.TypeParameter("T"): kt.String})
+    assert api_graph.get_field(t1, "f") == f1
+    assert api_graph.get_field(t2, "f") == f1
 
     # class A<T> {T f}
     # class B<X> : A<X>
@@ -936,9 +936,9 @@ def test_get_field_parameterized():
     g.add_edge(type_con1, f1)
 
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], kt.KotlinBuiltinFactory())
-    assert api_graph.get_field(t1, "f") == (f1, {})
-    assert api_graph.get_field(t2, "f") == (f1, {type_param1: type_param2})
-    assert api_graph.get_field(t3, "f") == (f1, {type_param1: type_param3})
+    assert api_graph.get_field(t1, "f") == f1
+    assert api_graph.get_field(t2, "f") == f1
+    assert api_graph.get_field(t3, "f") == f1
 
 
 def test_is_overriden_method():
