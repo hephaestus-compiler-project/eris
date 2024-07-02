@@ -1,7 +1,7 @@
 import itertools
 from typing import List, Generator, Set
 
-from src import utils, config as cfg
+from src import utils
 from src.enumerators import type_abstractions as ta
 from src.enumerators.analyses import Loc, ExprLocationAnalysis
 from src.enumerators.error import ErrorEnumerator
@@ -281,10 +281,20 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 candidate_types.append(utils.random.choice(type_class))
         return candidate_types
 
-    def get_declarations_of_receiver(self, expr: ast.Expr):
+    def get_declarations_of_receiver(self,
+                                     expr: ast.Expr) -> List[ast.Declaration]:
+        """
+        Given an expression, such as function call, field access, or
+        assignment, this methos retrieves all the instance declarations
+        associated with this expression.
+        """
         assert isinstance(expr, (ast.FunctionCall, ast.FieldAccess,
                                  ast.Assignment))
+        if expr.receiver is None:
+            return []
+        receiver_type = expr.receiver.get_type_info()[1]
         if isinstance(expr, ast.FunctionCall):
+            # Handle function calls
             func_name, cls = expr.func, None
             segs = func_name.rsplit(".", 1)
             if len(segs) == 2:
@@ -292,11 +302,32 @@ class TypeErrorEnumerator(ErrorEnumerator):
             # Create a dummy method with the same name.
             # Find its overloaded methods.
             dummy_method = nodes.Method(func_name, cls, [], [], {})
-            receiver_type = None
-            if expr.receiver:
-                receiver_type = expr.receiver.get_type_info()[1]
             return [m for m, _ in self.api_graph.get_overloaded_methods(
                 receiver_type, dummy_method, override_checks_with_self=False)]
+        field_name = (expr.field
+                      if isinstance(expr, ast.FieldAccess)
+                      else expr.name)
+        field = self.api_graph.get_field(receiver_type, field_name)
+        return [] if field is None else [field]
+
+    def get_type_variables_of_node_signature(self, node: nodes.APINode,
+                                             receiver_type: tp.Type):
+        """
+        Given a particular node in the API graph, this method takes all the
+        type variables that are found in its signature.
+        """
+        type_variables = set()
+        parent = self.api_graph.get_type_by_name(node.cls)
+        assert parent is not None
+        sub = tu.get_type_substitution_of_parent(parent, receiver_type)
+        if isinstance(node, (nodes.Method, nodes.Constructor)):
+            for p in node.parameters:
+                type_variables.update(tu.get_type_variables_of_type(
+                    tp.substitute_type(p.t, sub)))
+        out_type = self.api_graph.get_concrete_output_type(node)
+        type_variables.update(tu.get_type_variables_of_type(
+            tp.substitute_type(out_type, sub)))
+        return type_variables
 
     def has_applicable_method(self, candidate_t: tp.Type,
                               func_call: ast.FunctionCall,
@@ -330,30 +361,12 @@ class TypeErrorEnumerator(ErrorEnumerator):
                    and candidate_t.is_subtype(m.parameters[param_index].t)
                    and len(m.paremeters) == len(func_call.args))
 
-    def get_incompatible_type_of_receiver(self, loc: Loc):
+    def replace_receiver_type(self, loc: Loc, receiver_type: tp.Type,
+                              type_variables: List[tp.TypeParameter]):
         """
-        Based on a given location that corresponds to a receiver expression,
-        this method produces a type that is an forms an incompatible receiver.
+        Given a receiver type, this method replaces the type parameters
+        of the receiver type with various incompatible type arguments.
         """
-        assert loc.parent.receiver is not None, (
-            "Assertion failed: parent location does not contain a receiver")
-        declarations = self.get_declarations_of_receiver(loc.parent)
-        if len(declarations) > 1:
-            # TODO handle overloaded methods
-            return None
-        receiver_type = loc.parent.receiver.get_type_info()[1]
-        method = declarations[0]
-        type_variables = set()
-        for p in method.parameters:
-            if p.t.is_type_var():
-                type_variables.add(p.t)
-            if p.t.is_parameterized():
-                type_variables.update(p.t.get_type_variables(
-                    cfg.cfg.bt_factory))
-        type_variables = set(
-            receiver_type.t_constructor.type_parameters) & type_variables
-        if not type_variables:
-            return None
         sub = receiver_type.get_type_variable_assignments()
         rec_t, type_con = receiver_type, receiver_type.t_constructor
         # Get the functional type of the receiver type
@@ -367,10 +380,36 @@ class TypeErrorEnumerator(ErrorEnumerator):
             type_arg = sub[type_var]
             for new_type_arg in self.get_type_parameter_instantiations(
                     type_arg, loc, type_con, mapped_type_vars[type_var]):
+                if new_type_arg.is_type_constructor():
+                    new_type_arg, _ = tu.instantiate_type_constructor(
+                        new_type_arg, self.api_graph.get_reg_types(),
+                        only_regular=True,
+                        rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
                 type_args = list(rec_t.type_args)
                 index = type_con.type_parameters.index(type_var)
                 type_args[index] = new_type_arg
                 yield type_con.new(type_args)
+
+    def get_incompatible_type_of_receiver(self, loc: Loc):
+        """
+        Based on a given location that corresponds to a receiver expression,
+        this method produces a type that is an forms an incompatible receiver.
+        """
+        assert loc.parent.receiver is not None, (
+            "Assertion failed: parent location does not contain a receiver")
+        declarations = self.get_declarations_of_receiver(loc.parent)
+        if len(declarations) > 1:
+            # TODO handle overloaded methods
+            return None
+        receiver_type = loc.parent.receiver.get_type_info()[1]
+        decl = declarations[0]
+        type_variables = self.get_type_variables_of_node_signature(
+            decl, receiver_type)
+        type_variables = set(
+            receiver_type.t_constructor.type_parameters) & type_variables
+        if not type_variables:
+            return None
+        return self.replace_receiver_type(loc, receiver_type, type_variables)
 
     def get_incompatible_type(self, candidate_t: tp.Type,
                               exp_t: tp.Type, loc: Loc) -> bool:

@@ -1,4 +1,4 @@
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Union
 
 from src.ir import types as tp
 
@@ -160,3 +160,7 @@ class Constructor(NamedTuple):
     @property
     def api_name(self):
         return self.get_name()
+
+
+APINode = Union[Field, Method, Constructor, tp.Type, Variable]
+APIPath = List[APINode]

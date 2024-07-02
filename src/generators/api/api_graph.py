@@ -12,7 +12,7 @@ from src.ir import types as tp, type_utils as tu
 from src.generators.api import utils as au
 from src.generators.api.matcher import Matcher
 from src.generators.api.nodes import (Field, Method, Constructor, Variable,
-                                      Parameter)
+                                      Parameter, APINode, APIPath)
 
 
 IN = 0
@@ -29,10 +29,6 @@ def compatible(type_var_map: dict, type_var_map2: dict,
         if v != sub_t and not v.is_subtype(sub_t):
             return False
     return True
-
-
-APINode = Union[Field, Method, Constructor, tp.Type, Variable]
-APIPath = List[APINode]
 
 
 def _get_signatures_size(api_graph, nodes):
