@@ -203,7 +203,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 filtered_locs.append(Loc(elem, parent, index, depth))
                 cache.add(cached_elem)
         filtered_locs = [f for f in filtered_locs
-                         if f.is_receiver_loc() and isinstance(f.parent, ast.FunctionReference)]
+                         if f.is_receiver_loc()]
         return filtered_locs
 
     def _get_exclusion_strategies(self,
@@ -293,7 +293,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         if expr.receiver is None:
             return []
         receiver_type = expr.receiver.get_type_info()[1]
-        if isinstance(expr, ast.FunctionCall):
+        if isinstance(expr, (ast.FunctionCall, ast.FunctionReference)):
             # Handle function calls
             func_name, cls = expr.func, None
             segs = func_name.rsplit(".", 1)
@@ -390,6 +390,30 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 type_args[index] = new_type_arg
                 yield type_con.new(type_args)
 
+    def find_applicable_method(
+            self, loc: Loc,
+            overloaded_methods: Set[nodes.Method]) -> nodes.Method:
+        """
+        Based on a set of overloaded methods, select one that is applicable.
+        Note this is implementation is a heuristic and incomplete. The decision
+        is made based on the number of arguments/formal parameters.
+        """
+        if isinstance(loc.expr, ast.FunctionCall):
+            args = loc.expr.args
+            overloaded_methods = [m for m in overloaded_methods
+                                  if len(m.parameters) == len(args)]
+        else:
+            assert isinstance(loc.expr, ast.FunctionReference)
+            functional_type = self.api_graph.get_functional_type(
+                loc.expr.get_type_info()[1])
+            overloaded_methods = [
+                m for m in overloaded_methods
+                if len(m.parameters) == len(functional_type.type_args) - 1
+            ]
+        if not overloaded_methods:
+            return None
+        return overloaded_methods[0]
+
     def get_incompatible_type_of_receiver(self, loc: Loc):
         """
         Based on a given location that corresponds to a receiver expression,
@@ -399,9 +423,10 @@ class TypeErrorEnumerator(ErrorEnumerator):
             "Assertion failed: parent location does not contain a receiver")
         declarations = self.get_declarations_of_receiver(loc.parent)
         if len(declarations) > 1:
-            # TODO handle overloaded methods
-            return None
+            decl = self.find_applicable_method(loc, declarations)
         receiver_type = loc.parent.receiver.get_type_info()[1]
+        if not receiver_type.is_parameterized():
+            return None
         decl = declarations[0]
         type_variables = self.get_type_variables_of_node_signature(
             decl, receiver_type)
@@ -409,7 +434,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
             receiver_type.t_constructor.type_parameters) & type_variables
         if not type_variables:
             return None
-        return self.replace_receiver_type(loc, receiver_type, type_variables)
+        yield from self.replace_receiver_type(loc, receiver_type,
+                                              type_variables)
 
     def get_incompatible_type(self, candidate_t: tp.Type,
                               exp_t: tp.Type, loc: Loc) -> bool:
