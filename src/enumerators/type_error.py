@@ -247,6 +247,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def get_representative_types(self, loc: Loc, exp_t: tp.Type,
                                  exclude_strategy: Set[int] = None):
+        exclude_strategy = exclude_strategy or []
         type_pool = self.api_graph.get_reg_types()
         excluded_types = self.get_type_filters(loc, exp_t, type_pool)
         types = set()
