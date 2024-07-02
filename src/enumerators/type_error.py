@@ -141,6 +141,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         char_ = tuple(chars)[0]
         bool_ = tuple(booleans)[0]
         string = self.bt_factory.get_string_type()
+        void = self.bt_factory.get_void_type()
 
         # TODO for the rest of the languages
         excluded_types = {
@@ -154,7 +155,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 char_.name: chars,
                 bool_.name: types,
                 string.name: types,
-
+                void.name: types,
             }
         }
         blacklisted_types = excluded_types.get(self.bt_factory.get_language())
