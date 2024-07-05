@@ -236,6 +236,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 self.program_gen.block_variables = True
                 expr = self.program_gen._generate_expr_from_node(
                     incompatible_t, depth=1)
+                expr.expr.mk_typed(ast.TypePair(expected=exp_t,
+                                                actual=incompatible_t))
                 self.program_gen.block_variables = False
                 upd = ASTExprUpdate(loc.index, expr.expr)
                 upd.visit(loc.parent)

@@ -239,6 +239,14 @@ class APIDeclarationGenerator(APIClientGenerator):
         for i in range(len(m.parameters)):
             self.api_graph.remove_variable_node(f"p{i}")
 
+    def create_args(self, api: ag.APINode):
+        args = []
+        for p in api.parameters:
+            expr = self.generate_expr(p.t)
+            expr.mk_typed(ast.TypePair(expected=p.t, actual=p.t))
+            args.append(expr)
+        return args
+
     def generate_super_call_unknown(self, m: ag.Constructor,
                                     parent_name: str) -> ast.FunctionCall:
         """
@@ -259,7 +267,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         if not constructors:
             return ast.FunctionCall(ast.FunctionCall.SUPER, [])
         if len(constructors) == 1:
-            super_args = [self.generate_expr(p.t) for p in m.parameters]
+            super_args = self.create_args(m)
             return ast.FunctionCall(ast.FunctionCall.SUPER,
                                     args=super_args)
         con = sorted(constructors, key=lambda x: len(x.parameters))[0]
@@ -267,9 +275,8 @@ class APIDeclarationGenerator(APIClientGenerator):
             # The constructor 'con' is the same with m. We avoid generating
             # a this call to avoid cycles.
             return None
-        super_args = [self.generate_expr(p.t) for p in con.parameters]
-        return ast.FunctionCall(ast.FunctionCall.THIS,
-                                super_args)
+        super_args = self.create_args(con)
+        return ast.FunctionCall(ast.FunctionCall.THIS, super_args)
 
     def generate_this_call(self, m: ag.Constructor):
         primary_constructors = [
@@ -280,10 +287,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         if not primary_constructors or m.metadata.get("primary", False):
             return None
         primary_constructor = primary_constructors[0]
-        super_args = [self.generate_expr(p.t)
-                      for p in primary_constructor.parameters]
-        return ast.FunctionCall(ast.FunctionCall.THIS,
-                                super_args)
+        super_args = self.create_args(primary_constructor)
+        return ast.FunctionCall(ast.FunctionCall.THIS, super_args)
 
     def generate_super_call(self, m: ag.Constructor):
         st_names = [st.name
@@ -312,10 +317,7 @@ class APIDeclarationGenerator(APIClientGenerator):
             # The parent class does not define any constructor.
             return None
         super_constructor = utils.random.choice(super_constructors)
-        super_args = [
-            self.generate_expr(p.t)
-            for p in super_constructor.parameters
-        ]
+        super_args = self.create_args(super_constructor)
         return ast.FunctionCall(
             ast.FunctionCall.SUPER,
             args=super_args
@@ -387,8 +389,6 @@ class APIDeclarationGenerator(APIClientGenerator):
         expr = converters[symbol](args)
         out_type = self.api_graph.get_concrete_output_type(m)
         out_type = tp.substitute_type(out_type, type_var_map)
-        expr.mk_typed(ast.TypePair(expected=self.peek_expected_type(),
-                                   actual=out_type))
         return expr
 
     def _generate_expression_from_path(self, path: list, depth: int,
@@ -401,9 +401,6 @@ class APIDeclarationGenerator(APIClientGenerator):
         else:
             return super()._generate_expression_from_path(path, depth,
                                                           type_var_map)
-
-    def _generate_expr_from_node(self, node, depth=1, constraints=None):
-        return super()._generate_expr_from_node(node, depth, constraints)
 
     def _get_mutable_local_vars(
         self,
@@ -462,6 +459,7 @@ class APIDeclarationGenerator(APIClientGenerator):
                     "receiver": receiver
                 })
             expr = self.generate_expr(out_type)
+            expr.mk_typed(ast.TypePair(actual=out_type, expected=out_type))
             kwargs["expr"] = expr
             assignments.append(ast.Assignment(**kwargs))
         return assignments
@@ -476,13 +474,13 @@ class APIDeclarationGenerator(APIClientGenerator):
                 self.block_variables = True
                 self.type_eraser.with_target(
                     self.bt_factory.get_boolean_type(primitive=True))
-                self.push_target_type(self.bt_factory.get_boolean_type(
-                    primitive=True))
+                boolean_type = self.bt_factory.get_boolean_type(primitive=True)
                 cond_expr = self._generate_expr_from_node(
-                    self.bt_factory.get_boolean_type(primitive=True),
-                    depth=2)[0]
+                    boolean_type, depth=2)[0]
+                cond_expr.mk_typed(ast.TypePair(actual=boolean_type,
+                                                expected=boolean_type))
+
                 self.type_eraser.reset_target_type()
-                self.pop_target_type()
                 self.block_variables = False
                 base_expr = ast.Block(body_block[::-1])
                 alt_expr = self.generate_expr(block_type)
@@ -527,9 +525,13 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.add_local_variables(m)
         if not is_abstract:
             self.type_eraser.with_target(out_type)
-            self.push_target_type(out_type)
             expr = self._generate_expr_from_node(out_type, 1)[0]
-            self.pop_target_type()
+            if isinstance(expr, ast.Block) and not expr.is_empty():
+                expr.body[-1].mk_typed(ast.TypePair(expected=out_type,
+                                                    actual=out_type))
+            elif isinstance(expr, ast.Expr):
+                expr.mk_typed(ast.TypePair(expected=out_type,
+                                           actual=out_type))
             decls = list(self.context.get_declarations(self.namespace,
                                                        True).values())
             var_decls = [d for d in decls
@@ -540,7 +542,6 @@ class APIDeclarationGenerator(APIClientGenerator):
                 var_decls + assignments + [expr])
             body = self.add_control_flow(body, out_type)
             self.type_eraser.reset_target_type()
-            self.pop_target_type()
         self.remove_local_variables(m)
         func = ast.FunctionDeclaration(
             name=func_name,
