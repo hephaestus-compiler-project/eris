@@ -163,6 +163,9 @@ class Block(Node):
             return self.body[-1].is_bottom()
         return True
 
+    def is_empty(self):
+        return not bool(self.body)
+
     def __str__(self):
         return "{{\n  {}\n}}".format("\n  ".join(map(str, self.body)))
 
