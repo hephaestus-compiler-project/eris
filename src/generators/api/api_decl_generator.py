@@ -715,7 +715,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         program = self.create_program_from_spec(forked_spec,
                                                 defined_namespaces)
         msg = (f"Generated skeleton program {program_id} using "
-               "namespace {api_namespace}")
+               f"namespace {api_namespace}")
         log(self.logger, msg)
         return program
 
