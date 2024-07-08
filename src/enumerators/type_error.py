@@ -381,10 +381,13 @@ class TypeErrorEnumerator(ErrorEnumerator):
             for new_type_arg in self.get_type_parameter_instantiations(
                     type_arg, loc, type_con, mapped_type_vars[type_var]):
                 if new_type_arg.is_type_constructor():
-                    new_type_arg, _ = tu.instantiate_type_constructor(
+                    new_type_arg = tu.instantiate_type_constructor(
                         new_type_arg, self.api_graph.get_reg_types(),
                         only_regular=True,
                         rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
+                    if new_type_arg is None:
+                        return
+                    new_type_arg = new_type_arg[0]
                 type_args = list(rec_t.type_args)
                 index = type_con.type_parameters.index(type_var)
                 type_args[index] = new_type_arg
@@ -456,7 +459,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
             return None
 
         yield from self.gen_incompatible_type_constructor_instantiations(
-            exp_t, candidate_t
+            exp_t, loc, candidate_t
         )
 
     def get_type_parameter_instantiations(self, type_arg: tp.Type,
@@ -488,9 +491,67 @@ class TypeErrorEnumerator(ErrorEnumerator):
         instantiations.extend(candidate_types)
         return instantiations
 
+    def _gen_incompatible_parameterized_type_from_non_polymorphic_type(
+        self,
+        exp_t: tp.Type,
+        type_con: tp.TypeConstructor
+    ) -> tp.ParameterizedType:
+        types = self.api_graph.get_reg_types()
+        supertypes = [t for t in exp_t.get_supertypes()
+                      if t.name == type_con.name]
+        if not supertypes:
+            param_t = tu.instantiate_type_constructor(
+                type_con, types,
+                only_regular=True,
+                rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
+            )
+            return param_t[0] if param_t is not None else param_t
+        return supertypes[0]
+
+    def _gen_incompatible_instantiations_from_related_type(
+        self, exp_t: tp.Type,
+        type_con: tp.TypeConstructor,
+        sub: dict, loc: Loc
+    ) -> list:
+        types = self.api_graph.get_reg_types()
+        reversed_sub = {}
+        for k, v in sub.items():
+            reversed_sub.setdefault(v, []).append(k)
+
+        instantiations = {}
+        type_var_assignments = exp_t.get_type_variable_assignments()
+        indexes = {}
+        for i, (type_param, v) in enumerate(reversed_sub.items()):
+            indexes[i] = type_param
+            t = utils.random.choice(v)
+            if not t.is_type_var():
+                instantiations.setdefault(type_param, []).append(t)
+            else:
+                type_arg = type_var_assignments[t]
+                variances = set()
+                if type_arg.is_wildcard() and type_arg.variance.is_covariant():
+                    variances.add(tp.Covariant)
+                    type_arg = type_arg.bound
+
+                if type_arg.is_wildcard() and type_arg.is_contravariant():
+                    variances.add(tp.Contravariant)
+                    type_arg = type_arg.bound
+                instantiations.setdefault(type_param, []).extend(
+                    self.get_type_parameter_instantiations(
+                        type_arg, loc, type_con, variances))
+
+        subs = []
+        for comb in itertools.product(*instantiations.values()):
+            subs.append({
+                indexes[i]: elem
+                for i, elem in enumerate(comb)
+            })
+        return subs
+
     def gen_incompatible_type_constructor_instantiations(
         self,
         exp_t: tp.Type,
+        loc: Loc,
         type_con: tp.TypeConstructor,
     ) -> Generator[tp.ParameterizedType, None, None]:
         """
@@ -500,26 +561,31 @@ class TypeErrorEnumerator(ErrorEnumerator):
         """
         types = self.api_graph.get_reg_types()
         if not exp_t.is_parameterized():
-            supertypes = [t for t in exp_t.get_supertypes()
-                          if t.name == type_con.name]
-            if not supertypes:
-                candidate_t, _ = tu.instantiate_type_constructor(
-                    type_con, types,
-                    only_regular=True,
-                    rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound)
-                yield candidate_t
-                return
-            yield supertypes[0]
+            yield self._gen_incompatible_parameterized_type_from_non_polymorphic_type(
+                exp_t, type_con)
             return
+        sub = tu.get_type_substitution_of_parent(exp_t, type_con)
+        param_t = tu.instantiate_type_constructor(
+            type_con, types, only_regular=True,
+            rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
+        )
+        if param_t is None:
+            return
+        if not sub:
+            # They types don't have connected type parameters. So, just return
+            # an instantation of the candidate type constructor.
+            yield param_t[0]
+            return
+        param_t = param_t[0]
+        instantiations = \
+            self._gen_incompatible_instantiations_from_related_type(
+                exp_t, type_con, sub, loc)
 
-        if exp_t.has_wildcards():
-            # TODO
-            return
-        instantiations = []
-        for i in range(len(type_con.type_parameters)):
-            index = min(i, len(exp_t.type_args) - 1)
-            type_arg = exp_t.type_args[index]
-            instantiations.append(self.get_type_parameter_instantiations(
-                type_arg, exp_t, type_con, types))
-        for comb in itertools.product(*instantiations):
-            yield type_con.new(comb)
+        for type_var_map in instantiations:
+            # Here, we replace the instantiations of the connected type
+            # parameters with incompatible types.
+            type_args = list(param_t.type_args)
+            for k, v in type_var_map.items():
+                index = type_con.type_parameters.index(k)
+                type_args[index] = v
+            yield type_con.new(type_args)
