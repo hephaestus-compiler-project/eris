@@ -587,5 +587,10 @@ class TypeErrorEnumerator(ErrorEnumerator):
             type_args = list(param_t.type_args)
             for k, v in type_var_map.items():
                 index = type_con.type_parameters.index(k)
+                if v.is_type_constructor():
+                    v = tu.instantiate_type_constructor(
+                        v, types, only_regular=True,
+                        rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
+                    )[0]
                 type_args[index] = v
             yield type_con.new(type_args)
