@@ -86,6 +86,18 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self.error_loc = loc
         self.new_node = new_node
 
+    def reconstruct_scope(self, loc: Loc):
+        self.api_graph.add_types(list(loc.scope["local_types"].values()))
+        for var_name, var_type in loc.scope["local_vars"].items():
+            if isinstance(var_type, str):
+                var_type = self.api_graph.get_type_by_name(var_type)
+            self.api_graph.add_variable_node(var_name, var_type)
+
+    def delete_scope(self, loc: Loc):
+        self.api_graph.remove_types(list(loc.scope["local_types"].values()))
+        for var_name in loc.scope["local_vars"].keys():
+            self.api_graph.remove_variable_node(var_name)
+
     def get_builtin_types(self):
         byte = self.bt_factory.get_byte_type()
         short = self.bt_factory.get_short_type()
@@ -177,7 +189,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
     def filter_program_locations(self, locations):
         filtered_locs = []
         cache = set()
-        for elem, parent, index, depth in locations:
+        for elem, parent, index, depth, scope in locations:
             if not elem.is_typed():
                 continue
             exp_t, actual_t = elem.get_type_info()
@@ -195,7 +207,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 continue
             cached_elem = (type(parent), exp_t, depth, index)
             if cached_elem not in cache:
-                filtered_locs.append(Loc(elem, parent, index, depth))
+                filtered_locs.append(Loc(elem, parent, index, depth, scope))
                 cache.add(cached_elem)
         return filtered_locs
 
@@ -231,6 +243,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
     def get_programs_with_error(self, loc):
         exp_t, actual_t = loc.expr.get_type_info()
         try:
+            self.reconstruct_scope(loc)
             for incompatible_t in self.enumerate_incompatible_typings(loc):
                 self.program_gen.block_variables = True
                 expr = self.program_gen._generate_expr_from_node(
@@ -242,8 +255,10 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 upd.visit(loc.parent)
                 self.add_err_message(loc, expr.expr)
                 yield self.program
+            self.delete_scope(loc)
         except Exception as e:
             self.program_gen.block_variables = False
+            self.delete_scope(loc)
             raise e
         return None
 
