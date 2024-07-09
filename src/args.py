@@ -269,6 +269,7 @@ args.options = {
             "api-rules": args.api_rules,
             "error-enumerator": args.error_enumerator,
             "library-path": args.library_path,
+            "path-search-strategy": args.path_search_strategy,
         }
     },
     'Translator': {
