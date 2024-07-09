@@ -1,4 +1,3 @@
-import itertools
 from typing import List, Generator, Set
 
 from src import utils
@@ -249,9 +248,12 @@ class TypeErrorEnumerator(ErrorEnumerator):
         return None
 
     def get_representative_types(self, loc: Loc, exp_t: tp.Type,
-                                 exclude_strategy: Set[int] = None):
+                                 exclude_strategy: Set[int] = None,
+                                 blacklisted_types=None):
         exclude_strategy = exclude_strategy or []
-        type_pool = self.api_graph.get_reg_types()
+        blacklisted_types = blacklisted_types or set()
+        type_pool = {t for t in self.api_graph.get_reg_types()
+                     if t not in blacklisted_types}
         excluded_types = self.get_type_filters(loc, exp_t, type_pool)
         types = set()
         for t in type_pool:
@@ -466,6 +468,12 @@ class TypeErrorEnumerator(ErrorEnumerator):
                                           loc: Loc,
                                           type_con: tp.TypeConstructor,
                                           variances: Set[tp.Variance]):
+        """
+        This method produces the list of possible instantiations of a
+        type parameter that has been previously instantiated with
+        `type_arg`. This method considers the variance of the type parameter
+        so that all the resulting instantiations are invalid.
+        """
         instantiations = []
         if type_con != self.bt_factory.get_array_type():
             # Wildcards
@@ -482,7 +490,9 @@ class TypeErrorEnumerator(ErrorEnumerator):
         if type_arg.is_parameterized():
             instantiations.append(type_arg.type_args[0])
         candidate_types = self.get_representative_types(
-            loc, type_arg, self._get_exclusion_strategies(variances))
+            loc, type_arg, self._get_exclusion_strategies(variances),
+            blacklisted_types={type_arg}
+        )
         candidate_types = sorted(
             list(candidate_types),
             key=lambda x: type_similarity(x, exp_t, self.bt_factory),
@@ -496,6 +506,12 @@ class TypeErrorEnumerator(ErrorEnumerator):
         exp_t: tp.Type,
         type_con: tp.TypeConstructor
     ) -> tp.ParameterizedType:
+        """
+        This method instantiates the given type constructor `type_con` so
+        that the resulting parameterized type is incompatible with `exp_t`.
+        This parameterized type can be easily retrieved by freely
+        instantiating the given type constructor.
+        """
         types = self.api_graph.get_reg_types()
         supertypes = [t for t in exp_t.get_supertypes()
                       if t.name == type_con.name]
@@ -512,7 +528,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self, exp_t: tp.Type,
         type_con: tp.TypeConstructor,
         sub: dict, loc: Loc
-    ) -> list:
+    ) -> List[dict]:
         types = self.api_graph.get_reg_types()
         reversed_sub = {}
         for k, v in sub.items():
@@ -520,14 +536,16 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
         instantiations = {}
         type_var_assignments = exp_t.get_type_variable_assignments()
-        indexes = {}
-        for i, (type_param, v) in enumerate(reversed_sub.items()):
+        indexes, default = {}, {}
+        for i, (type_param, insts) in enumerate(reversed_sub.items()):
             indexes[i] = type_param
-            t = utils.random.choice(v)
+            t = utils.random.choice(insts)
             if not t.is_type_var():
                 instantiations.setdefault(type_param, []).append(t)
+                default[type_param] = t
             else:
                 type_arg = type_var_assignments[t]
+                default[type_param] = type_arg
                 variances = set()
                 if type_arg.is_wildcard() and type_arg.variance.is_covariant():
                     variances.add(tp.Covariant)
@@ -541,11 +559,15 @@ class TypeErrorEnumerator(ErrorEnumerator):
                         type_arg, loc, type_con, variances))
 
         subs = []
-        for comb in itertools.product(*instantiations.values()):
-            subs.append({
-                indexes[i]: elem
-                for i, elem in enumerate(comb)
-            })
+        for i, (type_param, inst) in enumerate(instantiations.items()):
+            for elem in inst:
+                subs.append({
+                    type_param: (
+                        elem if indexes[i] == type_param
+                        else default[type_param]
+                    )
+                    for k in reversed_sub.keys()
+                })
         return subs
 
     def gen_incompatible_type_constructor_instantiations(
@@ -574,8 +596,17 @@ class TypeErrorEnumerator(ErrorEnumerator):
         if not sub:
             # They types don't have connected type parameters. So, just return
             # an instantation of the candidate type constructor.
+            # Example:
+            # exp_t: List<String>, type_con: Map<String, Object>
             yield param_t[0]
             return
+
+        # Here, the expected type and the type constructor have some sort
+        # of relation. Try to instantiate the connected type parameters with
+        # incompatible types. Example:
+        # exp_t: List<String>, type_con: List<Integer>/LinkedList<Integer>.
+        # In the above example, we make sure that List/LinkedList is not
+        # instantiated with String.
         param_t = param_t[0]
         instantiations = \
             self._gen_incompatible_instantiations_from_related_type(
