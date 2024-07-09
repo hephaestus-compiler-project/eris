@@ -1,9 +1,8 @@
 from copy import deepcopy
-from typing import NamedTuple, List, Tuple
+from typing import NamedTuple, List
 
 from src.ir import ast, types as tp
 from src.ir.visitors import DefaultVisitor
-from src.generators.api import nodes
 
 
 class Loc(NamedTuple):
