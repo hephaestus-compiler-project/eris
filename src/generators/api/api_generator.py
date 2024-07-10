@@ -373,7 +373,10 @@ class APIClientGenerator(Generator):
             )
             self._add_node_to_parent(self.namespace, var_decl)
             if self.type_erasure_mode:
-                self.type_eraser.erase_var_type(var_decl, res)
+                try:
+                    self.type_eraser.erase_var_type(var_decl, res)
+                except:
+                    import pdb; pdb.set_trace()
             var_ref = ast.Variable(var_name)
             var_ref.mk_typed(ast.TypePair(
                 expected=node, actual=node))
