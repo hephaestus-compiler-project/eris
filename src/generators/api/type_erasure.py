@@ -169,6 +169,8 @@ class TypeEraser():
             return
 
         api = get_arg_api(expr_res)
+        if getattr(api, "metadata", {}).get("is_special", False):
+            return
         type_parameters = self.get_type_parameters(api)
         if not type_parameters:
             # The API is not polymorphic, so we are free to omit the variable
@@ -192,6 +194,8 @@ class TypeEraser():
 
     def erase_types(self, expr: ast.Expr, api: ag.APINode,
                     args: List[ag.APIPath]):
+        if getattr(api, "metadata", {}).get("is_special", False):
+            return
         if isinstance(api, (ag.Method, ag.Constructor)):
             # Checks whether erasing type arguments from polymorphic call
             # creates ambiguity issues.
