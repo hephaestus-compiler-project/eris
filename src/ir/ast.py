@@ -169,6 +169,9 @@ class Block(Node):
     def __str__(self):
         return "{{\n  {}\n}}".format("\n  ".join(map(str, self.body)))
 
+    def __hash__(self):
+        return hash((tuple(self.body), self.is_func_block))
+
     def is_equal(self, other):
         if isinstance(other, Block):
             return check_list_eq(self.body, other.body)
@@ -210,6 +213,9 @@ class VariableDeclaration(Declaration):
     def omit_type(self):
         self.var_type = None
 
+    def recover_type(self):
+        self.var_type = self.inferred_type
+
     def get_type(self):
         return self.inferred_type
 
@@ -220,6 +226,10 @@ class VariableDeclaration(Declaration):
     @property
     def is_type_inferred(self):
         return not bool(self.var_type)
+
+    def __hash__(self):
+        return hash((self.name, self.expr, self.is_final, self.var_type,
+                     self.inferred_type))
 
     def __str__(self):
         prefix = "val " if self.is_final else "var "
@@ -263,6 +273,11 @@ class FieldDeclaration(Declaration):
     def is_type_inferred(self):
         return False
 
+    def __hash__(self):
+        return hash((self.name, self.field_type, self.is_final,
+                     self.can_override, self.override,
+                     tuple(self.metadata.items())))
+
     def __str__(self):
         return str(self.name) + ": " + str(self.field_type)
 
@@ -287,6 +302,9 @@ class ObjectDecleration(Declaration):
     def update_children(self, children):
         pass
 
+    def __hash__(self):
+        return hash((self.name,))
+
     def __str__(self):
         return "object " + self.name
 
@@ -309,6 +327,9 @@ class SuperClassInstantiation(Node):
         super().update_children(children)
         if self.args:
             self.args = children[:len(self.args)]
+
+    def __hash__(self):
+        return hash((self.class_type, tuple(self.args)))
 
     def __str__(self):
         if self.args is None:
@@ -343,6 +364,9 @@ class CallArgument(Node):
     def update_children(self, children):
         super().update_children(children)
         self.expr = children[0]
+
+    def __hash__(self):
+        return hash((self.expr, self.name))
 
     def __str__(self):
         if self.name:
@@ -382,6 +406,9 @@ class ParameterDeclaration(Declaration):
     @property
     def is_type_inferred(self):
         return False
+
+    def __hash__(self):
+        return hash((self.name, self.param_type, self.vararg, self.default))
 
     def __str__(self):
         prefix = 'vararg ' if self.vararg else ''
@@ -424,6 +451,10 @@ class Constructor(Declaration):
         if self.body is None:
             return
         self.body = children[-1]
+
+    def __hash__(self):
+        return hash((self.name, tuple(self.params), self.body,
+                     tuple(self.metadata.items())))
 
     def __str__(self):
         return "constructor {name}({params}) {{\n {body}\n }}".format(
@@ -509,6 +540,12 @@ class FunctionDeclaration(Declaration):
         type_args = [p.param_type for p in self.params] + [self.ret_type]
         return types.ParameterizedType(function_type, type_args)
 
+    def __hash__(self):
+        return hash((self.name, tuple(self.params), self.ret_type,
+                     self.body, self.func_type, self.is_final,
+                     self.override, tuple(self.type_parameters),
+                     tuple(self.metadata.items())))
+
     def __str__(self):
         type_params_str = (
             "<" + ", ".join(map(str, self.type_parameters)) + "> "
@@ -593,6 +630,10 @@ class Lambda(Expr):
     def get_signature(self, function_type: FunctionType):
         type_args = [p.param_type for p in self.params] + [self.ret_type]
         return types.ParameterizedType(function_type, type_args)
+
+    def __hash__(self):
+        return hash((self.name, tuple(self.params), self.ret_type,
+                     self.body, self.signature))
 
     def __str__(self):
         if self.ret_type is None:
@@ -918,6 +959,13 @@ class ClassDeclaration(Declaration):
                 return False
         return True
 
+    def __hash__(self):
+        return hash((self.name, tuple(self.fields), tuple(self.functions),
+                     tuple(self.constructors), self.class_type,
+                     tuple(self.extra_declarations), self.is_final,
+                     tuple(self.type_parameters),
+                     tuple(self.metadata.items())))
+
     def __str__(self):
         superclasses = " : " + ", ".join(map(str, self.superclasses)) \
             if len(self.superclasses) > 0 else ""
@@ -962,6 +1010,9 @@ class Constant(Expr):
 
     def update_children(self, children):
         pass
+
+    def __hash__(self):
+        return hash((self.literal, self.__class__.__name__))
 
     def __str__(self):
         return str(self.literal)
@@ -1057,6 +1108,9 @@ class ArrayExpr(Expr):
         super().update_children(children)
         self.exprs = children
 
+    def __hash__(self):
+        return hash((self.array_type, self.length, tuple(self.exprs)))
+
     def __str__(self):
         return "{}[]".format(str(self.array_type))
 
@@ -1081,6 +1135,9 @@ class Variable(Expr):
 
     def update_children(self, children):
         pass
+
+    def __hash__(self):
+        return hash((self.name, self.__class__.__name__))
 
     def __str__(self):
         return str(self.name)
@@ -1127,6 +1184,10 @@ class Conditional(Expr):
     def get_type(self):
         return self.inferred_type
 
+    def __hash__(self):
+        return hash((self.cond, self.true_branch, self.false_branch,
+                     self.is_expression))
+
     def __str__(self):
         return "if ({})\n  {}\nelse\n  {}".format(
             str(self.cond), str(self.true_branch), str(self.false_branch))
@@ -1160,7 +1221,8 @@ class Operator(Node):
                 self.wrap == other.wrap)
 
     def __hash__(self):
-        hash((str(self.__class__), self.name, self.is_not, self.wrap))
+        return hash((self.__class__.__name__,
+                     self.name, self.is_not, self.wrap))
 
     def __str__(self):
         if self.is_not:
@@ -1200,6 +1262,10 @@ class BinaryExpr(Expr):
         super().update_children(children)
         self.lexpr = children[0]
         self.rexpr = children[1]
+
+    def __hash__(self):
+        return hash((self.lexpr, self.rexpr, self.operator,
+                     self.__class__.__name__))
 
     def __str__(self):
         return "{} {} {}".format(
@@ -1366,7 +1432,8 @@ class New(Expr):
         self.receiver = receiver
 
     def has_variable(self):
-        return any(e.has_variable() for e in self.args)
+        args = [e.expr for e in self.args]
+        return any(e.has_variable() for e in args)
 
     def children(self):
         return self.args + ([self.receiver] if self.receiver else [])
@@ -1380,6 +1447,26 @@ class New(Expr):
     def omit_types(self):
         if self.class_type.is_parameterized():
             self.class_type.can_infer_type_args = True
+
+    def recover_types(self):
+        if self.class_type.is_parameterized():
+            self.class_type.can_infer_type_args = False
+
+    @property
+    def type_args(self):
+        if self.class_type.is_parameterized():
+            return self.class_type.type_args
+        else:
+            return []
+
+    @property
+    def type_parameters(self):
+        if self.class_type.is_parameterized():
+            return self.class_type.t_constructor.type_parameters
+        return []
+
+    def __hash__(self):
+        return hash((self.class_type, tuple(self.args), self.receiver))
 
     def __str__(self):
         if getattr(self.class_type, 'type_args', None) is not None:
@@ -1422,6 +1509,9 @@ class FieldAccess(Expr):
         super().update_children(children)
         self.expr = children[0]
 
+    def __hash__(self):
+        return hash((self.expr, self.field))
+
     def __str__(self):
         return str(self.expr) + "." + self.field
 
@@ -1441,6 +1531,8 @@ class FunctionCall(Expr):
                  type_args: List[types.Type] = [],
                  is_ref_call: bool = False):
         super().__init__()
+        if any(not isinstance(a, CallArgument) for a in args):
+            import pdb; pdb.set_trace()
         self.func = func
         self.args = args
         self.receiver = receiver
@@ -1477,6 +1569,9 @@ class FunctionCall(Expr):
     def omit_types(self):
         self.can_infer_type_args = True
 
+    def recover_types(self):
+        self.can_infer_type_args = False
+
     @property
     def can_infer_type_args(self):
         return self._can_infer_type_args
@@ -1490,6 +1585,10 @@ class FunctionCall(Expr):
         if not isinstance(value, bool):
             raise TypeError("Must be bool")
         self._can_infer_type_args = value
+
+    def __hash__(self):
+        return hash((self.func, tuple(self.args), tuple(self.type_args),
+                     self.is_ref_call, tuple(self.type_parameters)))
 
     def __str__(self):
         type_args_str = (
@@ -1542,6 +1641,9 @@ class FunctionReference(Expr):
     def get_signature(self):
         return self.signature
 
+    def __hash__(self):
+        return hash((self.receiver, self.func))
+
     def __str__(self):
         return "{}::{}".format(str(self.receiver), self.func)
 
@@ -1575,6 +1677,9 @@ class Assignment(Expr):
             self.expr = children[1]
         else:
             self.expr = children[0]
+
+    def __hash__(self):
+        return hash((self.receiver, self.name, self.expr))
 
     def __str__(self):
         if self.receiver:
