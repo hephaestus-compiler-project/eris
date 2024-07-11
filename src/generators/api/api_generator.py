@@ -373,10 +373,7 @@ class APIClientGenerator(Generator):
             )
             self._add_node_to_parent(self.namespace, var_decl)
             if self.type_erasure_mode:
-                try:
-                    self.type_eraser.erase_var_type(var_decl, res)
-                except:
-                    import pdb; pdb.set_trace()
+                self.type_eraser.erase_var_type(var_decl, res)
             var_ref = ast.Variable(var_name)
             var_ref.mk_typed(ast.TypePair(
                 expected=node, actual=node))
@@ -448,7 +445,7 @@ class APIClientGenerator(Generator):
             con_type = self.api_graph.get_type_by_name(
                 cls_name) or self.parse_builtin_type(cls_name)
             con_type = _instantiate_type_con(con_type)
-            call_args = [arg.expr for arg in args]
+            call_args = [ast.CallArgument(arg.expr) for arg in args]
             expr = ast.New(con_type, call_args, receiver=receiver)
             if con_type.is_parameterized() and self.type_erasure_mode:
                 self.type_eraser.erase_types(expr, api, args)
@@ -633,8 +630,6 @@ class APIClientGenerator(Generator):
     def _get_target_selection(self, target: tp.Type) -> str:
         # In case of arrays we don't examine abstract output types because
         # we don't want to instantiate type variables with array types.
-        if target is None:
-            import pdb; pdb.set_trace()
         is_array = target.name == self.bt_factory.get_array_type().name
         return "concrete" if is_array else "all"
 
@@ -762,7 +757,7 @@ class APIClientGenerator(Generator):
             parameters = [param.t for param in elem.parameters]
             args = self._generate_args(parameters, [[p] for p in parameters],
                                        depth + 1, type_var_map)
-            call_args = [arg.expr for arg in args]
+            call_args = [ast.CallArgument(arg.expr) for arg in args]
             expr = ast.New(con_type, call_args, receiver=receiver)
             if con_type.is_parameterized() and self.type_erasure_mode:
                 self.type_eraser.erase_types(expr, elem, args)
