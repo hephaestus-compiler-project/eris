@@ -270,6 +270,7 @@ args.options = {
             "error-enumerator": args.error_enumerator,
             "library-path": args.library_path,
             "path-search-strategy": args.path_search_strategy,
+            "erase-types": args.erase_types,
         }
     },
     'Translator': {
