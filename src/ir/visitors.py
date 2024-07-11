@@ -330,25 +330,21 @@ class ASTExprUpdate(DefaultVisitor):
             node.false_branch = self.new_node
 
     def visit_new(self, node):
-        node.args[self.index] = self.new_node
+        node.args[self.index] = ast.CallArgument(self.new_node)
 
     def visit_field_access(self, node):
         node.receiver = self.new_node
 
     def visit_func_call(self, node):
-        if node.receiver:
-            if self.index == 0:
-                node.receiver = self.new_node
-            else:
-                node.args[self.index - 1] = self.new_node
+        assert self.index in range(-1, len(node.args))
+        if self.index == -1:
+            node.receiver = self.new_node
         else:
-            node.args[self.index] = self.new_node
+            node.args[self.index] = ast.CallArgument(self.new_node)
 
     def visit_assign(self, node):
-        if node.receiver:
-            if self.index == 0:
-                node.receiver = self.new_node
-            else:
-                node.expr = self.new_node
+        assert self.index in [-1, 0]
+        if self.index == -1:
+            node.receiver = self.new_node
         else:
             node.expr = self.new_node

@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Dict, Tuple
 
 from src.ir import ast, types as tp
 from src.ir.visitors import DefaultVisitor
@@ -12,19 +12,27 @@ class Loc(NamedTuple):
     depth: int
     scope: dict
 
+    RECEIVER_INDEX = -1
+
     def is_receiver_loc(self):
         if isinstance(self.parent, (ast.FieldAccess, ast.FunctionReference)):
             return True
         if (isinstance(self.parent, ast.FunctionCall)
                 and self.parent.receiver is not None
-                and self.index == 0):
+                and self.index == self.RECEIVER_INDEX):
             return True
 
         if (isinstance(self.parent, ast.Assignment)
                 and self.parent.receiver is not None
-                and self.index == 0):
+                and self.index == self.RECEIVER_INDEX):
             return True
         return False
+
+    def is_parent_call(self):
+        return isinstance(self.parent, (ast.FunctionCall, ast.New))
+
+    def is_parent_var_decl(self):
+        return isinstance(self.parent, ast.VariableDeclaration)
 
 
 class LocationAnalysis(DefaultVisitor):
@@ -41,6 +49,7 @@ class ExprLocationAnalysis(LocationAnalysis):
             "local_vars": {},
             "local_types": {},
         }
+        self.parents: Dict[ast.Node, Tuple[ast.Node, int]] = {}
 
     def push_local_var(self, var_name: str, var_type):
         self.scope["local_vars"][var_name] = var_type
@@ -68,6 +77,7 @@ class ExprLocationAnalysis(LocationAnalysis):
         super().visit_block(node)
         for i, elem in enumerate(node.body):
             if isinstance(elem, ast.Expr):
+                self.parents[elem] = (node, i)
                 self.locations.append(Loc(elem, node, i, self.depth,
                                           deepcopy(self.scope)))
 
@@ -76,6 +86,7 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.depth += 1
         super().visit_var_decl(node)
         self.depth = prev_depth
+        self.parents[node.expr] = (node, 0)
         self.locations.append(Loc(node.expr, node, 0, self.depth,
                                   deepcopy(self.scope)))
 
@@ -92,6 +103,7 @@ class ExprLocationAnalysis(LocationAnalysis):
         super().visit_func_decl(node)
         self.depth = prev_depth
         if node.body and isinstance(node.body, ast.Expr):
+            self.parents[node.body] = (node, 0)
             self.locations.append(Loc(node.body, node, 0, self.depth,
                                       deepcopy(self.scope)))
         if not node.metadata.get("is_static"):
@@ -109,6 +121,7 @@ class ExprLocationAnalysis(LocationAnalysis):
         super().visit_lambda(node)
         self.depth = prev_depth
         if isinstance(node.body, ast.Expr):
+            self.parents[node.body] = (node, 0)
             self.locations.append(Loc(node.body, node, 0, self.depth,
                                       deepcopy(self.scope)))
         for p in node.params:
@@ -120,6 +133,7 @@ class ExprLocationAnalysis(LocationAnalysis):
         super().visit_func_ref(node)
         self.depth = prev_depth
         if node.receiver:
+            self.parents[node.receiver] = (node, 0)
             self.locations.append(Loc(node.receiver, node, 0, self.depth,
                                       deepcopy(self.scope)))
 
@@ -129,6 +143,7 @@ class ExprLocationAnalysis(LocationAnalysis):
         super().visit_array_expr(node)
         self.depth = prev_depth
         for i, expr in enumerate(node.exprs):
+            self.parents[expr] = (node, i)
             self.locations.append(Loc(expr, node, i, self.depth,
                                       deepcopy(self.scope)))
 
@@ -137,8 +152,10 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.depth += 1
         super().visit_binary_expr(node)
         self.depth = prev_depth
+        self.parents[node.lexpr] = (node, 0)
         self.locations.append(Loc(node.lexpr, node, 0, self.depth,
                                   deepcopy(self.scope)))
+        self.parents[node.rexpr] = (node, 1)
         self.locations.append(Loc(node.rexpr, node, 1, self.depth,
                                   deepcopy(self.scope)))
 
@@ -147,8 +164,10 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.depth += 1
         super().visit_logical_expr(node)
         self.depth = prev_depth
+        self.parents[node.lexpr] = (node, 0)
         self.locations.append(Loc(node.lexpr, node, 0, self.depth,
                                   deepcopy(self.scope)))
+        self.parents[node.rexpr] = (node, 1)
         self.locations.append(Loc(node.rexpr, node, 1, self.depth,
                                   deepcopy(self.scope)))
 
@@ -157,8 +176,10 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.depth += 1
         super().visit_equality_expr(node)
         self.depth = prev_depth
+        self.parents[node.lexpr] = (node, 0)
         self.locations.append(Loc(node.lexpr, node, 0, self.depth,
                                   deepcopy(self.scope)))
+        self.parents[node.rexpr] = (node, 1)
         self.locations.append(Loc(node.rexpr, node, 1, self.depth,
                                   deepcopy(self.scope)))
 
@@ -167,8 +188,10 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.depth += 1
         super().visit_comparison_expr(node)
         self.depth = prev_depth
+        self.parents[node.lexpr] = (node, 0)
         self.locations.append(Loc(node.lexpr, node, 0, self.depth,
                                   deepcopy(self.scope)))
+        self.parents[node.rexpr] = (node, 1)
         self.locations.append(Loc(node.rexpr, node, 1, self.depth,
                                   deepcopy(self.scope)))
 
@@ -177,8 +200,10 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.depth += 1
         super().visit_arith_expr(node)
         self.depth = prev_depth
+        self.parents[node.lexpr] = (node, 0)
         self.locations.append(Loc(node.lexpr, node, 0, self.depth,
                                   deepcopy(self.scope)))
+        self.parents[node.rexpr] = (node, 1)
         self.locations.append(Loc(node.rexpr, node, 1, self.depth,
                                   deepcopy(self.scope)))
 
@@ -187,12 +212,15 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.depth += 1
         super().visit_conditional(node)
         self.depth = prev_depth
+        self.parents[node.cond] = (node, 0)
         self.locations.append(Loc(node.cond, node, 0, self.depth,
                                   deepcopy(self.scope)))
         if isinstance(node.true_branch, ast.Expr):
+            self.parents[node.true_branch] = (node, 1)
             self.locations.append(Loc(node.true_branch, node, 1, self.depth,
                                       deepcopy(self.scope)))
         if isinstance(node.false_branch, ast.Expr):
+            self.parents[node.false_branch] = (node, 2)
             self.locations.append(Loc(node.false_branch, node, 2, self.depth,
                                       deepcopy(self.scope)))
 
@@ -202,7 +230,8 @@ class ExprLocationAnalysis(LocationAnalysis):
         super().visit_new(node)
         self.depth = prev_depth
         for i, e in enumerate(node.args):
-            self.locations.append(Loc(e, node, i, self.depth,
+            self.parents[e.expr] = (node, i)
+            self.locations.append(Loc(e.expr, node, i, self.depth,
                                       deepcopy(self.scope)))
 
     def visit_field_access(self, node):
@@ -211,6 +240,7 @@ class ExprLocationAnalysis(LocationAnalysis):
         super().visit_field_access(node)
         self.depth = prev_depth
         if node.expr:
+            self.parents[node.expr] = (node, 0)
             self.locations.append(Loc(node.expr, node, 0, self.depth,
                                       deepcopy(self.scope)))
 
@@ -219,17 +249,18 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.depth += 1
         super().visit_func_call(node)
         self.depth = prev_depth
-        j = 0
         if node.receiver:
-            self.locations.append(Loc(node.receiver, node, 0, self.depth,
+            self.parents[node.receiver] = (node, -1)
+            self.locations.append(Loc(node.receiver, node, -1, self.depth,
                                       deepcopy(self.scope)))
-            j = 1
         for i, p in enumerate(node.args):
             if isinstance(p, ast.CallArgument):
-                self.locations.append(Loc(p.expr, node, i + j, self.depth,
+                self.parents[p.expr] = (node, i)
+                self.locations.append(Loc(p.expr, node, i, self.depth,
                                           deepcopy(self.scope)))
             else:
-                self.locations.append(Loc(p, node, i + j, self.depth,
+                self.parents[p] = (node, i)
+                self.locations.append(Loc(p, node, i, self.depth,
                                           deepcopy(self.scope)))
 
     def visit_assign(self, node):
@@ -237,10 +268,18 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.depth += 1
         super().visit_assign(node)
         self.depth = prev_depth
-        j = 0
         if node.receiver:
-            self.locations.append(Loc(node.receiver, node, j, self.depth,
+            self.parents[node.receiver] = (node, -1)
+            self.locations.append(Loc(node.receiver, node, -1, self.depth,
                                       deepcopy(self.scope)))
-            j = 1
-        self.locations.append(Loc(node.expr, node, j, self.depth,
+        self.parents[node.expr] = (node, 0)
+        self.locations.append(Loc(node.expr, node, 0, self.depth,
                                   deepcopy(self.scope)))
+
+    def get_parents(self, node: ast.Node):
+        parents = []
+        while node in self.parents:
+            parent = self.parents[node]
+            parents.append(parent)
+            node = parent
+        return parents
