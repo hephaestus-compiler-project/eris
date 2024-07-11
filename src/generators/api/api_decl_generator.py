@@ -244,7 +244,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         for p in api.parameters:
             expr = self.generate_expr(p.t)
             expr.mk_typed(ast.TypePair(expected=p.t, actual=p.t))
-            args.append(expr)
+            args.append(ast.CallArgument(expr))
         return args
 
     def generate_super_call_unknown(self, m: ag.Constructor,
@@ -605,6 +605,8 @@ class APIDeclarationGenerator(APIClientGenerator):
                 continue
             if isinstance(decl, ast.FunctionDeclaration):
                 methods.append(decl)
+            elif isinstance(decl, ast.Constructor):
+                constructors.append(decl)
             else:
                 variables.append(decl)
 
@@ -712,6 +714,8 @@ class APIDeclarationGenerator(APIClientGenerator):
             self.language, **self.options)
         api_builder.parsed_types = self.api_builder.parsed_types
         self.api_graph = api_builder.build(forked_spec)
+        if self.type_eraser is not None:
+            self.type_eraser.api_graph = self.api_graph
         program = self.create_program_from_spec(forked_spec,
                                                 defined_namespaces)
         msg = (f"Generated skeleton program {program_id} using "

@@ -8,7 +8,7 @@ import networkx as nx
 
 from src import utils
 from src.config import cfg
-from src.ir import types as tp, type_utils as tu
+from src.ir import types as tp, type_utils as tu, ast
 from src.generators.api import utils as au
 from src.generators.api.matcher import Matcher
 from src.generators.api.nodes import (Field, Method, Constructor, Variable,
@@ -1139,3 +1139,69 @@ class APIGraph():
             except Exception:
                 self.remove_types(self.get_type_parameters())
         return encodings
+
+    def get_declarations_of_access(
+            self, expr: ast.Expr,
+            only_instance: bool = True) -> List[ast.Declaration]:
+        """
+        Given an expression, such as function call, field access, or
+        assignment, this methos retrieves all the instance declarations
+        associated with this expression.
+        """
+        assert isinstance(expr, (ast.FunctionCall, ast.FieldAccess,
+                                 ast.Assignment, ast.FunctionReference,
+                                 ast.New))
+        receiver_type = None
+        receiver = getattr(expr, "receiver", None)
+        if only_instance and receiver is None:
+            return []
+        if receiver and not receiver.is_typed():
+            return None
+        if receiver:
+            receiver_type = expr.receiver.get_type_info()[1]
+        if isinstance(expr, (ast.FunctionCall, ast.FunctionReference,
+                             ast.New)):
+            # Handle function calls
+            if isinstance(expr, ast.New):
+                func_name, cls = expr.class_type.name, None
+            else:
+                func_name, cls = getattr(expr, "func"), None
+            segs = func_name.rsplit(".", 1)
+            if len(segs) == 2:
+                cls, func_name = tuple(segs)
+                if receiver is None:
+                    func_name = f"{cls}.{func_name}"
+            # Create a dummy method with the same name.
+            # Find its overloaded methods.
+            dummy_method = Method(func_name, cls, [], [], {})
+            return [m for m, _ in self.get_overloaded_methods(
+                receiver_type, dummy_method, override_checks_with_self=False)]
+        field_name = (expr.field
+                      if isinstance(expr, ast.FieldAccess)
+                      else expr.name)
+        field = self.get_field(receiver_type, field_name)
+        return [] if field is None else [field]
+
+    def find_applicable_method(
+            self, expr: ast.Expr,
+            overloaded_methods: Set[Method]) -> Method:
+        """
+        Based on a set of overloaded methods, select one that is applicable.
+        Note this is implementation is a heuristic and incomplete. The decision
+        is made based on the number of arguments/formal parameters.
+        """
+        if isinstance(expr, (ast.FunctionCall, ast.New)):
+            args = expr.args
+            overloaded_methods = [m for m in overloaded_methods
+                                  if len(m.parameters) == len(args)]
+        else:
+            assert isinstance(expr, ast.FunctionReference)
+            functional_type = self.get_functional_type(
+                expr.get_type_info()[1])
+            overloaded_methods = [
+                m for m in overloaded_methods
+                if len(m.parameters) == len(functional_type.type_args) - 1
+            ]
+        if not overloaded_methods:
+            return None
+        return overloaded_methods[0]

@@ -1,6 +1,7 @@
 from collections import defaultdict
 from typing import Dict, Set, List
 
+from src import utils
 from src.ir import types as tp, type_utils as tu, ast
 from src.ir.builtins import BuiltinFactory
 from src.generators.api import api_graph as ag, utils as au
@@ -223,3 +224,131 @@ class TypeEraser():
                 omittable_type_params.add(type_param)
         if len(omittable_type_params) == len(self.get_type_parameters(api)):
             expr.omit_types()
+
+    def _can_omit_with_expected_type(self, expr: ast.Expr,
+                                     api: ag.APINode, sub: dict,
+                                     markings: dict, changed_vars: list):
+        exp_t = expr.get_type_info()[0]
+        if exp_t is None:
+            return False
+        output_type = tp.substitute_type(
+            self.get_api_output_type(api), sub)
+        if any(self.OUT in markings[t] for t in changed_vars):
+            if not output_type.is_subtype(exp_t):
+                return True
+        return False
+
+    def erase_types_ill_typed(self, expr: ast.Expr, api: ag.APINode,
+                              new_type: tp.Type, index: int,
+                              parents: List[ast.Node]):
+        if not isinstance(expr, (ast.FunctionCall, ast.New)):
+            return False
+
+        markings = self.compute_markings(api)
+        # Get the type variables that touch the affected parameter.
+        type_vars = tu.get_type_variables_of_type(api.parameters[index].t)
+        if not type_vars:
+            # If the are not affected type variables, then we can omit
+            # type arguments freely.
+            expr.omit_types()
+            return True
+
+        # We get the type substitution of the receiver, in case any method's
+        # type parameter is bounded by a class type parameter.
+        instance_sub = {}
+        if getattr(expr, "receiver", None) and expr.receiver.is_typed():
+            rec_type = expr.receiver.get_type_info()[1]
+            if rec_type.is_parameterized():
+                instance_sub = rec_type.get_type_variable_assignments()
+        # This is the actual type substitution of the polymophic method call
+        valid_sub = {type_param: expr.type_args[i]
+                     for i, type_param in enumerate(api.type_parameters)}
+
+        arg_val = expr.args[index]
+        if not arg_val.expr.is_typed():
+            expr.recover_types()
+            return False
+        arg_types = [
+            arg.expr.get_type_info()[1] if i != index else new_type
+            for i, arg in enumerate(expr.args)
+        ]
+        new_sub = au._infer_sub_for_method(api, arg_types)
+        if new_sub is None:
+            new_sub = {
+                type_param: (self.bt_factory.get_any_type()
+                             if type_param.bound is None
+                             else tp.substitute_type(type_param.bound,
+                                                     instance_sub))
+                for type_param in api.type_parameters
+            }
+        ill_typed = False
+        for i, arg in enumerate(expr.args):
+            actual_arg_type = arg.expr.get_type_info()[0]
+            if i == index:
+                actual_arg_type = new_type
+            expected_type = tp.substitute_type(api.parameters[i].t,
+                                               new_sub)
+            if not actual_arg_type.is_subtype(expected_type):
+                ill_typed = True
+                break
+        if ill_typed:
+            expr.omit_types()
+            return True
+        else:
+            sub = tu.unify_types(new_type, api.parameters[index].t,
+                                 self.bt_factory, same_type=False)
+            if not sub:
+                expr.omit_types()
+                return True
+            changed_vars = {t for t in type_vars
+                            if sub[t] != valid_sub[t]}
+
+            if not parents:
+                expr.recover_types()
+                return False
+            while parents:
+                parent, parent_index = parents[0]
+                if isinstance(parent, (ast.Assignment, ast.FunctionDeclaration,
+                                       ast.VariableDeclaration)):
+                    if self._can_omit_with_expected_type(expr, api, new_sub,
+                                                         markings, changed_vars):
+
+                        if isinstance(parent, ast.VariableDeclaration):
+                            if utils.random.bool():
+                                expr.omit_types()
+                                parent.recover_type()
+                            else:
+                                parent.omit_type()
+                                expr.recover_types()
+                        else:
+                            expr.omit_types()
+                        return True
+
+                if isinstance(parent, ast.FunctionCall):
+                    decl = self.api_graph.find_applicable_method(
+                        parent, self.api_graph.get_declarations_of_access(
+                            parent, only_instance=False))
+                    if not parent.type_args:
+                        expr.omit_types()
+                        return True
+                    res = self.erase_types_ill_typed(parent, decl, new_type,
+                                                     parent_index, parents[1:])
+                    if not res:
+                        expr.omit_types()
+                        return True
+                    else:
+                        expr.omit_types()
+                        return True
+                if isinstance(parent, ast.Conditional) and parent_index == 0:
+                    expr.recover_type()
+                    return False
+                if isinstance(parent, ast.Conditional) and parent_index != 0:
+                    parents = parents[1:]
+
+                elif isinstance(parent, ast.Block):
+                    parents = parents[1:]
+                else:
+                    break
+
+        expr.recover_types()
+        return False

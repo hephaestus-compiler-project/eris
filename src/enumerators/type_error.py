@@ -44,6 +44,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self.error_loc = None
         self.new_node = None
         self.depth = 0
+        self.analysis = ExprLocationAnalysis()
         super().__init__(program, program_gen, bt_factory)
 
     @property
@@ -182,9 +183,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
         return blacklisted_types
 
     def get_candidate_program_locations(self):
-        analysis = ExprLocationAnalysis()
-        analysis.visit_program(self.program)
-        return analysis.locations
+        self.analysis.visit_program(self.program)
+        return self.analysis.locations
 
     def filter_program_locations(self, locations):
         filtered_locs = []
@@ -209,6 +209,13 @@ class TypeErrorEnumerator(ErrorEnumerator):
             if cached_elem not in cache:
                 filtered_locs.append(Loc(elem, parent, index, depth, scope))
                 cache.add(cached_elem)
+        filtered_locs = [
+            f
+            for f in filtered_locs
+            if ((isinstance(f.parent, ast.New) and f.parent.type_args) or
+                (isinstance(f.parent, ast.FunctionCall) and f.index != -1 and
+                 f.parent.type_args))
+        ]
         return filtered_locs
 
     def _get_exclusion_strategies(self,
@@ -251,6 +258,19 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 expr.expr.mk_typed(ast.TypePair(expected=exp_t,
                                                 actual=incompatible_t))
                 self.program_gen.block_variables = False
+                if self.program_gen.type_eraser:
+                    if loc.is_parent_call():
+                        decl = self.api_graph.find_applicable_method(
+                            loc.parent, self.api_graph.get_declarations_of_access(
+                                loc.parent, only_instance=False))
+                        parents = self.analysis.get_parents(loc.parent)
+                        if decl and getattr(loc.parent, "args", None):
+                            self.program_gen.type_eraser.erase_types_ill_typed(
+                                loc.parent, decl, incompatible_t, loc.index,
+                                parents
+                            )
+                    if loc.is_parent_var_decl():
+                        loc.parent.recover_types()
                 upd = ASTExprUpdate(loc.index, expr.expr)
                 upd.visit(loc.parent)
                 self.add_err_message(loc, expr.expr)
@@ -285,7 +305,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
         # Abstract every type included in the set.
         types_map = {t: ta.to_type_abstraction(t, self.bt_factory)
-                     for t in types}
+                     for t in types if t.name != exp_t.name}
         abstractions = set(types_map.values())
         # Group types based on their abstraction
         type_classes = [[k for k, v in types_map.items()
@@ -296,36 +316,9 @@ class TypeErrorEnumerator(ErrorEnumerator):
                           if t not in excluded_types]
             if type_class:
                 candidate_types.append(utils.random.choice(type_class))
+        if exp_t.is_parameterized():
+            candidate_types.append(exp_t.t_constructor)
         return candidate_types
-
-    def get_declarations_of_receiver(self,
-                                     expr: ast.Expr) -> List[ast.Declaration]:
-        """
-        Given an expression, such as function call, field access, or
-        assignment, this methos retrieves all the instance declarations
-        associated with this expression.
-        """
-        assert isinstance(expr, (ast.FunctionCall, ast.FieldAccess,
-                                 ast.Assignment, ast.FunctionReference))
-        if expr.receiver is None:
-            return []
-        receiver_type = expr.receiver.get_type_info()[1]
-        if isinstance(expr, (ast.FunctionCall, ast.FunctionReference)):
-            # Handle function calls
-            func_name, cls = expr.func, None
-            segs = func_name.rsplit(".", 1)
-            if len(segs) == 2:
-                cls, func_name = tuple(segs)
-            # Create a dummy method with the same name.
-            # Find its overloaded methods.
-            dummy_method = nodes.Method(func_name, cls, [], [], {})
-            return [m for m, _ in self.api_graph.get_overloaded_methods(
-                receiver_type, dummy_method, override_checks_with_self=False)]
-        field_name = (expr.field
-                      if isinstance(expr, ast.FieldAccess)
-                      else expr.name)
-        field = self.api_graph.get_field(receiver_type, field_name)
-        return [] if field is None else [field]
 
     def get_type_variables_of_node_signature(self, node: nodes.APINode,
                                              receiver_type: tp.Type):
@@ -361,12 +354,13 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
         # ... that takes at least one parameter, and the current index does
         # not correspond to the receiver of the method.
-        if not func_call.args or (func_call.receiver and index == 0):
+        if not func_call.args or (func_call.receiver and index == -1):
             return False
-        overloaded_methods = self.get_declarations_of_receiver(func_call)
+        overloaded_methods = self.api_graph.get_declarations_of_access(
+            func_call, only_instance=False)
         if len(overloaded_methods) < 2:
             return False
-        param_index = index if func_call.receiver is None else index - 1
+        param_index = index
         # There is an applicable method for the given candidate type when
         # the following conditions are met:
         #   * The given candidate type matches with the expected formal
@@ -410,29 +404,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 type_args[index] = new_type_arg
                 yield type_con.new(type_args)
 
-    def find_applicable_method(
-            self, loc: Loc,
-            overloaded_methods: Set[nodes.Method]) -> nodes.Method:
-        """
-        Based on a set of overloaded methods, select one that is applicable.
-        Note this is implementation is a heuristic and incomplete. The decision
-        is made based on the number of arguments/formal parameters.
-        """
-        if isinstance(loc.expr, ast.FunctionCall):
-            args = loc.expr.args
-            overloaded_methods = [m for m in overloaded_methods
-                                  if len(m.parameters) == len(args)]
-        else:
-            assert isinstance(loc.expr, ast.FunctionReference)
-            functional_type = self.api_graph.get_functional_type(
-                loc.expr.get_type_info()[1])
-            overloaded_methods = [
-                m for m in overloaded_methods
-                if len(m.parameters) == len(functional_type.type_args) - 1
-            ]
-        if not overloaded_methods:
-            return None
-        return overloaded_methods[0]
 
     def get_incompatible_type_of_receiver(self, loc: Loc):
         """
@@ -441,9 +412,10 @@ class TypeErrorEnumerator(ErrorEnumerator):
         """
         assert loc.parent.receiver is not None, (
             "Assertion failed: parent location does not contain a receiver")
-        declarations = self.get_declarations_of_receiver(loc.parent)
+        declarations = self.api_graph.get_declarations_of_access(loc.parent)
         if len(declarations) > 1:
-            decl = self.find_applicable_method(loc, declarations)
+            decl = self.api_graph.find_applicable_method(loc.parent,
+                                                         declarations)
         receiver_type = loc.parent.receiver.get_type_info()[1]
         if not receiver_type.is_parameterized():
             return None
