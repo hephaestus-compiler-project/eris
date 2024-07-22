@@ -1127,7 +1127,6 @@ def test_get_declaration_of_access_constructors():
 
 
 def test_get_declaration_of_access_fields():
-    pass
     g = nx.DiGraph()
     a = tp.SimpleClassifier("A")
     f1 = ag.Field("f1", "A", {})
