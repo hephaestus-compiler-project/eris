@@ -1148,21 +1148,30 @@ class APIGraph():
         assignment, this methos retrieves all the instance declarations
         associated with this expression.
         """
+        def match_(expr, definition):
+            if isinstance(expr, ast.New):
+                return isinstance(definition, Constructor)
+            else:
+                return isinstance(definition, Method)
+
         assert isinstance(expr, (ast.FunctionCall, ast.FieldAccess,
                                  ast.Assignment, ast.FunctionReference,
                                  ast.New))
         receiver_type = None
         receiver = getattr(expr, "receiver", None)
+        if receiver is None:
+            receiver = getattr(expr, "expr", None)
         if only_instance and receiver is None:
-            return []
+            return set()
         if receiver and not receiver.is_typed():
             return None
         if receiver:
-            receiver_type = expr.receiver.get_type_info()[1]
+            receiver_type = receiver.get_type_info()[1]
         if isinstance(expr, (ast.FunctionCall, ast.FunctionReference,
                              ast.New)):
+            is_constructor = isinstance(expr, ast.New)
             # Handle function calls
-            if isinstance(expr, ast.New):
+            if is_constructor:
                 func_name, cls = expr.class_type.name, None
             else:
                 func_name, cls = getattr(expr, "func"), None
@@ -1174,13 +1183,14 @@ class APIGraph():
             # Create a dummy method with the same name.
             # Find its overloaded methods.
             dummy_method = Method(func_name, cls, [], [], {})
-            return [m for m, _ in self.get_overloaded_methods(
-                receiver_type, dummy_method, override_checks_with_self=False)]
+            return {m for m, _ in self.get_overloaded_methods(
+                receiver_type, dummy_method, override_checks_with_self=False)
+                    if match_(expr, m)}
         field_name = (expr.field
                       if isinstance(expr, ast.FieldAccess)
                       else expr.name)
         field = self.get_field(receiver_type, field_name)
-        return [] if field is None else [field]
+        return set() if field is None else {field}
 
     def find_applicable_method(
             self, expr: ast.Expr,

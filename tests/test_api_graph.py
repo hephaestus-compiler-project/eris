@@ -2,7 +2,8 @@ import copy
 
 import networkx as nx
 
-from src.ir import types as tp, java_types as jt, builtins as bt, kotlin_types as kt
+from src.ir import (types as tp, java_types as jt, builtins as bt,
+                    kotlin_types as kt, ast)
 from src.generators.api import api_graph as ag
 from src.generators.api.builder import JavaAPIGraphBuilder, KotlinAPIGraphBuilder
 
@@ -380,6 +381,12 @@ def filter_types(path):
         for i, p in enumerate(path)
         if i == 0 or not isinstance(p, tp.Type)
     ]
+
+
+def mk_expr(t):
+    expr = ast.BottomConstant(t)
+    expr.mk_typed(ast.TypePair(expected=t, actual=t))
+    return expr
 
 
 FUNC_METADATA = {
@@ -1056,3 +1063,87 @@ def test_is_overriden_field():
     assert not api_graph.is_field_overriden(t1, f1)
     assert not api_graph.is_field_overriden(t2, f3)
     assert api_graph.is_field_overriden(t2, f2)
+
+
+def test_get_declaration_of_access():
+    g = nx.DiGraph()
+    a = tp.SimpleClassifier("A")
+    m1 = ag.Method("m1", "A", [], [], {})
+    m2 = ag.Method("m2", "A", [], [], {})
+    g.add_node(a)
+    g.add_node(m1)
+    g.add_node(m2)
+    g.add_edge(a, m1)
+    g.add_edge(a, m2)
+
+    api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
+    expr = ast.FunctionCall("m2", [], receiver=mk_expr(a))
+    assert api_graph.get_declarations_of_access(expr) == {m2}
+
+    expr = ast.FunctionCall("m1", [], receiver=mk_expr(a))
+    assert api_graph.get_declarations_of_access(expr) == {m1}
+
+    expr = ast.FunctionCall("m3", [], receiver=mk_expr(a))
+    assert api_graph.get_declarations_of_access(expr) == set()
+
+    expr = ast.FunctionCall("m1", [], receiver=None)
+    assert api_graph.get_declarations_of_access(expr) == set()
+
+    # the receiver is not typed
+    expr = ast.FunctionCall("m1", [], receiver=ast.BottomConstant(a))
+    assert api_graph.get_declarations_of_access(expr) is None
+
+    expr = ast.FunctionReference("m1", mk_expr(a),
+                                 jt.FunctionType(0).new([kt.String]),
+                                 jt.FunctionType(0).new([kt.String]))
+    assert api_graph.get_declarations_of_access(expr) == {m1}
+
+
+def test_get_declaration_of_access_constructors():
+    g = nx.DiGraph()
+    a = tp.SimpleClassifier("A")
+    b = tp.SimpleClassifier("B")
+    c = tp.SimpleClassifier("C")
+    m1 = ag.Constructor("A", [], {})
+    m2 = ag.Constructor("B", [], {})
+    g.add_node(a)
+    g.add_node(b)
+    g.add_node(m1)
+    g.add_node(m2)
+
+    api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
+    expr = ast.New(a, [], [])
+    assert api_graph.get_declarations_of_access(expr) == {m1}
+
+    expr = ast.New(b, [], [])
+    assert api_graph.get_declarations_of_access(expr) == {m2}
+
+    expr = ast.New(c, [], [])
+    assert api_graph.get_declarations_of_access(expr) == set()
+
+    expr = ast.FunctionCall("A", [], [])
+    assert api_graph.get_declarations_of_access(expr,
+                                                only_instance=False) == set()
+
+
+def test_get_declaration_of_access_fields():
+    pass
+    g = nx.DiGraph()
+    a = tp.SimpleClassifier("A")
+    f1 = ag.Field("f1", "A", {})
+    f2 = ag.Field("f2", "A", {})
+    g.add_node(a)
+    g.add_node(f1)
+    g.add_node(f2)
+    g.add_edge(a, f1)
+    g.add_edge(a, f2)
+
+    api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
+    expr = ast.FieldAccess(mk_expr(a), "f1")
+    assert api_graph.get_declarations_of_access(expr) == {f1}
+
+    expr = ast.FieldAccess(mk_expr(a), "f2")
+    assert api_graph.get_declarations_of_access(expr) == {f2}
+
+    expr = ast.Assignment("f1", None, mk_expr(a))
+    assert api_graph.get_declarations_of_access(expr) == {f1}
