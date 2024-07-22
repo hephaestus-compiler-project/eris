@@ -226,17 +226,77 @@ class TypeEraser():
             expr.omit_types()
 
     def _can_omit_with_expected_type(self, expr: ast.Expr,
-                                     api: ag.APINode, sub: dict,
-                                     markings: dict, changed_vars: list):
+                                     api: ag.APINode, sub: dict):
         exp_t = expr.get_type_info()[0]
         if exp_t is None:
             return False
+
         output_type = tp.substitute_type(
             self.get_api_output_type(api), sub)
-        if any(self.OUT in markings[t] for t in changed_vars):
-            if not output_type.is_subtype(exp_t):
-                return True
-        return False
+        return not output_type.is_subtype(exp_t)
+
+    def _get_inferred_sub(self, expr: ast.Expr, api: ag.APINode,
+                          new_type: tp.Type, index: int):
+        # We get the type substitution of the receiver, in case any method's
+        # type parameter is bounded by a class type parameter.
+        instance_sub = {}
+        is_receiver_loc = index == -1
+        func_sub = {type_param: expr.type_args[i]
+                    for i, type_param in enumerate(api.type_parameters)}
+        if getattr(expr, "receiver", None):
+            if is_receiver_loc:
+                assert new_type.is_parameterized()
+                instance_sub = new_type.get_type_variable_assignments()
+            elif expr.receiver.is_typed():
+                rec_type = expr.receiver.get_type_info()[1]
+                if rec_type.is_parameterized():
+                    instance_sub = rec_type.get_type_variable_assignments()
+
+        # arg_val = expr.args[index]
+        # if not arg_val.expr.is_typed():
+        #     expr.recover_types()
+        #     return False
+        if not is_receiver_loc:
+            arg_types = [
+                arg.expr.get_type_info()[1] if i != index else new_type
+                for i, arg in enumerate(expr.args)
+            ]
+            new_sub = au._infer_sub_for_method(api, arg_types)
+            if new_sub is None:
+                new_sub = {
+                    type_param: (self.bt_factory.get_any_type()
+                                 if type_param.bound is None
+                                 else tp.substitute_type(type_param.bound,
+                                                         instance_sub))
+                    for type_param in api.type_parameters
+                }
+            return {k: v for k, v in new_sub.items()
+                    if k in api.type_parameters}
+        else:
+            instance_sub.update(func_sub)
+            return instance_sub
+
+    def _get_actual_sub(self, expr: ast.Expr, api: ag.APINode) -> dict:
+        sub = {}
+        receiver = getattr(expr, "receiver", None)
+        if receiver and receiver.is_typed():
+            receiver_t = receiver.get_type_info()[1]
+            sub.update(receiver_t.get_type_variable_assignments())
+        # This is the actual type substitution of the polymophic method call
+        sub.update({type_param: expr.type_args[i]
+                    for i, type_param in enumerate(api.type_parameters)})
+        return sub
+
+    def _get_type_variables_of_api(self, api: ag.APINode, index: int):
+        is_receiver_loc = index == -1
+        type_vars = set()
+        if is_receiver_loc:
+            for param in api.parameters:
+                type_vars.update(tu.get_type_variables_of_type(param.t))
+        else:
+            type_vars.update(tu.get_type_variables_of_type(
+                api.parameters[index].t))
+        return type_vars
 
     def erase_types_ill_typed(self, expr: ast.Expr, api: ag.APINode,
                               new_type: tp.Type, index: int,
@@ -244,46 +304,22 @@ class TypeEraser():
         if not isinstance(expr, (ast.FunctionCall, ast.New)):
             return False
 
-        markings = self.compute_markings(api)
+        is_receiver_loc = index == -1
+
+        # markings = self.compute_markings(api)
         # Get the type variables that touch the affected parameter.
-        type_vars = tu.get_type_variables_of_type(api.parameters[index].t)
-        if not type_vars:
-            # If the are not affected type variables, then we can omit
+        type_vars = self._get_type_variables_of_api(api, index)
+        if not type_vars and not is_receiver_loc:
+            # If there are not affected type variables, then we can omit
             # type arguments freely.
             expr.omit_types()
             return True
 
-        # We get the type substitution of the receiver, in case any method's
-        # type parameter is bounded by a class type parameter.
-        instance_sub = {}
-        if getattr(expr, "receiver", None) and expr.receiver.is_typed():
-            rec_type = expr.receiver.get_type_info()[1]
-            if rec_type.is_parameterized():
-                instance_sub = rec_type.get_type_variable_assignments()
-        # This is the actual type substitution of the polymophic method call
-        valid_sub = {type_param: expr.type_args[i]
-                     for i, type_param in enumerate(api.type_parameters)}
-
-        arg_val = expr.args[index]
-        if not arg_val.expr.is_typed():
-            expr.recover_types()
-            return False
-        arg_types = [
-            arg.expr.get_type_info()[1] if i != index else new_type
-            for i, arg in enumerate(expr.args)
-        ]
-        new_sub = au._infer_sub_for_method(api, arg_types)
-        if new_sub is None:
-            new_sub = {
-                type_param: (self.bt_factory.get_any_type()
-                             if type_param.bound is None
-                             else tp.substitute_type(type_param.bound,
-                                                     instance_sub))
-                for type_param in api.type_parameters
-            }
+        valid_sub = self._get_actual_sub(expr, api)
+        new_sub = self._get_inferred_sub(expr, api, new_type, index)
         ill_typed = False
         for i, arg in enumerate(expr.args):
-            actual_arg_type = arg.expr.get_type_info()[0]
+            actual_arg_type = arg.expr.get_type_info()[1]
             if i == index:
                 actual_arg_type = new_type
             expected_type = tp.substitute_type(api.parameters[i].t,
@@ -295,14 +331,6 @@ class TypeEraser():
             expr.omit_types()
             return True
         else:
-            sub = tu.unify_types(new_type, api.parameters[index].t,
-                                 self.bt_factory, same_type=False)
-            if not sub:
-                expr.omit_types()
-                return True
-            changed_vars = {t for t in type_vars
-                            if sub[t] != valid_sub[t]}
-
             if not parents:
                 expr.recover_types()
                 return False
@@ -310,8 +338,7 @@ class TypeEraser():
                 parent, parent_index = parents[0]
                 if isinstance(parent, (ast.Assignment, ast.FunctionDeclaration,
                                        ast.VariableDeclaration)):
-                    if self._can_omit_with_expected_type(expr, api, new_sub,
-                                                         markings, changed_vars):
+                    if self._can_omit_with_expected_type(expr, api, new_sub):
 
                         if isinstance(parent, ast.VariableDeclaration):
                             if utils.random.bool():
@@ -328,19 +355,26 @@ class TypeEraser():
                     decl = self.api_graph.find_applicable_method(
                         parent, self.api_graph.get_declarations_of_access(
                             parent, only_instance=False))
-                    if not parent.type_args:
+                    out_type = self.api_graph.get_concrete_output_type(api)
+                    new_t = tp.substitute_type(out_type, new_sub)
+                    actual_t = tp.substitute_type(out_type, valid_sub)
+                    if is_receiver_loc and not new_t.is_subtype(actual_t):
                         expr.omit_types()
                         return True
-                    res = self.erase_types_ill_typed(parent, decl, new_type,
+                    # if not parent.type_args:
+                    #     expr.omit_types()
+                    #     return True
+                    res = self.erase_types_ill_typed(parent, decl, new_t,
                                                      parent_index, parents[1:])
                     if not res:
-                        expr.omit_types()
-                        return True
+                        if parent_index != -1:
+                            expr.omit_types()
+                            return True
                     else:
                         expr.omit_types()
                         return True
                 if isinstance(parent, ast.Conditional) and parent_index == 0:
-                    expr.recover_type()
+                    expr.recover_types()
                     return False
                 if isinstance(parent, ast.Conditional) and parent_index != 0:
                     parents = parents[1:]

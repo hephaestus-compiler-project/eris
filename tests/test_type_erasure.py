@@ -4,13 +4,20 @@ from src.ir import types as tp, ast, kotlin_types as kt
 from src.generators.api import api_graph as ag, nodes, type_erasure as te
 
 
-def mk_method(graph, name, param_types, ret_type, type_params):
+def mk_method(graph, name, param_types, ret_type, type_params,
+              receiver=None):
     m = nodes.Method(name, None,
                      [nodes.Parameter(t, False) for t in param_types],
                      type_params, {})
     graph.add_node(m)
+    kwargs = {}
+    if ret_type.is_parameterized():
+        kwargs["constraint"] = ret_type.get_type_variable_assignments()
+        ret_type = ret_type.t_constructor
     graph.add_node(ret_type)
-    graph.add_edge(m, ret_type)
+    graph.add_edge(m, ret_type, **kwargs)
+    if receiver:
+        graph.add_edge(receiver, m)
     return m
 
 
@@ -38,6 +45,12 @@ def mk_assign(t):
 
 def mk_block(t, body=None):
     return ast.Block(body or [ast.BottomConstant(t)])
+
+
+def mk_expr(t):
+    expr = ast.BottomConstant(t)
+    expr.mk_typed(ast.TypePair(expected=t, actual=t))
+    return expr
 
 
 def mk_func_decl(t, body=None):
@@ -372,7 +385,7 @@ def test_erase_types_illtyped_conditional():
     assert not func_call.can_infer_type_args
     type_eraser.erase_types_ill_typed(func_call, m, kt.Number, 0,
                                       [(cond, 0)])
-    assert func_call.can_infer_type_args
+    assert not func_call.can_infer_type_args
 
     # Case 2:
     # <T> T m(T x)
@@ -414,7 +427,7 @@ def test_erase_types_ill_typed_params():
 
     assert not func_call.can_infer_type_args
     type_eraser.erase_types_ill_typed(func_call, m, kt.String, 0,
-                                      [(g_func_call, 1)])
+                                      [(g_func_call, 0)])
     assert func_call.can_infer_type_args
 
     # Case 2:
@@ -530,3 +543,90 @@ def test_erase_types_ill_typed_params():
                                        (var_decl, 0)])
     assert func_call.can_infer_type_args and \
         (g_func_call.can_infer_type_args or var_decl.var_type is None)
+
+
+def test_erase_types_illtyped_mix_receiver_polymorphic():
+    bt_factory = kt.KotlinBuiltinFactory()
+    type_param1 = tp.TypeParameter("T1")
+    type_param2 = tp.TypeParameter("T2")
+
+    type_con = tp.TypeConstructor("A", [type_param1])
+
+    # Case 1:
+    # class A<T> { <Y> void m(T x) }
+    # a.m<String>("") -> a.m(1): Invalid, erase types
+
+    graph = nx.DiGraph()
+    m = mk_method(graph, "foo", [type_param1], bt_factory.get_void_type(),
+                  [type_param2])
+    api_graph = ag.APIGraph(graph, nx.DiGraph(), {},
+                            bt_factory=bt_factory)
+    type_eraser = te.TypeEraser(api_graph, bt_factory, False)
+
+    func_call = mk_method_call("foo", [kt.String], [kt.String],
+                               bt_factory.get_void_type())
+    func_call.receiver = mk_expr(type_con.new([kt.String]))
+
+    assert not func_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(func_call, m, kt.Number, 0, [])
+    assert func_call.can_infer_type_args
+
+
+def test_erase_types_illtyped_receiver():
+    bt_factory = kt.KotlinBuiltinFactory()
+    # Case 1:
+    # <T> A<T> m1()
+    # class A<T> { m2(T x) }
+    # m1<String>().m2("") -> m1().m2(""): Erase types OK
+
+    type_param1 = tp.TypeParameter("T1")
+    type_param2 = tp.TypeParameter("T2")
+    type_con = tp.TypeConstructor("A", [type_param1])
+
+    graph = nx.DiGraph()
+    m1 = mk_method(graph, "m1", [type_param1], type_con.new([type_param1]),
+                   [type_param1])
+    mk_method(graph, "m2", [type_param2], bt_factory.get_void_type(),
+              [], type_con)
+    api_graph = ag.APIGraph(graph, nx.DiGraph(), {},
+                            bt_factory=bt_factory)
+    type_eraser = te.TypeEraser(api_graph, bt_factory, False)
+
+    func_call = mk_method_call("m1", [], [kt.String],
+                               type_con.new([kt.String]), expected_type=None)
+    func_call2 = mk_method_call("m2", [kt.String], [],
+                                bt_factory.get_void_type())
+    func_call2.receiver = func_call
+
+    assert not func_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(func_call, m1, kt.Number, 0,
+                                      [(func_call2, -1)])
+    assert func_call.can_infer_type_args
+
+    # Case 2:
+    # <T> A<T> m1()
+    # class A<T> { T m2() }
+    # String x = m1<String>().m2() -> String m1(1).m2(): Erase types OK
+    graph = nx.DiGraph()
+    m1 = mk_method(graph, "m1", [type_param1], type_con.new([type_param1]),
+                   [type_param1])
+    mk_method(graph, "m2", [], type_param2, [], type_con)
+    api_graph = ag.APIGraph(graph, nx.DiGraph(), {},
+                            bt_factory=bt_factory)
+    type_eraser = te.TypeEraser(api_graph, bt_factory, False)
+
+    func_call = mk_method_call("m1", [], [kt.String],
+                               type_con.new([kt.String]), expected_type=None)
+    func_call2 = mk_method_call("m2", [], [], kt.String, kt.String)
+    func_call2.receiver = func_call
+    var_decl = mk_var_decl(kt.String)
+
+    assert not func_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(func_call, m1, kt.Number, 0,
+                                      [(func_call2, -1)])
+    assert not func_call.can_infer_type_args
+
+    assert not func_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(func_call, m1, kt.Number, 0,
+                                      [(func_call2, -1), (var_decl, 0)])
+    assert func_call.can_infer_type_args

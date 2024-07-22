@@ -1531,8 +1531,6 @@ class FunctionCall(Expr):
                  type_args: List[types.Type] = [],
                  is_ref_call: bool = False):
         super().__init__()
-        if any(not isinstance(a, CallArgument) for a in args):
-            import pdb; pdb.set_trace()
         self.func = func
         self.args = args
         self.receiver = receiver
