@@ -362,10 +362,8 @@ class TypeEraser():
         receiver = getattr(expr, "receiver", None)
         if receiver and receiver.is_typed():
             receiver_t = receiver.get_type_info()[1]
-            try:
+            if receiver_t.is_parameterized():
                 sub.update(receiver_t.get_type_variable_assignments())
-            except:
-                import pdb; pdb.set_trace()
         type_parameters = getattr(api, "type_parameters", [])
         # This is the actual type substitution of the polymophic method call
         sub.update({type_param: expr.type_args[i]

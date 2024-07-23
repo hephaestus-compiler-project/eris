@@ -34,6 +34,16 @@ class Loc(NamedTuple):
     def is_parent_var_decl(self):
         return isinstance(self.parent, ast.VariableDeclaration)
 
+    def get_parent_expected_type(self):
+        if self.parent is None:
+            return None
+        if isinstance(self.parent, ast.VariableDeclaration):
+            return self.parent.var_type
+        elif isinstance(self.parent, ast.FunctionDeclaration):
+            return self.parent.ret_type
+        else:
+            return None
+
 
 class LocationAnalysis(DefaultVisitor):
     def __init__(self):

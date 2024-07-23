@@ -209,13 +209,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
             if cached_elem not in cache:
                 filtered_locs.append(Loc(elem, parent, index, depth, scope))
                 cache.add(cached_elem)
-        filtered_locs = [
-            f
-            for f in filtered_locs
-            if ((isinstance(f.parent, ast.New) and f.parent.type_args) or
-                (isinstance(f.parent, ast.FunctionCall) and f.index != -1 and
-                 f.parent.type_args))
-        ]
         return filtered_locs
 
     def _get_exclusion_strategies(self,
@@ -253,8 +246,13 @@ class TypeErrorEnumerator(ErrorEnumerator):
             self.reconstruct_scope(loc)
             for incompatible_t in self.enumerate_incompatible_typings(loc):
                 self.program_gen.block_variables = True
+                if self.program_gen.type_eraser:
+                    self.program_gen.type_eraser.with_target(
+                        loc.get_parent_expected_type())
                 expr = self.program_gen._generate_expr_from_node(
                     incompatible_t, depth=1)
+                if self.program_gen.type_eraser:
+                    self.program_gen.type_eraser.reset_target_type()
                 expr.expr.mk_typed(ast.TypePair(expected=exp_t,
                                                 actual=incompatible_t))
                 self.program_gen.block_variables = False
