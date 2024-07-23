@@ -1142,7 +1142,7 @@ class APIGraph():
 
     def get_declarations_of_access(
             self, expr: ast.Expr,
-            only_instance: bool = True) -> List[ast.Declaration]:
+            only_instance: bool = True) -> APINode:
         """
         Given an expression, such as function call, field access, or
         assignment, this methos retrieves all the instance declarations
@@ -1162,7 +1162,7 @@ class APIGraph():
         if receiver is None:
             receiver = getattr(expr, "expr", None)
         if only_instance and receiver is None:
-            return set()
+            return None
         if receiver and not receiver.is_typed():
             return None
         if receiver:
@@ -1183,14 +1183,14 @@ class APIGraph():
             # Create a dummy method with the same name.
             # Find its overloaded methods.
             dummy_method = Method(func_name, cls, [], [], {})
-            return {m for m, _ in self.get_overloaded_methods(
+            methods = {m for m, _ in self.get_overloaded_methods(
                 receiver_type, dummy_method, override_checks_with_self=False)
-                    if match_(expr, m)}
+                       if match_(expr, m)}
+            return self.find_applicable_method(expr, methods)
         field_name = (expr.field
                       if isinstance(expr, ast.FieldAccess)
                       else expr.name)
-        field = self.get_field(receiver_type, field_name)
-        return set() if field is None else {field}
+        return self.get_field(receiver_type, field_name)
 
     def find_applicable_method(
             self, expr: ast.Expr,
@@ -1206,8 +1206,7 @@ class APIGraph():
                                   if len(m.parameters) == len(args)]
         else:
             assert isinstance(expr, ast.FunctionReference)
-            functional_type = self.get_functional_type(
-                expr.get_type_info()[1])
+            functional_type = expr.function_type
             overloaded_methods = [
                 m for m in overloaded_methods
                 if len(m.parameters) == len(functional_type.type_args) - 1

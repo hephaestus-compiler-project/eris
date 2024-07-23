@@ -260,9 +260,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 self.program_gen.block_variables = False
                 if self.program_gen.type_eraser:
                     if loc.is_parent_call():
-                        decl = self.api_graph.find_applicable_method(
-                            loc.parent, self.api_graph.get_declarations_of_access(
-                                loc.parent, only_instance=False))
+                        decl = self.api_graph.get_declarations_of_access(
+                                loc.parent, only_instance=False)
                         parents = self.analysis.get_parents(loc.parent)
                         if decl and getattr(loc.parent, "args", None):
                             self.program_gen.type_eraser.erase_types_ill_typed(
@@ -404,7 +403,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 type_args[index] = new_type_arg
                 yield type_con.new(type_args)
 
-
     def get_incompatible_type_of_receiver(self, loc: Loc):
         """
         Based on a given location that corresponds to a receiver expression,
@@ -412,14 +410,10 @@ class TypeErrorEnumerator(ErrorEnumerator):
         """
         assert loc.parent.receiver is not None, (
             "Assertion failed: parent location does not contain a receiver")
-        declarations = self.api_graph.get_declarations_of_access(loc.parent)
-        if len(declarations) > 1:
-            decl = self.api_graph.find_applicable_method(loc.parent,
-                                                         declarations)
+        decl = self.api_graph.get_declarations_of_access(loc.parent)
         receiver_type = loc.parent.receiver.get_type_info()[1]
         if not receiver_type.is_parameterized():
             return None
-        decl = declarations[0]
         type_variables = self.get_type_variables_of_node_signature(
             decl, receiver_type)
         type_variables = set(
