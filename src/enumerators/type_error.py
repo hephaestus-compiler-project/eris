@@ -267,7 +267,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                                 parents
                             )
                     if loc.is_parent_var_decl():
-                        loc.parent.recover_types()
+                        loc.parent.recover_type()
                 upd = ASTExprUpdate(loc.index, expr.expr)
                 upd.visit(loc.parent)
                 self.add_err_message(loc, expr.expr)
