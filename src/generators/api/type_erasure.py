@@ -362,7 +362,10 @@ class TypeEraser():
         receiver = getattr(expr, "receiver", None)
         if receiver and receiver.is_typed():
             receiver_t = receiver.get_type_info()[1]
-            sub.update(receiver_t.get_type_variable_assignments())
+            try:
+                sub.update(receiver_t.get_type_variable_assignments())
+            except:
+                import pdb; pdb.set_trace()
         type_parameters = getattr(api, "type_parameters", [])
         # This is the actual type substitution of the polymophic method call
         sub.update({type_param: expr.type_args[i]
@@ -376,7 +379,8 @@ class TypeEraser():
             return type_vars
         if is_receiver_loc:
             for param in api.parameters:
-                type_vars.update(tu.get_type_variables_of_type(param.t))
+                type_vars.update(tu.get_type_variables_of_type(
+                    param.t, self.bt_factory))
         else:
             type_vars.update(tu.get_type_variables_of_type(
                 api.parameters[index].t))
@@ -409,7 +413,7 @@ class TypeEraser():
                                         ast.FunctionReference,
                                         ast.FieldAccess)):
             return
-        decl = self.api_graph.get_declarations_of_access(
+        decl = self.api_graph.get_declaration_of_access(
                 parent_expr, only_instance=True)
         out_type = self.api_graph.get_concrete_output_type(rec_api)
         new_t = tp.substitute_type(out_type, new_sub)
@@ -463,7 +467,7 @@ class TypeEraser():
                         return True
 
                 if isinstance(parent, ast.FunctionCall):
-                    decl = self.api_graph.get_declarations_of_access(
+                    decl = self.api_graph.get_declaration_of_access(
                         parent, only_instance=False)
                     out_type = self.api_graph.get_concrete_output_type(api)
                     new_t = tp.substitute_type(out_type, new_sub)

@@ -260,7 +260,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 self.program_gen.block_variables = False
                 if self.program_gen.type_eraser:
                     if loc.is_parent_call():
-                        decl = self.api_graph.get_declarations_of_access(
+                        decl = self.api_graph.get_declaration_of_access(
                                 loc.parent, only_instance=False)
                         parents = self.analysis.get_parents(loc.parent)
                         if decl and getattr(loc.parent, "args", None):
@@ -410,7 +410,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         """
         assert loc.parent.receiver is not None, (
             "Assertion failed: parent location does not contain a receiver")
-        decl = self.api_graph.get_declarations_of_access(loc.parent)
+        decl = self.api_graph.get_declaration_of_access(loc.parent)
         receiver_type = loc.parent.receiver.get_type_info()[1]
         if not receiver_type.is_parameterized():
             return None

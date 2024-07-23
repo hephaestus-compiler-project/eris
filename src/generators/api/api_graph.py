@@ -1140,9 +1140,8 @@ class APIGraph():
                 self.remove_types(self.get_type_parameters())
         return encodings
 
-    def get_declarations_of_access(
-            self, expr: ast.Expr,
-            only_instance: bool = True) -> APINode:
+    def get_declarations_of_access(self, expr: ast.Expr,
+                                   only_instance: bool = True) -> Set[APINode]:
         """
         Given an expression, such as function call, field access, or
         assignment, this methos retrieves all the instance declarations
@@ -1162,7 +1161,7 @@ class APIGraph():
         if receiver is None:
             receiver = getattr(expr, "expr", None)
         if only_instance and receiver is None:
-            return None
+            return set()
         if receiver and not receiver.is_typed():
             return None
         if receiver:
@@ -1186,11 +1185,24 @@ class APIGraph():
             methods = {m for m, _ in self.get_overloaded_methods(
                 receiver_type, dummy_method, override_checks_with_self=False)
                        if match_(expr, m)}
-            return self.find_applicable_method(expr, methods)
+            return methods
         field_name = (expr.field
                       if isinstance(expr, ast.FieldAccess)
                       else expr.name)
-        return self.get_field(receiver_type, field_name)
+        field = self.get_field(receiver_type, field_name)
+        return set() if not field else {field}
+
+    def get_declaration_of_access(
+            self, expr: ast.Expr,
+            only_instance: bool = True) -> APINode:
+        declarations = self.get_declarations_of_access(expr, only_instance)
+        if not declarations:
+            return None
+        if isinstance(expr, (ast.New, ast.FunctionCall,
+                             ast.FunctionReference)):
+            return self.find_applicable_method(expr, declarations)
+        else:
+            return list(declarations)[0]
 
     def find_applicable_method(
             self, expr: ast.Expr,

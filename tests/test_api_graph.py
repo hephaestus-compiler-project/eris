@@ -1078,25 +1078,25 @@ def test_get_declaration_of_access():
 
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
     expr = ast.FunctionCall("m2", [], receiver=mk_expr(a))
-    assert api_graph.get_declarations_of_access(expr) == m2
+    assert api_graph.get_declaration_of_access(expr) == m2
 
     expr = ast.FunctionCall("m1", [], receiver=mk_expr(a))
-    assert api_graph.get_declarations_of_access(expr) == m1
+    assert api_graph.get_declaration_of_access(expr) == m1
 
     expr = ast.FunctionCall("m3", [], receiver=mk_expr(a))
-    assert api_graph.get_declarations_of_access(expr) is None
+    assert api_graph.get_declaration_of_access(expr) is None
 
     expr = ast.FunctionCall("m1", [], receiver=None)
-    assert api_graph.get_declarations_of_access(expr) is None
+    assert api_graph.get_declaration_of_access(expr) is None
 
     # the receiver is not typed
     expr = ast.FunctionCall("m1", [], receiver=ast.BottomConstant(a))
-    assert api_graph.get_declarations_of_access(expr) is None
+    assert api_graph.get_declaration_of_access(expr) is None
 
     expr = ast.FunctionReference("m1", mk_expr(a),
                                  jt.FunctionType(0).new([kt.String]),
                                  jt.FunctionType(0).new([kt.String]))
-    assert api_graph.get_declarations_of_access(expr) == m1
+    assert api_graph.get_declaration_of_access(expr) == m1
 
 
 def test_get_declaration_of_access_constructors():
@@ -1113,16 +1113,16 @@ def test_get_declaration_of_access_constructors():
 
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
     expr = ast.New(a, [], [])
-    assert api_graph.get_declarations_of_access(expr) == m1
+    assert api_graph.get_declaration_of_access(expr) == m1
 
     expr = ast.New(b, [], [])
-    assert api_graph.get_declarations_of_access(expr) == m2
+    assert api_graph.get_declaration_of_access(expr) == m2
 
     expr = ast.New(c, [], [])
-    assert api_graph.get_declarations_of_access(expr) is None
+    assert api_graph.get_declaration_of_access(expr) is None
 
     expr = ast.FunctionCall("A", [], [])
-    assert api_graph.get_declarations_of_access(expr,
+    assert api_graph.get_declaration_of_access(expr,
                                                 only_instance=False) is None
 
 
@@ -1139,10 +1139,10 @@ def test_get_declaration_of_access_fields():
 
     api_graph = ag.APIGraph(g, nx.DiGraph(), [], jt.JavaBuiltinFactory())
     expr = ast.FieldAccess(mk_expr(a), "f1")
-    assert api_graph.get_declarations_of_access(expr) == f1
+    assert api_graph.get_declaration_of_access(expr) == f1
 
     expr = ast.FieldAccess(mk_expr(a), "f2")
-    assert api_graph.get_declarations_of_access(expr) == f2
+    assert api_graph.get_declaration_of_access(expr) == f2
 
     expr = ast.Assignment("f1", None, mk_expr(a))
-    assert api_graph.get_declarations_of_access(expr) == f1
+    assert api_graph.get_declaration_of_access(expr) == f1
