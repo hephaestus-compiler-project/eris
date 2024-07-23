@@ -6,7 +6,8 @@ from src.generators.api import api_graph as ag, nodes, type_erasure as te
 
 def mk_method(graph, name, param_types, ret_type, type_params,
               receiver=None):
-    m = nodes.Method(name, None,
+    cls_name = None if not receiver else receiver.name
+    m = nodes.Method(name, cls_name,
                      [nodes.Parameter(t, False) for t in param_types],
                      type_params, {})
     graph.add_node(m)
@@ -19,6 +20,21 @@ def mk_method(graph, name, param_types, ret_type, type_params,
     if receiver:
         graph.add_edge(receiver, m)
     return m
+
+
+def mk_field(graph, name, field_type, receiver=None):
+    cls_name = None if not receiver else receiver.name
+    f = nodes.Field(name, cls_name, {})
+    graph.add_node(f)
+    kwargs = {}
+    if field_type.is_parameterized():
+        kwargs["constraint"] = field_type.get_type_variable_assignments()
+        field_type = field_type.t_constructor
+    graph.add_node(field_type)
+    graph.add_edge(f, field_type, **kwargs)
+    if receiver:
+        graph.add_edge(receiver, f)
+    return f
 
 
 def mk_method_call(name, arg_types, type_args, ret_type, expected_type=None):
@@ -630,3 +646,153 @@ def test_erase_types_illtyped_receiver():
     type_eraser.erase_types_ill_typed(func_call, m1, kt.Number, 0,
                                       [(func_call2, -1), (var_decl, 0)])
     assert func_call.can_infer_type_args
+
+    # Case 3
+    # <T> A<T> m1(T x)
+    # class A<T> { B<T> get() }
+    # class B<T> { m3(T x) }
+    #
+    type_param3 = tp.TypeParameter("T3")
+    a = tp.TypeConstructor("A", [type_param2])
+    b = tp.TypeConstructor("B", [type_param3])
+    graph = nx.DiGraph()
+    m1 = mk_method(graph, "m1", [type_param1], a.new([type_param1]),
+                   [type_param1])
+    mk_method(graph, "m2", [], b.new([type_param2]), [], a)
+    mk_method(graph, "m3", [type_param3], bt_factory.get_void_type(), [], b)
+    api_graph = ag.APIGraph(graph, nx.DiGraph(), {},
+                            bt_factory=bt_factory)
+    type_eraser = te.TypeEraser(api_graph, bt_factory, False)
+    m1_call = mk_method_call("m1", [kt.String], [kt.String],
+                             a.new([kt.String]))
+    m2_call = mk_method_call("m2", [], [], b.new([kt.String]))
+    m2_call.receiver = m1_call
+    m3_call = mk_method_call("m3", [kt.String], [], bt_factory.get_void_type())
+    m3_call.receiver = m2_call
+
+    assert not m1_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(m1_call, m1, kt.Number, 0,
+                                      [(m2_call, -1), (m3_call, -1)])
+    assert m1_call.can_infer_type_args
+
+    # Case 4
+    # <T> A<T> m1(T x)
+    # class A<T> { B<T> get() }
+    # class B<T> { m3(int x) }
+    graph = nx.DiGraph()
+    m1 = mk_method(graph, "m1", [type_param1], a.new([type_param1]),
+                   [type_param1])
+    mk_method(graph, "m2", [], b.new([type_param2]), [], a)
+    mk_method(graph, "m3", [kt.Integer], bt_factory.get_void_type(), [], b)
+    api_graph = ag.APIGraph(graph, nx.DiGraph(), {},
+                            bt_factory=bt_factory)
+    type_eraser = te.TypeEraser(api_graph, bt_factory, False)
+    m1_call = mk_method_call("m1", [kt.String], [kt.String],
+                             a.new([kt.String]))
+    m2_call = mk_method_call("m2", [], [], b.new([kt.String]))
+    m2_call.receiver = m1_call
+    m3_call = mk_method_call("m3", [kt.Integer], [],
+                             bt_factory.get_void_type())
+    m3_call.receiver = m2_call
+
+    assert not m1_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(m1_call, m1, kt.Number, 0,
+                                      [(m2_call, -1), (m3_call, -1)])
+    assert not m1_call.can_infer_type_args
+
+    # Case 5
+    # <T> T m1(T x)
+    # class A<T> { B<T> get() }
+    graph = nx.DiGraph()
+    m1 = mk_method(graph, "m1", [type_param1], type_param1,
+                   [type_param1])
+    mk_method(graph, "m2", [], b.new([type_param2]), [], a)
+    api_graph = ag.APIGraph(graph, nx.DiGraph(), {},
+                            bt_factory=bt_factory)
+    type_eraser = te.TypeEraser(api_graph, bt_factory, False)
+    t = a.new([kt.String])
+    m1_call = mk_method_call("m1", [t], [t], t)
+    m2_call = mk_method_call("m2", [], [], b.new([kt.String]))
+    m2_call.receiver = m1_call
+
+    assert not m1_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(m1_call, m1, kt.Number, 0,
+                                      [(m2_call, -1)])
+    assert m1_call.can_infer_type_args
+
+    m1_call.recover_types()
+    assert not m1_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(m1_call, m1, a.new([kt.Any]), 0,
+                                      [(m2_call, -1)])
+    assert not m1_call.can_infer_type_args
+
+
+def test_erase_types_illtyped_receiver_field():
+    # A<T> m1(T x)
+    # class A<T> { T f }
+    bt_factory = kt.KotlinBuiltinFactory()
+    type_param1 = tp.TypeParameter("T1")
+    type_param2 = tp.TypeParameter("T2")
+    a = tp.TypeConstructor("A", [type_param2])
+
+    graph = nx.DiGraph()
+    m1 = mk_method(graph, "m1", [type_param1], a.new([type_param1]),
+                   [type_param1])
+    mk_field(graph, "f", type_param2, a)
+    api_graph = ag.APIGraph(graph, nx.DiGraph(), {},
+                            bt_factory=bt_factory)
+    type_eraser = te.TypeEraser(api_graph, bt_factory, False)
+
+    m1_call = mk_method_call("m1", [kt.String], [kt.String],
+                             a.new([kt.String]))
+    field_acc = ast.FieldAccess(m1_call, "f")
+    field_acc.mk_typed(ast.TypePair(expected=kt.String, actual=kt.String))
+
+    assert not m1_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(m1_call, m1, kt.Number, 0,
+                                      [(field_acc, 0)])
+    assert not m1_call.can_infer_type_args
+
+    var_decl = mk_var_decl(kt.String)
+    m1_call.recover_types()
+    assert not m1_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(m1_call, m1, kt.Number, 0,
+                                      [(field_acc, 0), (var_decl, 0)])
+    assert m1_call.can_infer_type_args or var_decl.var_type is None
+
+    # A<T> m1(T x)
+    # class A<T> { B<T> f }
+    # class B<T> { T f }
+    # String x = m1<String>("f").f.f
+    type_param3 = tp.TypeParameter("T3")
+    b = tp.TypeConstructor("B", [type_param3])
+
+    graph = nx.DiGraph()
+    m1 = mk_method(graph, "m1", [type_param1], a.new([type_param1]),
+                   [type_param1])
+    mk_field(graph, "f", b.new([type_param2]), a)
+    mk_field(graph, "f", type_param3, b)
+    api_graph = ag.APIGraph(graph, nx.DiGraph(), {},
+                            bt_factory=bt_factory)
+    type_eraser = te.TypeEraser(api_graph, bt_factory, False)
+
+    m1_call = mk_method_call("m1", [kt.String], [kt.String],
+                             a.new([kt.String]))
+    t1 = a.new([kt.String])
+    field_acc1 = ast.FieldAccess(m1_call, "f")
+    field_acc1.mk_typed(ast.TypePair(expected=t1, actual=t1))
+    field_acc2 = ast.FieldAccess(field_acc1, "f")
+    field_acc2.mk_typed(ast.TypePair(expected=kt.String, actual=kt.String))
+
+    assert not m1_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(m1_call, m1, kt.Number, 0,
+                                      [(field_acc1, 0), (field_acc2, 0)])
+    assert not m1_call.can_infer_type_args
+
+    var_decl = mk_var_decl(kt.String)
+    m1_call.recover_types()
+    assert not m1_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(m1_call, m1, kt.Number, 0,
+                                      [(field_acc1, 0), (field_acc2, 0),
+                                       (var_decl, 0)])
+    assert m1_call.can_infer_type_args
