@@ -714,6 +714,9 @@ class APIClientGenerator(Generator):
         else:
             out_type = self.api_graph.get_concrete_output_type(api)
         out_type = tp.substitute_type(out_type, type_var_map)
+        if out_type.is_type_constructor():
+            out_type = out_type.new(self.substitute_types(
+                out_type.type_parameters, type_var_map))
         expr.mk_typed(ast.TypePair(
             expected=None, actual=out_type))
 
