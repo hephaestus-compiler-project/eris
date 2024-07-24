@@ -7,7 +7,7 @@ from src.generators.api.builder import KotlinAPIGraphBuilder
 from src.translators.base import BaseTranslator
 from src.translators.utils import (
     strip_fqn, get_modifier_list, is_parent_interface,
-    get_class_type_from_context)
+    get_class_type_from_context, package_consistency)
 
 
 def append_to(visit):
@@ -101,6 +101,7 @@ class KotlinTranslator(BaseTranslator):
         else:
             return "in " + self.get_type_name(t_arg.bound)
 
+    @package_consistency
     @strip_fqn
     @java2kotlin_types
     def get_type_name(self, t):
@@ -898,6 +899,7 @@ class KotlinTranslator(BaseTranslator):
         self._children_res.append(res)
 
     @append_to
+    @package_consistency
     def visit_func_call(self, node):
         old_ident = self.ident
         self.ident = 0
@@ -937,9 +939,12 @@ class KotlinTranslator(BaseTranslator):
             type_args=type_args,
             args=", ".join(args)
         )
+
         self._children_res.append(res)
+        return res
 
     @append_to
+    @package_consistency
     def visit_assign(self, node):
         old_ident = self.ident
         prev = self._cast_integers
@@ -964,3 +969,4 @@ class KotlinTranslator(BaseTranslator):
         self.ident = old_ident
         self._cast_integers = prev
         self._children_res.append(res)
+        return res
