@@ -454,7 +454,11 @@ class TypeEraser():
                     if self._can_omit_with_expected_type(expr, api, new_sub):
 
                         if isinstance(parent, ast.VariableDeclaration):
-                            if utils.random.bool():
+                            # We recover the types from non final variables
+                            # to avoid false positives due to flow typing:
+                            # var x = A()
+                            # x = "d" // they type of x becomes String
+                            if utils.random.bool() or not parent.is_final:
                                 omit_types(expr)
                                 recover_types(parent)
                             else:
@@ -472,13 +476,13 @@ class TypeEraser():
                     res = self.erase_types_ill_typed(parent, decl, new_t,
                                                      parent_index, parents[1:])
                     if not res:
-                        expr.omit_types()
+                        omit_types(expr)
                         return True
                     else:
-                        expr.omit_types()
+                        omit_types(expr)
                         return True
                 if isinstance(parent, ast.Conditional) and parent_index == 0:
-                    expr.recover_types()
+                    recover_types(expr)
                     return False
                 if isinstance(parent, ast.Conditional) and parent_index != 0:
                     parents = parents[1:]
