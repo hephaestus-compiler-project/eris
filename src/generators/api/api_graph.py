@@ -126,22 +126,22 @@ class APIGraph():
         "java": {
             "hashCode": [],
             "toString": [],
-            "equals": ["java.lang.Object"]
+            "equals": ["Object"]
         },
         "groovy": {
             "hashCode": [],
             "toString": [],
-            "equals": ["java.lang.Object"]
+            "equals": ["Object"]
         },
         "kotlin": {
             "hashCode": [],
             "toString": [],
-            "equals": ["java.lang.Object"]
+            "equals": ["Any"]
         },
         "scala": {
             "hashCode": [],
             "toString": [],
-            "equals": ["java.lang.Object"]
+            "equals": ["Any"]
         },
     }
 
