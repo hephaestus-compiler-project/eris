@@ -12,7 +12,8 @@ from src.ir.context import Context
 from src.compilers import compile_program
 from src.generators.api import builder, api_graph as ag, matcher as match
 from src.generators.api.api_generator import APIClientGenerator
-from src.generators.api.special_methods import GROOVY_SPECIAL_METHODS
+from src.generators.api.special_methods import (
+    GROOVY_SPECIAL_METHODS, KOTLIN_SPECIAL_METHODS)
 from src.modules.logging import log, log_onerror, log_error
 
 
@@ -103,6 +104,11 @@ class APIDeclarationGenerator(APIClientGenerator):
         "kotlin": builder.KotlinAPIGraphBuilder,
         "groovy": builder.JavaAPIGraphBuilder,
         "scala": builder.ScalaAPIGraphBuilder,
+    }
+
+    SPECIAL_METHODS = {
+        "groovy": GROOVY_SPECIAL_METHODS,
+        "kotlin": KOTLIN_SPECIAL_METHODS,
     }
 
     def __init__(self, api_docs, options={}, language=None,
@@ -700,7 +706,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         Generates a well-typed program from the given API namespace.
         """
         forked_spec = self.fork_api_spec(api_namespace)
-        forked_spec.update(GROOVY_SPECIAL_METHODS)
+        forked_spec.update(
+            self.SPECIAL_METHODS[self.bt_factory.get_language()])
         forked_spec.update(get_extra_api_components(
             self.api_docs, lambda x: x.get("functional_interface", False)))
         # This is the list of namespaces that are explicitly defined in

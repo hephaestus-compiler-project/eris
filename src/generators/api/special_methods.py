@@ -54,6 +54,103 @@ def create_arithmetic_methods(types: List[str], ret_type: str,
     return methods
 
 
+KOTLIN_SPECIAL_METHODS = {
+    "builtin.ops": {
+        "name": "builtin.ops",
+        "is_class": False,
+        "language": "kotlin",
+        "type_parameters": [],
+        "inherits": [],
+        "implements": [],
+        "fields": [],
+        "methods": [
+            {
+                "name": "&&",
+                "parameters": [
+                    "kotlin.Boolean",
+                    "kotlin.Boolean"
+                ],
+                "return_type": "kotlin.Boolean",
+                "type_parameters": [],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "&&",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "||",
+                "parameters": [
+                    "kotlin.Boolean",
+                    "kotlin.Boolean"
+                ],
+                "return_type": "boolean",
+                "type_parameters": [],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "||",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "==",
+                "parameters": [
+                    "T",
+                    "T"
+                ],
+                "return_type": "kotlin.Boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "==",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "!=",
+                "parameters": [
+                    "T",
+                    "T"
+                ],
+                "return_type": "kotlin.Boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "!=",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "_if_",
+                "parameters": [
+                    "boolean",
+                    "T",
+                    "T"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "_if_",
+                    "is_special": True,
+                }
+            },
+        ]
+    }
+
+}
+
+
 GROOVY_SPECIAL_METHODS = {
     "builtin.ops": {
         "name": "builtin.ops",
