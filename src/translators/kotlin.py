@@ -34,6 +34,7 @@ class KotlinTranslator(BaseTranslator):
     filename = "program.kt"
     incorrect_filename = "incorrect.kt"
     executable = "program.jar"
+    ident_value = " "
 
     EXCLUDED_METADATA = ["final", "override", "open", "static", "default"]
 
@@ -62,6 +63,11 @@ class KotlinTranslator(BaseTranslator):
         self._nodes_stack = [None]
         self.context = None
         self._namespace = ast.GLOBAL_NAMESPACE
+
+    def get_ident(self, extra=0, old_ident=None):
+        if old_ident:
+            return old_ident * self.ident_value
+        return (self.ident + extra) * self.ident_value
 
     @staticmethod
     def get_filename():
@@ -172,6 +178,15 @@ class KotlinTranslator(BaseTranslator):
         self.program = package_str + "\n" + imports + '\n\n'.join(
             self.pop_children_res(children))
 
+    def _use_return_keyword(self, node):
+        if not node.is_func_block or self.is_lambda or self.is_unit:
+            return False
+        if (node.body and
+                isinstance(node.body[-1], ast.Conditional) and
+                not node.body[-1].is_expression):
+            return False
+        return True
+
     @append_to
     def visit_block(self, node):
         children = node.children()
@@ -182,19 +197,22 @@ class KotlinTranslator(BaseTranslator):
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        res = "{" if not is_lambda else ""
+        res = (self.get_ident(old_ident=max(self.ident - 2, 0)) + "{"
+               if not is_lambda else "")
         res += "\n" + "\n".join(children_res[:-1])
         if children_res[:-1]:
             res += "\n"
-        ret_keyword = "return " if node.is_func_block and not is_unit and not is_lambda else ""
+        ret_keyword = (self.get_ident() + "return "
+                       if self._use_return_keyword(node) else "")
+        body = ""
         if children_res:
-            res += " " * self.ident + ret_keyword + \
-                   children_res[-1] + "\n" + \
-                   " " * self.ident
+            body = children_res[-1].lstrip() if ret_keyword else children_res[-1]
+        if children_res:
+            res += ret_keyword + body + "\n"
         else:
-            res += " " * self.ident + ret_keyword + "\n" + \
-                   " " * self.ident
-        res += "}" if not is_lambda else ""
+            res += ret_keyword + "\n"
+        res += (self.get_ident(old_ident=max(self.ident - 2, 0)) + "}"
+                if not is_lambda else "")
         self.is_unit = is_unit
         self.is_lambda = is_lambda
         self._children_res.append(res)
@@ -457,7 +475,7 @@ class KotlinTranslator(BaseTranslator):
         res = "{ident}constructor({params}){super}{body}".format(
             ident=" " * old_ident,
             params=", ".join(param_res),
-            super=super_this_call_res.replace("`", ""),
+            super=super_this_call_res.replace("`", "").lstrip(),
             body=body_res
         )
         self.ident = old_ident
@@ -715,20 +733,39 @@ class KotlinTranslator(BaseTranslator):
 
     @append_to
     def visit_conditional(self, node):
-        old_ident = self.ident
-        self.ident += 2
         prev_namespace = self._namespace
         children = node.children()
         children[0].accept(self)  # cond
+        old_ident = self.ident
+        self.ident += 2
         self._namespace = prev_namespace + ('true_block',)
         children[1].accept(self)  # true branch
         self._namespace = prev_namespace + ('false_block',)
         children[2].accept(self)  # false branch
         self._namespace = prev_namespace
         children_res = self.pop_children_res(children)
-        res = "{}(if ({})\n{}\n{}else\n{})".format(
-            " " * old_ident, children_res[0][self.ident:], children_res[1],
-            " " * old_ident, children_res[2])
+        if not node.is_expression:
+            if isinstance(node.true_branch, ast.Expr):
+                children_res[1] = self.get_ident() + "return " + \
+                    children_res[1].lstrip()
+
+            if isinstance(node.false_branch, ast.Expr):
+                children_res[2] = self.get_ident() + "return " + \
+                    children_res[2].lstrip()
+        if node.is_expression:
+            res = "{ident}(if ({cond})\n{body}\n{ident}else\n{else_body})".format(
+                ident=self.get_ident(old_ident=old_ident),
+                cond=children_res[0].lstrip(),
+                body=children_res[1],
+                else_body=children_res[2]
+            )
+        else:
+            res = "{ident}if (({if_condition}))\n{body}\n{ident}else\n{else_body}".format(
+                ident=self.get_ident(old_ident=old_ident),
+                if_condition=children_res[0].lstrip(),
+                body=children_res[1],
+                else_body=children_res[2]
+            )
         self.ident = old_ident
         self._children_res.append(res)
 
