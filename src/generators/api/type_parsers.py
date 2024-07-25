@@ -29,13 +29,15 @@ class TypeParser(ABC):
                  func_type_name_map: Dict[str, tp.TypeParameter] = None,
                  classes_type_parameters: dict = None,
                  type_spec: Dict[str, tp.Type] = None,
-                 mapped_types: Dict[str, tuple] = None):
+                 mapped_types: Dict[str, tuple] = None,
+                 api_spec: dict = None):
         self.bt_factory: BuiltinFactory = BUILTIN_FACTORIES[target_language]
         self.class_type_name_map = class_type_name_map or {}
         self.func_type_name_map = func_type_name_map or {}
         self.classes_type_parameters = classes_type_parameters or {}
         self.type_spec = type_spec or {}
         self.mapped_types = mapped_types or {}
+        self.api_spec = api_spec or {}
 
     @abstractmethod
     def parse_function_type(self, str_t: str) -> tp.ParameterizedType:
@@ -64,10 +66,11 @@ class JavaTypeParser(TypeParser):
                  func_type_name_map: Dict[str, tp.TypeParameter] = None,
                  classes_type_parameters: dict = None,
                  type_spec: Dict[str, tp.Type] = None,
-                 mapped_types: Dict[str, tuple] = None):
+                 mapped_types: Dict[str, tuple] = None,
+                 api_spec: dict = None):
         super().__init__(target_language, class_type_name_map,
                          func_type_name_map, classes_type_parameters,
-                         type_spec, mapped_types)
+                         type_spec, mapped_types, api_spec)
 
     def is_instance_type(self, str_t: str) -> bool:
         segs = utils.top_level_split(str_t, delim=".")
@@ -76,7 +79,14 @@ class JavaTypeParser(TypeParser):
         parent = ".".join(segs[:-1])
         if parent.endswith(">"):
             return True
-        return parent in self.type_spec
+
+        child = segs[-1].split("<", 1)[0]
+        child = parent + "." + child
+        cls_spec = self.api_spec.get(child)
+        if cls_spec is None:
+            return parent in self.type_spec
+        is_instance = cls_spec.get("parent") == parent
+        return is_instance
 
     def _init_instance_type_classifier(self, enclosing_type: tp.Type,
                                        base: str):
@@ -322,10 +332,11 @@ class KotlinTypeParser(TypeParser):
                  func_type_name_map: Dict[str, tp.TypeParameter] = None,
                  classes_type_parameters: dict = None,
                  type_spec: Dict[str, tp.Type] = None,
-                 mapped_types: Dict[str, tuple] = None):
+                 mapped_types: Dict[str, tuple] = None,
+                 api_spec: dict = None):
         super().__init__("kotlin", class_type_name_map,
                          func_type_name_map, classes_type_parameters,
-                         type_spec, mapped_types)
+                         type_spec, mapped_types, api_spec)
 
     def is_func_type(self, str_t: str) -> bool:
         return bool(re.match(self.FUNC_REGEX, str_t)) or str_t.startswith(
@@ -562,10 +573,11 @@ class ScalaTypeParser(TypeParser):
                  func_type_name_map: Dict[str, tp.TypeParameter] = None,
                  classes_type_parameters: dict = None,
                  type_spec: Dict[str, tp.Type] = None,
-                 mapped_types: Dict[str, tuple] = None):
+                 mapped_types: Dict[str, tuple] = None,
+                 api_spec: dict = None):
         super().__init__("scala", class_type_name_map,
                          func_type_name_map, classes_type_parameters,
-                         type_spec, mapped_types)
+                         type_spec, mapped_types, api_spec)
 
     def is_func_type(self, str_t: str) -> bool:
         return bool(re.match(self.FUNC_REGEX, str_t))

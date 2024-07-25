@@ -56,6 +56,7 @@ class APIGraphBuilder(ABC):
         self.parsed_types: Dict[str, tp.Type] = {}
         self.parent_cls: tp.Type = None
         self.class_api: dict = None
+        self.api_spec: dict = None
         self.options = kwargs
 
     @abstractmethod
@@ -127,6 +128,7 @@ class APIGraphBuilder(ABC):
         return excluded_cls
 
     def build(self, docs: dict) -> APIGraph:
+        self.api_spec = docs
         top_sort = self.build_topological_sort(docs)
         # First we make a pass to assign class type parameters a unique name.
         excluded_cls = self.rename_class_type_parameters(docs, top_sort)
@@ -546,7 +548,8 @@ class JavaAPIGraphBuilder(APIGraphBuilder):
             self.type_var_mappings,
             self._current_func_type_var_map,
             self._class_type_var_map,
-            self.parsed_types
+            self.parsed_types,
+            api_spec=self.api_spec
         )
 
 
@@ -611,7 +614,7 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
             }
         args = [kwargs.get("type_var_mappings") or self.type_var_mappings,
                 self._current_func_type_var_map, self._class_type_var_map,
-                self.parsed_types, mapped_types]
+                self.parsed_types, mapped_types, self.api_spec]
         if self.api_language == "java":
             args = ["kotlin"] + args
 
@@ -711,13 +714,13 @@ class ScalaAPIGraphBuilder(APIGraphBuilder):
         }
         args = [self.type_var_mappings,
                 self._current_func_type_var_map, self._class_type_var_map,
-                self.parsed_types, {}]
+                self.parsed_types, {}, self.api_spec]
         scala_parser = ScalaTypeParser(*list(args))
         mapped_types = {
             k: (v, lambda str_t, _: scala_parser.parse_type(str_t))
             for k, v in self.MAPPED_TYPES.items()
         }
-        args[-1] = mapped_types
+        args[-2] = mapped_types
         if self.api_language == "java":
             args = ["scala"] + args
 
