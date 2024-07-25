@@ -44,6 +44,6 @@
   ],
   "fields": [],
   "functional_interface": false,
-  "parent": "Spliterator",
+  "parent": null,
   "language": "java"
 }
