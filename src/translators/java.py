@@ -661,7 +661,7 @@ class JavaTranslator(BaseTranslator):
         # the corresponding parameters.
         param_type = (
             node.param_type.type_args[0]
-            if node.vararg and isinstance(node.param_type, tp.ParameterizedType)
+            if node.vararg and node.param_type.name == jt.Array.name
             else node.param_type)
         if param_type.is_wildcard() and param_type.get_bound_rec() is None:
             param_type = jt.Object

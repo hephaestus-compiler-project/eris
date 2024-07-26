@@ -254,7 +254,7 @@ class ScalaTranslator(BaseTranslator):
         # the corresponding parameters.
         param_type = (
             node.param_type.type_args[0]
-            if node.vararg and node.param_type.is_parameterized()
+            if node.vararg and node.param_type.name == sc.Array.name
             else node.param_type
         )
         res = node.name + ": " + self.get_type_name(param_type) + vararg_str

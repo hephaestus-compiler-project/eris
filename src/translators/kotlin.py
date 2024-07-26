@@ -436,8 +436,7 @@ class KotlinTranslator(BaseTranslator):
         # the corresponding parameters.
         param_type = (
             node.param_type.type_args[0]
-            if node.vararg and isinstance(node.param_type,
-                                          tp.ParameterizedType)
+            if node.vararg and node.param_type.name == kt.Array.name
             else node.param_type)
         res = vararg_str + node.name + ": " + self.get_type_name(param_type)
         if len(children):
