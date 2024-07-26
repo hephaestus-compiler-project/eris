@@ -1,4 +1,3 @@
-from collections import defaultdict
 import re
 import os
 
@@ -9,7 +8,7 @@ class GroovyCompiler(BaseCompiler):
     # Match (example.groovy):(error message until empty line)
     ERROR_REGEX = re.compile(r'([a-zA-Z0-9\\/_]+.groovy):([\s\S]*?(?=\n{2,}))')
 
-    CRASH_REGEX = re.compile(r'(.*[eE]xception)(.*)')
+    CRASH_REGEX = re.compile(r'(at org.codehaus.groovy)(.*)')
 
     STACKOVERFLOW_REGEX = re.compile(r'(.*java.lang.StackOverflowError)(.*)')
 
@@ -35,24 +34,8 @@ class GroovyCompiler(BaseCompiler):
     def get_error_msg(self, match):
         return match[1]
 
-    def _analyze_compiler_output(self, output):
-        failed = defaultdict(list)
-        filtered_output = output
-        for p in self.filter_patterns:
-            filtered_output = re.sub(p, '', filtered_output)
-        matches = re.findall(self.ERROR_REGEX, filtered_output)
-        for match in matches:
-            filename = self.get_filename(match)
-            error_msg = self.get_error_msg(match)
-            failed[filename].append(error_msg)
-        crash_match = re.search(self.CRASH_REGEX, output)
-        if crash_match and not matches:
-            self.crash_msg = output
-            return None, []
-        return failed, matches
-
     def analyze_compiler_output(self, output):
-        failed, matches = self._analyze_compiler_output(output)
+        failed, matches = super().analyze_compiler_output(output)
         stack_overflow = re.search(self.STACKOVERFLOW_REGEX, output)
         if stack_overflow and not matches:
             self.crash_msg = output
