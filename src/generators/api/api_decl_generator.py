@@ -739,14 +739,21 @@ class APIDeclarationGenerator(APIClientGenerator):
         # We first attempt to compile the program. The program is expected
         # to compile. If this is not the case, then there's no need
         # to proceed with error enumeration.
-        succeeded, _ = compile_program(
+        (succeeded, err), compiler = compile_program(
             self.bt_factory.get_language(), program,
             self.package_name,
             library_path=self.options.get("library-path"))
-        if not succeeded:
+
+        compiler.analyze_compiler_output(err)
+        if not succeeded and not compiler.crash_msg:
             log(self.logger,
                 f"Skeleton program {program_id} unexpectedly does not compile")
             return None
+        if compiler.crash_msg:
+            log(self.logger,
+                f"We found a crash with the skeleton program {program_id}")
+            yield program
+            return
         error_enum = self.ErrorEnumerator(program, self,
                                           self.bt_factory)
         flag = False

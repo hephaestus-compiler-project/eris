@@ -40,4 +40,5 @@ def compile_program(language: str, program: ast.Program,
                                    filter_patterns=filter_patterns,
                                    library_path=library_path)
     command_args = compiler.get_compiler_cmd()
-    return utils.run_command(command_args, envs={"JAVA_OPTS": "-Xmx8g"})
+    return (utils.run_command(command_args, envs={"JAVA_OPTS": "-Xmx8g"}),
+            compiler)
