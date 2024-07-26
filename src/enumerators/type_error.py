@@ -384,6 +384,17 @@ class TypeErrorEnumerator(ErrorEnumerator):
         for k, v in receiver_type.get_type_variable_assignments().items():
             if v in type_variables:
                 mapped_type_vars.setdefault(v, set()).add(k.variance)
+        parents = self.analysis.get_parents(loc.parent)
+        # We follow a conservative approach and we recover the types of
+        # the parents corresponding to variable declaration. We avoid
+        # situations like the following:
+        #
+        # val x: List<Int>().get()
+        # val x: List<Any>().get() -> this makes the programm well-typed
+        # val x: Int = List<Any>().get() -> this is the correct one
+        for p, _ in parents:
+            if isinstance(p, ast.VariableDeclaration):
+                p.recover_type()
         for type_var in type_variables:
             type_arg = sub[type_var]
             for new_type_arg in self.get_type_parameter_instantiations(
