@@ -670,8 +670,10 @@ class APIClientGenerator(Generator):
                 )
             return ExprRes(self.generate_expr(t), type_var_map, [t])
         path, type_var_map, assignment_graph = path
-        expr = self._generate_expression_from_path(path, depth=depth,
-                                                   type_var_map=type_var_map)
+        expr = self._generate_expression_from_path(
+            path, depth=depth, type_var_map=type_var_map,
+            original_path=path
+        )
         if not expr.has_variable() and not self.error_injected:
             # If the generated expression contains a variable, we don't store
             # this expression for later use because it refers to a variable
@@ -721,7 +723,8 @@ class APIClientGenerator(Generator):
             expected=None, actual=out_type))
 
     def _generate_expression_from_path(self, path: list,
-                                       depth: int, type_var_map) -> ast.Expr:
+                                       depth: int, type_var_map: dict,
+                                       original_path: list) -> ast.Expr:
         def _instantiate_type_con(t: tp.Type):
             if t.is_type_constructor():
                 return t.new(self.substitute_types(t.type_parameters,
@@ -733,12 +736,15 @@ class APIClientGenerator(Generator):
         if not receiver_path:
             receiver = None
         else:
-            self.type_eraser.with_target(target_type=None)
-            receiver = self._generate_expression_from_path(receiver_path,
-                                                           depth, type_var_map)
+            known_target = len(original_path) == 2
+            if not known_target:
+                self.type_eraser.with_target(target_type=None)
+            receiver = self._generate_expression_from_path(
+                receiver_path, depth, type_var_map, original_path)
             self._mk_api_expr_typed(receiver, receiver_path[-1],
                                     type_var_map)
-            self.type_eraser.reset_target_type()
+            if not known_target:
+                self.type_eraser.reset_target_type()
         if isinstance(elem, ag.Method):
             parameters = [param.t for param in elem.parameters]
             args = self._generate_args(parameters,

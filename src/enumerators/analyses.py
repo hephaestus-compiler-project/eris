@@ -34,13 +34,45 @@ class Loc(NamedTuple):
     def is_parent_var_decl(self):
         return isinstance(self.parent, ast.VariableDeclaration)
 
-    def get_parent_expected_type(self):
+    def get_parent_expected_type(self, api_graph):
         if self.parent is None:
             return None
         if isinstance(self.parent, ast.VariableDeclaration):
             return self.parent.var_type
         elif isinstance(self.parent, ast.FunctionDeclaration):
             return self.parent.ret_type
+        elif isinstance(self.parent, ast.Assignment):
+            if self.parent.receiver is not None:
+                rec_t = self.parent.receiver.get_type_info()[1]
+                sub = {}
+                if rec_t.is_parameterized():
+                    sub = rec_t.get_type_variable_assignments()
+                decl = api_graph.get_declaration_of_access(
+                    self.parent, only_instance=True)
+                out_type = api_graph.get_concrete_output_type(decl)
+                out_type = tp.substitute_type(out_type, sub)
+                return out_type
+            else:
+                return None
+        elif isinstance(self.parent, ast.FunctionCall):
+            if self.index == self.RECEIVER_INDEX:
+                return None
+            decl = api_graph.get_declaration_of_access(self.parent,
+                                                       only_instance=False)
+            if decl is None:
+                # FIXME
+                return None
+            try:
+                param_t = decl.parameters[self.index].t
+                sub = {}
+                if self.parent.receiver is not None:
+                    rec_t = self.parent.receiver.get_type_info()[1]
+                    if rec_t.is_parameterized():
+                        sub = rec_t.get_type_variable_assignments()
+                param_t = tp.substitute_type(param_t, sub)
+                return param_t
+            except IndexError:
+                return None
         else:
             return None
 

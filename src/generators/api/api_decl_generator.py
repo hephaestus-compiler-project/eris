@@ -182,7 +182,8 @@ class APIDeclarationGenerator(APIClientGenerator):
             copied_v = deepcopy(v)
             # For performance reasons, we don't include the specification
             # of the included methods.
-            copied_v["methods"] = []
+            copied_v["methods"] = [m for m in copied_v["methods"]
+                                   if m["is_constructor"]]
             copied_v["fields"] = []
             forked_spec[k] = copied_v
 
@@ -398,7 +399,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         return expr
 
     def _generate_expression_from_path(self, path: list, depth: int,
-                                       type_var_map: dict) -> ast.Expr:
+                                       type_var_map: dict,
+                                       original_path: list) -> ast.Expr:
 
         elem = path[-1]
         if isinstance(elem, ag.Method) and elem.metadata.get("is_special"):
@@ -406,7 +408,8 @@ class APIDeclarationGenerator(APIClientGenerator):
                                                           type_var_map)
         else:
             return super()._generate_expression_from_path(path, depth,
-                                                          type_var_map)
+                                                          type_var_map,
+                                                          original_path)
 
     def _get_mutable_local_vars(
         self,

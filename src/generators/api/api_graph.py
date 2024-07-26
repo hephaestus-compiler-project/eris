@@ -174,6 +174,7 @@ class APIGraph():
         self.types.append(self.bt_factory.get_array_type())
         self.type_constructors = [t for t in self.types
                                   if t.is_type_constructor()]
+        self.favor_polymorphic = False
 
     def statistics(self, matcher=None) -> APIGraphStatistics:
         class _Type(NamedTuple):
@@ -464,7 +465,31 @@ class APIGraph():
             if (isinstance(v, tp.Type) and
                     _is_abstract(v) and not isinstance(k, Variable)):
                 abstract_types.add(v)
-        return abstract_types
+
+        if not self.favor_polymorphic:
+            return set(), abstract_types
+
+        poly_targets = set()
+        source_nodes = [n for n in self.api_graph
+                        if self.api_graph.in_degree(n) == 0]
+        for n in source_nodes:
+            if isinstance(n, Method) and n.type_parameters:
+                # This indicates a special method
+                if not n.name[0].isalpha():
+                    continue
+                out_type = self.get_output_type(n)
+                if out_type.is_type_var():
+                    if not out_type.bound:
+                        poly_targets.add(out_type)
+                    elif target.is_subtype(out_type.bound):
+                        poly_targets.add(out_type)
+                if out_type.name == target.name and out_type.is_type_constructor():
+                    poly_targets.add(out_type)
+            if isinstance(n, Constructor):
+                t = self.get_type_by_name(n.name)
+                if t.is_type_constructor() and t.name == target.name:
+                    poly_targets.add(t)
+        return poly_targets, abstract_types
 
     def get_sources_and_target(
             self, target: tp.Type,
@@ -475,7 +500,9 @@ class APIGraph():
             msg = msg.format(sel=target_selection)
             return Exception(msg)
         origin = target
-        targets = [origin]
+        targets = [origin
+                   if not target.is_parameterized()
+                   else origin.t_constructor]
         if target.is_parameterized():
             is_primitive = (
                 origin.t_constructor == self.bt_factory.get_array_type() and
@@ -497,7 +524,11 @@ class APIGraph():
         if target_selection in ["all", "abstract"] or not in_graph:
             # If this option is not enabled we also consider APIs that return
             # a type variable as targets.
-            targets.extend(self._get_abstract_targets(origin))
+            poly, abstract = self._get_abstract_targets(origin)
+            if poly and utils.random.bool():
+                targets.extend(poly)
+            else:
+                targets.extend(abstract)
         # Pick a random target
         target = utils.random.choice(targets)
         if target not in self.api_graph:
@@ -514,16 +545,19 @@ class APIGraph():
                 for node in source_nodes
                 if self.api_graph.in_degree(node) == 0
             ]
-            self.source_nodes_of[target] = [s for s in source_nodes
-                                            if not isinstance(s, Variable)]
+            source_nodes = [s for s in source_nodes
+                            if not isinstance(s, Variable)]
+            self.source_nodes_of[target] = source_nodes
         return source_nodes, target
 
     def _get_paths(self, source, target):
         if self.path_search_strategy == "shortest":
-            return utils.random.shuffle(
+
+            paths = utils.random.shuffle(
                 list(nx.all_shortest_paths(self.api_graph, source=source,
                                            target=target))
             )
+            return paths
         return nx.shortest_simple_paths(self.api_graph, source=source,
                                         target=target)
 

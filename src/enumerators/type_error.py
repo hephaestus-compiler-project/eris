@@ -247,14 +247,19 @@ class TypeErrorEnumerator(ErrorEnumerator):
             for incompatible_t in self.enumerate_incompatible_typings(loc):
                 self.program_gen.block_variables = True
                 if self.program_gen.type_eraser:
+                    self.program_gen.type_eraser.inject_error_mode = True
                     self.program_gen.type_eraser.with_target(
-                        loc.get_parent_expected_type())
+                        loc.get_parent_expected_type(self.api_graph))
                 expr = self.program_gen._generate_expr_from_node(
                     incompatible_t, depth=1)
                 if self.program_gen.type_eraser:
+                    self.program_gen.type_eraser.inject_error_mode = False
                     self.program_gen.type_eraser.reset_target_type()
                 expr.expr.mk_typed(ast.TypePair(expected=exp_t,
                                                 actual=incompatible_t))
+                if isinstance(expr.expr, ast.FunctionCall):
+                    decl = self.api_graph.get_declaration_of_access(
+                            expr.expr, only_instance=False)
                 self.program_gen.block_variables = False
                 if self.program_gen.type_eraser:
                     if loc.is_parent_call():

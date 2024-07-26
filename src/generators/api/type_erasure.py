@@ -117,7 +117,12 @@ class TypeEraser():
             return False
 
         if marks == {self.OUT} and self.inject_error_mode:
-            return False
+            same = target_type != api_out_type
+            unifiable = bool(tu.unify_types(target_type, api_out_type,
+                                            self.bt_factory, same_type=False,
+                                            subtype_on_left=False))
+            if not same or not unifiable:
+                return True
 
         return target_type == api_out_type or bool(
             tu.unify_types(target_type, api_out_type, self.bt_factory,
