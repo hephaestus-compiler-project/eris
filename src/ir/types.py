@@ -197,7 +197,7 @@ class SimpleClassifier(Classifier):
         """Check if two Builtin objects are of the same Type"""
         return (self.__class__ == other.__class__ and
                 self.name == other.name and
-                self.supertypes == other.supertypes)
+                hash(tuple(self.supertypes)) == hash(tuple(other.supertypes)))
 
     def __hash__(self):
         """Hash based on the Type"""
