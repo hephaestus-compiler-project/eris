@@ -365,7 +365,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         args = self._generate_args(parameters,
                                    [[p] for p in parameters],
                                    depth + 1, type_var_map)
-        catch_exceptions = self.CATCH_EXCEPTIONS[self.bt_factory.get_language()]
+        catch_exceptions = CATCH_EXCEPTIONS[self.bt_factory.get_language()]
         converters = {
             "&&": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
                                                ast.Operator("&&")),
