@@ -13,8 +13,9 @@ from src.translators.utils import (
 def append_to(visit):
     def inner(self, node):
         self._nodes_stack.append(node)
-        visit(self, node)
+        res = visit(self, node)
         self._nodes_stack.pop()
+        return res
     return inner
 
 
@@ -822,6 +823,7 @@ class KotlinTranslator(BaseTranslator):
                 args=", ".join(children_res[:len(node.args)])))
 
     @append_to
+    @package_consistency
     def visit_field_access(self, node):
         old_ident = self.ident
         self.ident = 0
@@ -843,8 +845,10 @@ class KotlinTranslator(BaseTranslator):
             field = f"`{field}`"
         res = "{}{}{}".format(" " * self.ident, receiver_expr, field)
         self._children_res.append(res)
+        return res
 
     @append_to
+    @package_consistency
     def visit_func_ref(self, node):
         old_ident = self.ident
 
@@ -897,6 +901,7 @@ class KotlinTranslator(BaseTranslator):
             name=func_name,
         )
         self._children_res.append(res)
+        return res
 
     @append_to
     @package_consistency
