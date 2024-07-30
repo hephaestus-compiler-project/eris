@@ -318,6 +318,15 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.locations.append(Loc(node.expr, node, 0, self.depth,
                                   deepcopy(self.scope)))
 
+    def visit_trycatch(self, node):
+        prev_depth = self.depth
+        self.depth += 1
+        super().visit_trycatch(node)
+        self.depth = prev_depth
+        self.parents[node.try_block] = (node, 0)
+        for i, catch_block in enumerate(node.catch_blocks.values()):
+            self.parents[catch_block] = (node, i + 1)
+
     def get_parents(self, node: ast.Node):
         parents = []
         while node in self.parents:

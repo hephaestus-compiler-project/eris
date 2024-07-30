@@ -1,6 +1,7 @@
 # pylint: disable=dangerous-default-value
-from typing import List, Set, Union, NamedTuple
+from typing import List, Set, Union, NamedTuple, Dict
 from copy import deepcopy
+from collections import OrderedDict
 
 import src.ir.type_utils as tu
 import src.ir.types as types
@@ -1690,4 +1691,36 @@ class Assignment(Expr):
             return (self.name == other.name and
                     self.expr.is_equal(other.expr) and
                     check_default_eq(self.receiver, other.receiver))
+        return False
+
+
+class TryCatch(Expr):
+    def __init__(self, try_block: Block, catch_blocks: Dict[str, Block]):
+        super().__init__()
+        self.try_block = try_block
+        self.catch_blocks = catch_blocks
+
+    def has_variable(self):
+        return self.try_block.has_variable() or any(
+            block.has_variable() for block in self.catch_blocks.values())
+
+    def children(self):
+        return [self.try_block, *self.catch_blocks.values()]
+
+    def update_children(self, children):
+        super().update_children(children)
+        self.try_block = children[0]
+        catch_blocks = OrderedDict()
+        for i, k in enumerate(self.catch_blocks.keys()):
+            new_child = children[i + 1]
+            catch_blocks[k] = new_child
+        self.catch_blocks = catch_blocks
+
+    def __hash__(self):
+        return hash((self.try_block, tuple(self.catch_blocks.items())))
+
+    def is_equal(self, other):
+        if isinstance(other, TryCatch):
+            return (self.try_block == other.try_block and
+                    self.catch_blocks == other.catch_blocks)
         return False

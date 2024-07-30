@@ -186,6 +186,7 @@ class KotlinTranslator(BaseTranslator):
                 isinstance(node.body[-1], ast.Conditional) and
                 not node.body[-1].is_expression):
             return False
+
         return True
 
     @append_to
@@ -967,5 +968,30 @@ class KotlinTranslator(BaseTranslator):
                                      children_res[0])
         self.ident = old_ident
         self._cast_integers = prev
+        self._children_res.append(res)
+        return res
+
+    @append_to
+    def visit_trycatch(self, node):
+        prev_namespace = self._namespace
+        children = node.children()
+        old_ident = self.ident
+        self.ident += 2
+        children[0].accept(self)  # try
+        self._namespace = prev_namespace + ('try_block',)
+        for i, k in enumerate(node.catch_blocks):
+            self._namespace = prev_namespace + (f"catch_{k}_block",)
+            children[i + 1].accept(self)
+        children_res = self.pop_children_res(children)
+        ident = self.get_ident(old_ident=old_ident)
+        catch_bodies = [
+            f"{ident}catch (e: {k})\n{children_res[i + 1]}"
+            for i, k in enumerate(node.catch_blocks.keys())
+        ]
+        catch_bodies_str = "\n".join(catch_bodies)
+
+        res = f"{ident}try\n{children_res[0]}\n{catch_bodies_str}"
+        self.ident = old_ident
+        self._namespace = prev_namespace
         self._children_res.append(res)
         return res

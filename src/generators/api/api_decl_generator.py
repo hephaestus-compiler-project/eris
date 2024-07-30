@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from copy import deepcopy
 import json
 import functools
@@ -15,6 +15,15 @@ from src.generators.api.api_generator import APIClientGenerator
 from src.generators.api.special_methods import (
     GROOVY_SPECIAL_METHODS, KOTLIN_SPECIAL_METHODS)
 from src.modules.logging import log, log_onerror, log_error
+
+
+CATCH_EXCEPTIONS = {
+    "kotlin": [
+        "java.lang.Exception",
+        "java.lang.NumberFormatException",
+        "java.io.IOException"
+    ],
+}
 
 
 def get_extra_api_components(spec: dict, predicate):
@@ -356,6 +365,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         args = self._generate_args(parameters,
                                    [[p] for p in parameters],
                                    depth + 1, type_var_map)
+        catch_exceptions = self.CATCH_EXCEPTIONS[self.bt_factory.get_language()]
         converters = {
             "&&": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
                                                ast.Operator("&&")),
@@ -390,6 +400,13 @@ class APIDeclarationGenerator(APIClientGenerator):
                 inferred_type=(args[1].path[-1]
                                if args[2].path[-1].is_subtype(args[1].path[-1])
                                else args[2].path[-1])
+            ),
+            "_try_": lambda args: ast.TryCatch(
+                ast.Block([args[0].expr], False),
+                OrderedDict(
+                    (catch_exceptions[i], ast.Block([arg.expr], False))
+                    for i, arg in enumerate(args[1:])
+                )
             )
         }
         symbol = m.metadata["symbol"]

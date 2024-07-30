@@ -54,6 +54,34 @@ def create_arithmetic_methods(types: List[str], ret_type: str,
     return methods
 
 
+def create_try_methods(nu_methods=3):
+    method_obj = {
+        "name": "_try_",
+        "parameters": [
+            "T",
+            "T"
+        ],
+        "return_type": "T",
+        "type_parameters": ["T"],
+        "is_static": True,
+        "is_constructor": False,
+        "access_mod": "public",
+        "other_metadata": {
+            "symbol": "_try_",
+            "is_special": True,
+        }
+    }
+    methods = []
+    methods.append(method_obj)
+    nu_methods -= 1
+    for i in range(nu_methods):
+        extra_parameters = ["T"] * (i + 1)
+        copied_obj = method_obj.copy()
+        copied_obj["parameters"] = ["T", "T"] + extra_parameters
+        methods.append(copied_obj)
+    return methods
+
+
 KOTLIN_SPECIAL_METHODS = {
     "builtin.ops": {
         "name": "builtin.ops",
@@ -145,10 +173,29 @@ KOTLIN_SPECIAL_METHODS = {
                     "is_special": True,
                 }
             },
+            {
+                "name": "_try_",
+                "parameters": [
+                    "T",
+                    "T"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "_try_",
+                    "is_special": True,
+                }
+            },
         ]
     }
 
 }
+KOTLIN_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+    create_try_methods()
+)
 
 
 GROOVY_SPECIAL_METHODS = {
