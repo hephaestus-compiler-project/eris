@@ -65,6 +65,13 @@ class KotlinTranslator(BaseTranslator):
         self.context = None
         self._namespace = ast.GLOBAL_NAMESPACE
 
+    def _package_consistency(self, res: str) -> str:
+        if self.package:
+            package_prefix = self.package.split(".", 1)[0]
+            new = re.sub(package_prefix + r"\.[a-z]+", self.package, res)
+            return new
+        return res
+
     def get_ident(self, extra=0, old_ident=None):
         if old_ident:
             return old_ident * self.ident_value
@@ -823,7 +830,6 @@ class KotlinTranslator(BaseTranslator):
                 args=", ".join(children_res[:len(node.args)])))
 
     @append_to
-    @package_consistency
     def visit_field_access(self, node):
         old_ident = self.ident
         self.ident = 0
@@ -844,11 +850,11 @@ class KotlinTranslator(BaseTranslator):
         if receiver_expr:
             field = f"`{field}`"
         res = "{}{}{}".format(" " * self.ident, receiver_expr, field)
+        res = self._package_consistency(res)
         self._children_res.append(res)
         return res
 
     @append_to
-    @package_consistency
     def visit_func_ref(self, node):
         old_ident = self.ident
 
@@ -900,11 +906,11 @@ class KotlinTranslator(BaseTranslator):
             receiver=receiver,
             name=func_name,
         )
+        res = self._package_consistency(res)
         self._children_res.append(res)
         return res
 
     @append_to
-    @package_consistency
     def visit_func_call(self, node):
         old_ident = self.ident
         self.ident = 0
@@ -945,11 +951,11 @@ class KotlinTranslator(BaseTranslator):
             args=", ".join(args)
         )
 
+        res = self._package_consistency(res)
         self._children_res.append(res)
         return res
 
     @append_to
-    @package_consistency
     def visit_assign(self, node):
         old_ident = self.ident
         prev = self._cast_integers
@@ -971,6 +977,7 @@ class KotlinTranslator(BaseTranslator):
         else:
             res = "{}{} = {}".format(" " * old_ident, node.name,
                                      children_res[0])
+        res = self._package_consistency(res)
         self.ident = old_ident
         self._cast_integers = prev
         self._children_res.append(res)
