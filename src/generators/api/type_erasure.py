@@ -493,6 +493,9 @@ class TypeEraser():
                     parents = parents[1:]
 
                 elif isinstance(parent, ast.Block):
+                    if len(parent.body) - 1 == parent_index:
+                        parents = parents[1:]
+                elif isinstance(parent, ast.TryCatch):
                     parents = parents[1:]
                 else:
                     break

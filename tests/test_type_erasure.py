@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import networkx as nx
 
 from src.ir import types as tp, ast, kotlin_types as kt
@@ -796,3 +798,40 @@ def test_erase_types_illtyped_receiver_field():
                                       [(field_acc1, 0), (field_acc2, 0),
                                        (var_decl, 0)])
     assert m1_call.can_infer_type_args
+
+
+def test_erase_types_illtyped_trycatch():
+    bt_factory = kt.KotlinBuiltinFactory()
+    type_param = tp.TypeParameter("T")
+
+    # Case 1:
+    # <T> T m(T x)
+    # String x = try { m<String>("") } catch { "" } ->
+    # String x = try { m(1) } catch { "" } // OK to remove types
+    graph = nx.DiGraph()
+    m = mk_method(graph, "foo", [type_param],
+                  type_param, [type_param])
+    api_graph = ag.APIGraph(graph, nx.DiGraph(), {},
+                            bt_factory=bt_factory)
+    type_eraser = te.TypeEraser(api_graph, bt_factory, False)
+
+    func_call = mk_method_call("foo", [kt.String], [kt.String],
+                               kt.String, kt.String)
+    try_block = ast.Block([func_call])
+    catch_expr = mk_expr(kt.String)
+    catch_blocks = OrderedDict([("exception", ast.Block([catch_expr]))])
+    try_catch = ast.TryCatch(try_block, catch_blocks)
+    var_decl = mk_var_decl(kt.String)
+
+    assert not func_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(func_call, m, kt.Number, 0,
+                                      [(try_block, 0), (try_catch, 0),
+                                       (var_decl, 0)])
+    assert func_call.can_infer_type_args or var_decl.var_type is None
+
+    func_call.recover_types()
+    var_decl.recover_type()
+    assert not func_call.can_infer_type_args
+    type_eraser.erase_types_ill_typed(func_call, m, kt.Number, 0,
+                                      [(try_block, 0), (try_catch, 0)])
+    assert not func_call.can_infer_type_args and var_decl.var_type is not None
