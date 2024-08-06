@@ -257,7 +257,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                     self.program_gen.type_eraser.reset_target_type()
                 expr.expr.mk_typed(ast.TypePair(expected=exp_t,
                                                 actual=incompatible_t))
-                if isinstance(expr.expr, ast.FunctionCall):
+                if isinstance(expr.expr, (ast.FunctionCall, ast.New)):
                     decl = self.api_graph.get_declaration_of_access(
                             expr.expr, only_instance=False)
                 self.program_gen.block_variables = False
