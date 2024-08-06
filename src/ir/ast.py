@@ -1237,6 +1237,41 @@ class Operator(Node):
                 self.wrap == other.wrap)
 
 
+class UnaryExpr(Expr):
+
+    def __init__(self, expr: Expr, operator: Operator,
+                 is_prefix: bool):
+        super().__init__()
+        self.expr = expr
+        self.operator = operator
+        # True if the opeator is prefix; False if it's postfix
+        self.is_prefix = is_prefix
+
+    def has_variable(self):
+        return self.expr.has_variable()
+
+    def children(self):
+        return [self.expr]
+
+    def update_children(self, children):
+        super().update_children(children)
+        self.expr = children[0]
+
+    def __hash__(self):
+        return hash((self.expr, self.operator, self.is_prefix,
+                     self.__class__.__name__))
+
+    def __str__(self):
+        return f"Operator[{self.operator}, {self.expr}, {self.is_prefix}]"
+
+    def is_equal(self, other):
+        if isinstance(other, UnaryExpr):
+            return (self.expr.is_equal(other.expr) and
+                    self.operator == other.operator and
+                    self.is_prefix == other.is_prefix)
+        return False
+
+
 class BinaryExpr(Expr):
     ALL_OPERATORS = None
     VALID_OPERATORS = None

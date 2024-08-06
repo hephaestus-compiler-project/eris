@@ -29,6 +29,7 @@ class ASTVisitor():
             ast.ArrayExpr: self.visit_array_expr,
             ast.BooleanConstant: self.visit_boolean_constant,
             ast.Variable: self.visit_variable,
+            ast.UnaryExpr: self.visit_unary_expr,
             ast.BinaryExpr: self.visit_binary_expr,
             ast.LogicalExpr: self.visit_logical_expr,
             ast.EqualityExpr: self.visit_equality_expr,
@@ -117,6 +118,9 @@ class ASTVisitor():
 
     def visit_variable(self, node):
         raise NotImplementedError('visit_variable() must be implemented')
+
+    def visit_unary_expr(self, node):
+        raise NotImplementedError("visit_unary_expr() must be implemented")
 
     def visit_binary_expr(self, node):
         raise NotImplementedError("visit_binary_expr() must be implemented")
@@ -227,6 +231,9 @@ class DefaultVisitor(ASTVisitor):
         return self._visit_node(node)
 
     def visit_variable(self, node):
+        return self._visit_node(node)
+
+    def visit_unary_expr(self, node):
         return self._visit_node(node)
 
     def visit_binary_expr(self, node):

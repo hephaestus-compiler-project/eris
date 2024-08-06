@@ -764,6 +764,26 @@ class GroovyTranslator(BaseTranslator):
         )
 
     @append_to
+    def visit_unary_expr(self, node):
+        old_ident = self.ident
+        self.ident = 0
+        children = node.children()
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        if node.is_prefix:
+            res = "{ident}{operator}({expr})"
+        else:
+            res = "{ident}({expr}){operator}"
+        res = res.format(
+            ident=self.get_ident(old_ident=old_ident),
+            operator=node.operator,
+            expr=children_res[0]
+        )
+        self.ident = old_ident
+        return res
+
+    @append_to
     def visit_binary_expr(self, node):
         old_ident = self.ident
         self.ident = 0

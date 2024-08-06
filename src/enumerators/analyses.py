@@ -189,6 +189,15 @@ class ExprLocationAnalysis(LocationAnalysis):
             self.locations.append(Loc(expr, node, i, self.depth,
                                       deepcopy(self.scope)))
 
+    def visit_unary_expr(self, node):
+        prev_depth = self.depth
+        self.depth += 1
+        super().visit_unary_expr(node)
+        self.depth = prev_depth
+        self.parents[node.expr] = (node, 0)
+        self.locations.append(Loc(node.expr, node, 0, self.depth,
+                                  deepcopy(self.scope)))
+
     def visit_binary_expr(self, node):
         prev_depth = self.depth
         self.depth += 1

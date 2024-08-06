@@ -93,6 +93,21 @@ KOTLIN_SPECIAL_METHODS = {
         "fields": [],
         "methods": [
             {
+                "name": "!",
+                "parameters": [
+                    "kotlin.Boolean",
+                ],
+                "return_type": "kotlin.Boolean",
+                "type_parameters": [],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "!",
+                    "is_special": True,
+                }
+            },
+            {
                 "name": "&&",
                 "parameters": [
                     "kotlin.Boolean",
@@ -237,6 +252,21 @@ KOTLIN_SPECIAL_METHODS = {
                     "is_special": True,
                 }
             },
+            {
+                "name": "!!",
+                "parameters": [
+                    "T?",
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "!!",
+                    "is_special": True,
+                }
+            },
         ]
     }
 
@@ -256,6 +286,21 @@ GROOVY_SPECIAL_METHODS = {
         "implements": [],
         "fields": [],
         "methods": [
+            {
+                "name": "!",
+                "parameters": [
+                    "boolean",
+                ],
+                "return_type": "boolean",
+                "type_parameters": [],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "!",
+                    "is_special": True,
+                }
+            },
             {
                 "name": "&&",
                 "parameters": [

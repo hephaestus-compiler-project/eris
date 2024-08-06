@@ -367,6 +367,9 @@ class APIDeclarationGenerator(APIClientGenerator):
                                    depth + 1, type_var_map)
         catch_exceptions = CATCH_EXCEPTIONS[self.bt_factory.get_language()]
         converters = {
+            "!": lambda args: ast.UnaryExpr(args[0].expr,
+                                            ast.Operator("!"),
+                                            is_prefix=True),
             "&&": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
                                                ast.Operator("&&")),
             "||": lambda args: ast.LogicalExpr(args[0].expr, args[1].expr,
@@ -395,6 +398,9 @@ class APIDeclarationGenerator(APIClientGenerator):
                                               ast.Operator("?:")),
             "[]": lambda args: ast.BinaryExpr(args[0].expr, args[1].expr,
                                               ast.Operator("[]", wrap=True)),
+            "!!": lambda args: ast.UnaryExpr(args[0].expr,
+                                             ast.Operator("!!"),
+                                             is_prefix=False),
             "_if_": lambda args: ast.Conditional(
                 args[0].expr, args[1].expr, args[2].expr,
                 inferred_type=(args[1].path[-1]
