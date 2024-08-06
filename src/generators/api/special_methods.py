@@ -267,6 +267,38 @@ KOTLIN_SPECIAL_METHODS = {
                     "is_special": True,
                 }
             },
+            {
+                "name": "[]",
+                "parameters": [
+                    "kotlin.Array<T>",
+                    "kotlin.Int"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "[]",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "[]",
+                "parameters": [
+                    "kotlin.collections.List<T>",
+                    "int"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "[]",
+                    "is_special": True,
+                }
+            },
         ]
     }
 

@@ -731,9 +731,18 @@ class KotlinTranslator(BaseTranslator):
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        res = "{}({} {} {})".format(
-            " " * old_ident, children_res[0], node.operator,
-            children_res[1])
+        if not node.operator.wrap:
+            res = "{}({} {} {})".format(
+                " " * old_ident, children_res[0], node.operator,
+                children_res[1])
+        else:
+            res = "{ident}{left}{operator1}{right}{operator2}".format(
+                ident=self.get_ident(old_ident=old_ident),
+                left=children_res[0],
+                operator1=node.operator.name[:-1],
+                operator2=node.operator.name[-1],
+                right=children_res[1]
+            )
         self.ident = old_ident
         self._children_res.append(res)
 
