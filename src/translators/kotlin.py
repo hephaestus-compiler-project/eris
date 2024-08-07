@@ -1,6 +1,7 @@
 from functools import reduce
 import re
 
+from src.config import cfg
 from src.ir import ast, kotlin_types as kt, types as tp, type_utils as tu
 from src.transformations.base import change_namespace
 from src.generators.api.builder import KotlinAPIGraphBuilder
@@ -115,6 +116,9 @@ class KotlinTranslator(BaseTranslator):
     def get_type_name(self, t):
         if t.is_wildcard():
             t = t.get_bound_rec()
+            if t is None:
+                return kt.Any
+
             return self.get_type_name(t)
         if isinstance(t, kt.RawType):
             converted_t = t.t_constructor.new(
@@ -447,6 +451,9 @@ class KotlinTranslator(BaseTranslator):
             node.param_type.type_args[0]
             if node.vararg and node.param_type.name == kt.Array.name
             else node.param_type)
+        if param_type.is_wildcard():
+            if cfg.substitute_wildcards:
+                param_type = kt.Nothing
         res = vararg_str + node.name + ": " + self.get_type_name(param_type)
         if len(children):
             children_res = self.pop_children_res(children)

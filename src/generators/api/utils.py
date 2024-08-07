@@ -289,7 +289,7 @@ def instantiate_type_variables(api_graph, constraints,
                 )
         if (assigned_t.is_parameterized() and
                 assigned_t.has_invariant_wildcards() and
-                cfg.substitute_invariant_wildcard):
+                cfg.substitute_wildcards):
             # We substitute invariant wildcard with concrete type.
             assigned_t = tu.substitute_invariant_wildcard_with(
                 assigned_t, [t for t in api_graph.get_reg_types()

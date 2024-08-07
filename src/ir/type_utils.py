@@ -28,10 +28,7 @@ and the second for contravariance.
 
 
 def select_random_type(types: List[tp.Type], uniform=True) -> tp.Type:
-    try:
-        assert len(types) != 0
-    except:
-        import pdb; pdb.set_trace()
+    assert len(types) != 0
     if uniform:
         return utils.random.choice(types)
     type_vars, reg_types = [], []
@@ -650,7 +647,7 @@ def _find_candidate_types_for_bound(
     if bound.is_parameterized() and bound.has_invariant_wildcards():
         # We substitute invariant wildcard with a concrete type,
         # e.g., A<*> => A<String>
-        if cfg.substitute_invariant_wildcard:
+        if cfg.substitute_wildcards:
             bound = substitute_invariant_wildcard_with(bound, list(types))
     a_types = []
     if type_param.is_type_constructor():

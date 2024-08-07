@@ -302,8 +302,6 @@ if args.disable_function_references:
 if args.disable_sam:
     cfg.prob.sam_coercion = 0
 cfg.prob.local_variable_prob = args.local_variable_prob
-if bool(args.error_enumerator) or bool(args.inject_type_error):
-    cfg.substitute_invariant_wildcard = False
 
 
 def is_api_driven(args):

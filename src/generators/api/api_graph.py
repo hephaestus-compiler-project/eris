@@ -927,7 +927,8 @@ class APIGraph():
             self, etype: tp.Type) -> tp.ParameterizedType:
         type_var_map = {}
         if etype.is_parameterized():
-            etype = etype.to_variance_free()
+            if cfg.substitute_wildcards:
+                etype = etype.to_variance_free()
             type_var_map = etype.get_type_variable_assignments()
         func_type = self.get_functional_type(etype)
         if func_type is None:

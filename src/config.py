@@ -106,7 +106,7 @@ class GenConfig(metaclass=Singleton):
             use_site_contravariance=False,
         )
         self.bt_factory = None
-        self.substitute_invariant_wildcard: bool = True
+        self.substitute_wildcards: bool = True
 
     def json_config(self, kwargs):
         for key, value in kwargs.items():

@@ -1,4 +1,4 @@
-from typing import List, Generator, Set
+from typing import List, Generator, Set, Dict
 
 from src import utils
 from src.enumerators import type_abstractions as ta
@@ -36,6 +36,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
     NO_EXCLUSION = 0
     EXCLUDE_SUBTYPES = 1
     EXCLUDE_SUPERTYPES = 2
+
+    OUT_POS = -1
 
     def __init__(self, program: ast.Program, program_gen: ProgramGenerator,
                  bt_factory: BuiltinFactory):
@@ -328,17 +330,21 @@ class TypeErrorEnumerator(ErrorEnumerator):
         Given a particular node in the API graph, this method takes all the
         type variables that are found in its signature.
         """
-        type_variables = set()
+        type_variables = {}
         parent = self.api_graph.get_type_by_name(node.cls)
         assert parent is not None
         sub = tu.get_type_substitution_of_parent(parent, receiver_type)
         if isinstance(node, (nodes.Method, nodes.Constructor)):
-            for p in node.parameters:
-                type_variables.update(tu.get_type_variables_of_type(
-                    tp.substitute_type(p.t, sub)))
+            for i, p in enumerate(node.parameters):
+                type_vars = tu.get_type_variables_of_type(
+                    tp.substitute_type(p.t, sub))
+                for t in type_vars:
+                    type_variables.setdefault(t, set()).add(i)
         out_type = self.api_graph.get_concrete_output_type(node)
-        type_variables.update(tu.get_type_variables_of_type(
-            tp.substitute_type(out_type, sub)))
+        type_vars = tu.get_type_variables_of_type(
+            tp.substitute_type(out_type, sub))
+        for t in type_vars:
+            type_variables.setdefault(t, set()).add(self.OUT_POS)
         return type_variables
 
     def has_applicable_method(self, candidate_t: tp.Type,
@@ -375,7 +381,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                    and len(m.paremeters) == len(func_call.args))
 
     def replace_receiver_type(self, loc: Loc, receiver_type: tp.Type,
-                              type_variables: List[tp.TypeParameter]):
+                              type_variables: Dict[tp.TypeParameter, Set[int]]):
         """
         Given a receiver type, this method replaces the type parameters
         of the receiver type with various incompatible type arguments.
@@ -387,7 +393,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                          or receiver_type)
         mapped_type_vars = {}
         for k, v in receiver_type.get_type_variable_assignments().items():
-            if v in type_variables:
+            if v in type_variables.keys():
                 mapped_type_vars.setdefault(v, set()).add(k.variance)
         parents = self.analysis.get_parents(loc.parent)
         # We follow a conservative approach and we recover the types of
@@ -400,8 +406,23 @@ class TypeErrorEnumerator(ErrorEnumerator):
         for p, _ in parents:
             if isinstance(p, ast.VariableDeclaration):
                 p.recover_type()
-        for type_var in type_variables:
+        for type_var, positions in type_variables.items():
             type_arg = sub[type_var]
+            # Case: val x: Any = List<Any>().get(0)
+            # Any substitution of List<Any>() retains the validity of
+            # the program.
+            if positions == {self.OUT_POS} and type_arg.name in [
+                    self.bt_factory.get_any_type().name,
+                    self.bt_factory.get_string_type().name,
+                    self.bt_factory.get_boolean_type().name
+            ]:
+                continue
+            if self.OUT_POS in positions:
+                mapped_type_vars.setdefault(type_var, set()).add(tp.Covariant)
+            if positions.difference({self.OUT_POS}):
+                mapped_type_vars.setdefault(type_var, set()).add(
+                    tp.Contravariant
+                )
             for new_type_arg in self.get_type_parameter_instantiations(
                     type_arg, loc, type_con, mapped_type_vars[type_var]):
                 if new_type_arg.is_type_constructor():
@@ -430,8 +451,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
             return None
         type_variables = self.get_type_variables_of_node_signature(
             decl, receiver_type)
-        type_variables = set(
-            receiver_type.t_constructor.type_parameters) & type_variables
+        type_variables = {k: v for k, v in type_variables.items()
+                          if k in receiver_type.t_constructor.type_parameters}
         if not type_variables:
             return None
         yield from self.replace_receiver_type(loc, receiver_type,

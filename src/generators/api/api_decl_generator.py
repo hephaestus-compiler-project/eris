@@ -6,6 +6,7 @@ import re
 from typing import List, Tuple, Union
 
 from src import utils
+from src.config import cfg
 from src.enumerators import get_error_enumerator
 from src.ir import ast, types as tp
 from src.ir.context import Context
@@ -784,6 +785,7 @@ class APIDeclarationGenerator(APIClientGenerator):
                                           self.bt_factory)
         flag = False
         try:
+            cfg.substitute_wildcards = False
             for j, p in enumerate(error_enum.enumerate_programs()):
                 if p is not None:
                     flag = True
@@ -796,8 +798,10 @@ class APIDeclarationGenerator(APIClientGenerator):
             if not flag:
                 msg = f"No error added to skeleton {program_id}"
                 log(self.logger, msg)
+            cfg.substitute_wildcards = True
         except Exception as exc:
             log_error(self.logger, exc)
+            cfg.substitute_wildcards = True
 
     def compute_programs(self) -> ast.Program:
         for i, api_namespace in enumerate(self.api_namespaces):
