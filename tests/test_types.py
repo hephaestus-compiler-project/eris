@@ -615,3 +615,20 @@ def test_raw_types():
     assert raw.get_name() == "B"
     assert raw.t_constructor == b
     assert raw.supertypes == [jt.String, a.new([tp.WildCardType()]), jt.Object]
+
+
+def test_nullable_types():
+    a = tp.SimpleClassifier("A")
+    na = kt.NullableType().new([a])
+    assert not na.is_subtype(a)
+    assert a.is_subtype(na)
+
+    b = tp.SimpleClassifier("B", [a])
+    nb = kt.NullableType().new([b])
+    assert nb.is_subtype(na)
+    assert b.is_subtype(nb)
+    assert b.is_subtype(na)
+
+    nnb = kt.NullableType().new([nb])
+    assert nnb.is_subtype(na)
+    assert b.is_subtype(nnb)

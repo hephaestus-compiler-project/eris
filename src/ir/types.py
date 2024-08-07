@@ -6,6 +6,7 @@ from typing import List, Dict, Set
 
 from src.config import cfg
 from src.ir.node import Node
+from src.ir import kotlin_types as kt
 
 
 class Variance(object):
@@ -221,6 +222,10 @@ class SimpleClassifier(Classifier):
                     "do not have the same types"
 
     def is_subtype(self, other: Type) -> bool:
+        if other.is_parameterized() and \
+                isinstance(other.t_constructor, kt.NullableType):
+            other_t = other.type_args[0]
+            return self.is_subtype(other_t)
         supertypes = self.get_supertypes()
         # Since the subtyping relation is transitive, we must also check
         # whether any supertype of the current type is also subtype of the
@@ -491,6 +496,7 @@ def perform_type_substitution(etype, type_map,
 
 
 class TypeConstructor(AbstractType):
+
     def __init__(self, name: str, type_parameters: List[TypeParameter],
                  supertypes: List[Type] = None):
         super().__init__(name)
