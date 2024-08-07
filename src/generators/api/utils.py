@@ -287,8 +287,9 @@ def instantiate_type_variables(api_graph, constraints,
                     assigned_t, api_graph.get_reg_types(),
                     rec_bound_handler=api_graph.get_instantiations_of_recursive_bound
                 )
-        if assigned_t.is_parameterized() and \
-                assigned_t.has_invariant_wildcards():
+        if (assigned_t.is_parameterized() and
+                assigned_t.has_invariant_wildcards() and
+                cfg.substitute_invariant_wildcard):
             # We substitute invariant wildcard with concrete type.
             assigned_t = tu.substitute_invariant_wildcard_with(
                 assigned_t, [t for t in api_graph.get_reg_types()

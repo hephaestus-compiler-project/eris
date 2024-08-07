@@ -650,7 +650,8 @@ def _find_candidate_types_for_bound(
     if bound.is_parameterized() and bound.has_invariant_wildcards():
         # We substitute invariant wildcard with a concrete type,
         # e.g., A<*> => A<String>
-        bound = substitute_invariant_wildcard_with(bound, list(types))
+        if cfg.substitute_invariant_wildcard:
+            bound = substitute_invariant_wildcard_with(bound, list(types))
     a_types = []
     if type_param.is_type_constructor():
         # Here we handle cases like the following:
