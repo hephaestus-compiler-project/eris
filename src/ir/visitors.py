@@ -317,6 +317,9 @@ class ASTExprUpdate(DefaultVisitor):
     def visit_array_expr(self, node):
         node.exprs[self.index] = self.new_node
 
+    def visit_unary_expr(self, node):
+        node.expr = self.new_node
+
     def visit_binary_expr(self, node):
         if self.index == 0:
             node.lexpr = self.new_node
