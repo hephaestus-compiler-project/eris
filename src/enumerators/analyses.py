@@ -228,11 +228,7 @@ class ExprLocationAnalysis(LocationAnalysis):
         super().visit_equality_expr(node)
         self.depth = prev_depth
         self.parents[node.lexpr] = (node, 0)
-        self.locations.append(Loc(node.lexpr, node, 0, self.depth,
-                                  deepcopy(self.scope)))
         self.parents[node.rexpr] = (node, 1)
-        self.locations.append(Loc(node.rexpr, node, 1, self.depth,
-                                  deepcopy(self.scope)))
 
     def visit_comparison_expr(self, node):
         prev_depth = self.depth
