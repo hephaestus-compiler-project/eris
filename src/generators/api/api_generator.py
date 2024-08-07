@@ -254,6 +254,7 @@ class APIClientGenerator(Generator):
         for m, is_extension in overloaded_methods:
             is_m_ambiguous = au.is_typing_seq_ambiguous(encoding.api, m,
                                                         typing_seq[1:-1],
+                                                        self.api_graph,
                                                         type_var_map)
             if is_m_ambiguous and not is_extension:
                 return True

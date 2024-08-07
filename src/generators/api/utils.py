@@ -348,7 +348,7 @@ def _default_substitution(type_parameters: List[tp.TypeParameter],
 
 
 def _infer_sub_for_method(method: Method,
-                          arg_types: List[tp.Type]) -> dict:
+                          arg_types: List[tp.Type], api_graph) -> dict:
     parameter_types = [p.t for p in method.parameters]
     sub = {}
     for i, t in enumerate(arg_types):
@@ -359,7 +359,14 @@ def _infer_sub_for_method(method: Method,
         if not sub_i and not t.is_subtype(parameter_types[i]):
             return None
         sub = tu.merge_substitutions(sub, sub_i)
-    for type_param in method.type_parameters:
+    if isinstance(method, Constructor):
+        type_parameters = []
+        t = api_graph.get_type_by_name(method.get_class_name())
+        if t and t.is_type_constructor():
+            type_parameters = t.type_parameters
+    else:
+        type_parameters = method.type_parameters
+    for type_param in type_parameters:
         # For any type variable not included in the current sub (this is
         # because the corresponding type parameter appears in the output type
         # only), instantiate with a type that respects its bound.
@@ -373,6 +380,7 @@ def _infer_sub_for_method(method: Method,
 def is_typing_seq_ambiguous(method: Method,
                             other_method: Method,
                             typing_seq: List[tp.Type],
+                            api_graph,
                             type_var_map: dict = None) -> bool:
     """
     Checks whether the given typing sequence can trigger an overload method
@@ -391,7 +399,7 @@ def is_typing_seq_ambiguous(method: Method,
 
     other_typing_seq = [p.t for p in other_method.parameters]
     curr_typing_seq = [p.t for p in method.parameters]
-    sub = _infer_sub_for_method(other_method, typing_seq)
+    sub = _infer_sub_for_method(other_method, typing_seq, api_graph)
     if sub is None:
         return False
     if not with_erasure and not is_substitution_ambiguous(

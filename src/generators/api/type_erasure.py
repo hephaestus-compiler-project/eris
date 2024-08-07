@@ -235,7 +235,8 @@ class TypeEraser():
             overloaded_methods = self.api_graph.get_overloaded_methods(
                 self.api_graph.get_input_type(api), api)
             typing_seq = [p.path[-1] for p in args]
-            if any(au.is_typing_seq_ambiguous(api, m, typing_seq)
+            if any(au.is_typing_seq_ambiguous(api, m, typing_seq,
+                                              self.api_graph)
                    for m, _ in overloaded_methods):
                 return
 
@@ -347,7 +348,8 @@ class TypeEraser():
                 arg.expr.get_type_info()[1] if i != index else new_type
                 for i, arg in enumerate(expr.args)
             ]
-            new_sub = au._infer_sub_for_method(api, arg_types)
+            new_sub = au._infer_sub_for_method(api, arg_types,
+                                               self.api_graph)
             if new_sub is None:
                 new_sub = {
                     type_param: (self.bt_factory.get_any_type()

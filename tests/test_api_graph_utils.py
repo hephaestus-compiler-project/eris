@@ -2,7 +2,7 @@ import networkx as nx
 
 from src.config import cfg
 from src.ir import types as tp, kotlin_types as kt
-from src.generators.api import utils as au, nodes
+from src.generators.api import utils as au, nodes, api_graph as ag
 
 
 def test_compute_assignment_graph():
@@ -295,30 +295,35 @@ def test_is_typing_sequence_ambiguous_simple_classifier():
     method1 = nodes.Method("m", "", [], [], {})
     method2 = nodes.Method("m", "", [], [], {})
     typing_seq = (0,)
-    assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq, {})
+    assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                          None, {})
 
     method1 = nodes.Method("m", "", [nodes.Parameter(t1, False)], [], {})
     method2 = nodes.Method("m", "", [nodes.Parameter(t2, False)], [], {})
     typing_seq = [t1]
-    assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq, {})
+    assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                          None, {})
 
     method1 = nodes.Method("m", "", [nodes.Parameter(t3, False)], [], {})
     method2 = nodes.Method("m", "", [nodes.Parameter(t1, False)], [], {})
     typing_seq = [t3]
-    assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq, {})
+    assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                          None, {})
 
     t3 = tp.SimpleClassifier("C", [t1, t2])
     method1 = nodes.Method("m", "", [nodes.Parameter(t1, False)], [], {})
     method2 = nodes.Method("m", "", [nodes.Parameter(t2, False)], [], {})
     typing_seq = [t3]
-    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, {})
+    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                      None, {})
 
     method1 = nodes.Method("m", "", [nodes.Parameter(t1, False),
                                      nodes.Parameter(t2, False)], [], {})
     method2 = nodes.Method("m", "", [nodes.Parameter(t2, False),
                                      nodes.Parameter(t1, False)], [], {})
     typing_seq = [t3, t3]
-    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, {})
+    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, None,
+                                      {})
 
 
 def test_is_typing_sequence_ambiguous_parameterized():
@@ -335,14 +340,15 @@ def test_is_typing_sequence_ambiguous_parameterized():
     method2 = nodes.Method("m", "", [nodes.Parameter(p2, False)], [p2], {})
     typing_seq = [t1]
     assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq,
-                                          {p1: t1})
+                                          None, {p1: t1})
 
     # <T extends A> m(T)
     # <T extends B> m(T)
     # m(C())
     t3 = tp.SimpleClassifier("C", supertypes=[t1, t2])
     typing_seq = [t3]
-    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, {p1: t3})
+    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                      None, {p1: t3})
 
 
     # <T> m(List<T>)
@@ -357,8 +363,8 @@ def test_is_typing_sequence_ambiguous_parameterized():
     method2 = nodes.Method("m", "", [nodes.Parameter(p2, False)], [p2], {})
     typing_seq = [list_t.new([kt.String])]
     assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq,
-                                          {type_param: kt.String})
-    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, None)
+                                          None, {type_param: kt.String})
+    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, None, None)
 
 
     # <T> m(List<T>)
@@ -371,8 +377,9 @@ def test_is_typing_sequence_ambiguous_parameterized():
     method2 = nodes.Method("m", "", [nodes.Parameter(p2, False)], [p2], {})
     typing_seq = [list_t.new([kt.String])]
     assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq,
-                                          {type_param: kt.String})
-    assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq, None)
+                                          None, {type_param: kt.String})
+    assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                          None, None)
 
 
     # <T> m(T)
@@ -380,7 +387,7 @@ def test_is_typing_sequence_ambiguous_parameterized():
     # m("df")
     typing_seq = [kt.String]
     assert not au.is_typing_seq_ambiguous(method2, method1, typing_seq,
-                                          {p2: kt.String})
+                                          None, {p2: kt.String})
 
     # <T> m(T, A)
     # <T> m(T, B)
@@ -393,15 +400,16 @@ def test_is_typing_sequence_ambiguous_parameterized():
                            {})
     typing_seq = [kt.String, t3]
     assert au.is_typing_seq_ambiguous(method2, method1, typing_seq,
-                                      {type_param: kt.String})
+                                      None, {type_param: kt.String})
 
     # <T> m(T, A)
     # <T> m(T, B)
     # m("fd", B())
     typing_seq = [kt.String, t2]
     assert not au.is_typing_seq_ambiguous(method2, method1, typing_seq,
-                                          {type_param: kt.String})
-    assert not au.is_typing_seq_ambiguous(method2, method1, typing_seq, None)
+                                          None, {type_param: kt.String})
+    assert not au.is_typing_seq_ambiguous(method2, method1, typing_seq,
+                                          None, None)
 
     # <T extends A> m(T)
     # <T extends C> m(T)
@@ -414,8 +422,31 @@ def test_is_typing_sequence_ambiguous_parameterized():
                            [type_param2], {})
     typing_seq = [t3]
     assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq,
-                                          {type_param1: t1})
-    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, None)
+                                          None, {type_param1: t1})
+    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                      None, None)
+
+
+def test_infer_sub_for_method():
+    type_param = tp.TypeParameter("T")
+    method1 = nodes.Method("m", "", [nodes.Parameter(type_param, False)],
+                           [type_param], {})
+    args = [kt.String]
+    assert au._infer_sub_for_method(method1, args, None) == {
+        type_param: kt.String
+    }
+
+    constructor = tp.TypeConstructor("A", [type_param])
+    graph = nx.DiGraph()
+    graph.add_node(constructor)
+    api_graph = ag.APIGraph(graph, graph, None, kt.KotlinBuiltinFactory())
+
+    method1 = nodes.Constructor("Foo", [nodes.Parameter(type_param, False)],
+                                {})
+    args = [kt.Integer]
+    assert au._infer_sub_for_method(method1, args, api_graph) == {
+        type_param: kt.Integer
+    }
 
 
 def test_is_typing_sequence_ambiguous_mul_args():
@@ -434,7 +465,8 @@ def test_is_typing_sequence_ambiguous_mul_args():
         nodes.Parameter(t2, False)
     ], [], {})
     typing_seq = [kt.Integer, kt.String, t3]
-    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, {})
+    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                      None, {})
 
     method1 = nodes.Method("m", "", [
         nodes.Parameter(kt.Integer, False),
@@ -447,7 +479,8 @@ def test_is_typing_sequence_ambiguous_mul_args():
         nodes.Parameter(t1, False)
     ], [], {})
     typing_seq = [kt.Integer, kt.String, t3]
-    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, {})
+    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                      None, {})
 
     method1 = nodes.Method("m", "", [
         nodes.Parameter(kt.Integer, False),
@@ -460,7 +493,8 @@ def test_is_typing_sequence_ambiguous_mul_args():
         nodes.Parameter(t1, False)
     ], [], {})
     typing_seq = [kt.Integer, kt.String, t3]
-    assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq, {})
+    assert not au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                          None, {})
 
     method1 = nodes.Method("m", "", [
         nodes.Parameter(kt.Integer, False),
@@ -473,7 +507,8 @@ def test_is_typing_sequence_ambiguous_mul_args():
         nodes.Parameter(t2, False)
     ], [], {})
     typing_seq = [kt.Integer, kt.String, t3]
-    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq, {})
+    assert au.is_typing_seq_ambiguous(method1, method2, typing_seq,
+                                      None, {})
 
 
 def test_top_sort_hierarchy_chain():
