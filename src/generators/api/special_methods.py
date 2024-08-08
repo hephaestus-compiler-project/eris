@@ -299,6 +299,21 @@ KOTLIN_SPECIAL_METHODS = {
                     "is_special": True,
                 }
             },
+            {
+                "name": "_is_",
+                "parameters": [
+                    "T"
+                ],
+                "return_type": "kotlin.Boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "_is_",
+                    "is_special": True,
+                }
+            },
         ]
     }
 
@@ -459,6 +474,21 @@ GROOVY_SPECIAL_METHODS = {
                 "access_mod": "public",
                 "other_metadata": {
                     "symbol": "[]",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "_is_",
+                "parameters": [
+                    "T"
+                ],
+                "return_type": "boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "_is_",
                     "is_special": True,
                 }
             },

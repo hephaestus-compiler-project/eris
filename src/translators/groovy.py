@@ -875,7 +875,7 @@ class GroovyTranslator(BaseTranslator):
             ident=self.get_ident(old_ident=old_ident),
             expr=children_res[0],
             is_lit="!instanceof" if node.operator.is_not else "instanceof",
-            type_to_check=self.get_type_name(node.rexpr))
+            type_to_check=self.get_type_name(node.etype))
         self.ident = old_ident
         return res
 

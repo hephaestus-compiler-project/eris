@@ -822,9 +822,11 @@ class KotlinTranslator(BaseTranslator):
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        res = "{}{} {} {}".format(
-            " " * old_ident, children_res[0], str(node.operator),
-            node.rexpr.name)
+        res = "{ident}{expr} is {type}".format(
+            ident=self.get_ident(old_ident=old_ident),
+            expr=children_res[0],
+            type=self.get_type_name(node.etype)
+        )
         self.ident = old_ident
         self._children_res.append(res)
 

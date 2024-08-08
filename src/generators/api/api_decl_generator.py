@@ -105,6 +105,21 @@ def is_definition_abstract(ns_spec: dict, node: Union[ag.Method, ag.Field]):
     return is_abstract
 
 
+def select_type_for_is_check(t: tp.Type, api_graph: ag.APIGraph) -> tp.Type:
+    subtypes = api_graph.subtypes(t, include_parameterized_subtypes=False)
+    assert len(subtypes) >= 1
+    selected_t = utils.random.choice(list(subtypes))
+    if selected_t.is_type_constructor():
+        return selected_t.new([tp.WildCardType()
+                               for _ in range(len(selected_t.type_parameters))])
+    if selected_t.is_parameterized():
+        return selected_t.t_constructor.new(
+            [tp.WildCardType()
+             for _ in range(len(selected_t.t_constructor.type_parameters))]
+        )
+    return selected_t
+
+
 Namespace = namedtuple("namespace", ["api_component_name"])
 
 
@@ -366,7 +381,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         args = self._generate_args(parameters,
                                    [[p] for p in parameters],
                                    depth + 1, type_var_map)
-        catch_exceptions = CATCH_EXCEPTIONS[self.bt_factory.get_language()]
+        catch_exceptions = CATCH_EXCEPTIONS.get(
+            self.bt_factory.get_language(), [])
         converters = {
             "!": lambda args: ast.UnaryExpr(args[0].expr,
                                             ast.Operator("!"),
@@ -413,6 +429,12 @@ class APIDeclarationGenerator(APIClientGenerator):
                 OrderedDict(
                     (catch_exceptions[i], ast.Block([arg.expr], False))
                     for i, arg in enumerate(args[1:])
+                )
+            ),
+            "_is_": lambda args: ast.Is(
+                args[0].expr, select_type_for_is_check(
+                    type_var_map[m.type_parameters[0]],
+                    self.api_graph
                 )
             )
         }

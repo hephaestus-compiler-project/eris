@@ -1441,22 +1441,33 @@ class ArithExpr(BinaryExpr):
     }
 
 
-class Is(BinaryExpr):
+class Is(UnaryExpr):
     def __init__(self, expr: Expr, etype: types.Type, is_not=False):
         operator = Operator('is', is_not=is_not)
-        super().__init__(expr, etype, operator)
+        super().__init__(expr, operator, is_prefix=False)
+        self.etype = etype
 
     def has_variable(self):
         return self.expr.has_variable()
 
     def children(self):
-        return [self.lexpr]
+        return [self.expr]
 
     def update_children(self, children):
         # We want to call the update_children of expr
         # pylint: disable=bad-super-call
-        super(BinaryExpr, self).update_children(children)
-        self.lexpr = children[0]
+        super(UnaryExpr, self).update_children(children)
+        self.expr = children[0]
+
+    def __hash__(self):
+        return hash((self.expr, self.etype))
+
+    def is_equal(self, other):
+        if isinstance(other, Is):
+            return (self.class_type == other.class_type and
+                    self.expr.is_equal(other.expr) and
+                    self.etype == other.etype)
+        return False
 
 
 class New(Expr):

@@ -75,7 +75,7 @@ class TypeEraser():
     def get_type_parameters(self, api: ag.APINode) -> List[tp.TypeParameter]:
         if isinstance(api, ag.Constructor):
             t = self.api_graph.get_type_by_name(api.get_class_name())
-            if t.is_type_constructor():
+            if t and t.is_type_constructor():
                 return t.type_parameters
             else:
                 return []

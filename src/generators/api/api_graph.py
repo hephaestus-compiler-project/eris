@@ -356,11 +356,12 @@ class APIGraph():
                 subtypes.add(v)
         return subtypes
 
-    def subtypes(self, node: tp.Type, include_self=True):
+    def subtypes(self, node: tp.Type, include_self=True,
+                 include_parameterized_subtypes=True):
         subtypes = {node} if include_self else set()
         if node.is_type_var():
             return subtypes
-        if node.is_parameterized() and any(
+        if node.is_parameterized() and include_parameterized_subtypes and any(
                 t_arg.is_wildcard() or
                 not node.t_constructor.type_parameters[i].is_invariant()
                 for i, t_arg in enumerate(node.type_args)
