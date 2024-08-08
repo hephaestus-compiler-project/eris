@@ -758,7 +758,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         return program
 
     def generate_ill_typed_programs(self, program: ast.Program,
-                                    program_id: int):
+                                    program_id: int,
+                                    api_namespace: str):
         """
         Generates all ill-typed programs that stem from the given well-typed
         one.
@@ -793,6 +794,7 @@ class APIDeclarationGenerator(APIClientGenerator):
                     msg = (f"Enumerating error program {j + 1}"
                            f" for skeleton {program_id}\n")
                     log(self.logger, msg)
+                    log(self.logger, f"API namespace: {api_namespace}")
                     log(self.logger, self.error_injected)
                     yield p
             if not flag:
@@ -817,7 +819,8 @@ class APIDeclarationGenerator(APIClientGenerator):
                 # Enumerate all ill-typed programs that stem from the given
                 # skeleton program.
                 yield from self.generate_ill_typed_programs(program,
-                                                            program_id)
+                                                            program_id,
+                                                            api_namespace)
 
     def has_next(self) -> bool:
         return self._has_next
