@@ -377,6 +377,16 @@ def _infer_sub_for_method(method: Method,
     return sub
 
 
+def _get_type_parameters_from_api(api: Union[Method, Constructor],
+                                  api_graph):
+    if isinstance(api, Method):
+        return api.type_parameters
+    t = api_graph.get_type_by_name(api.get_class_name())
+    if t and t.is_type_constructor():
+        return t.type_parameters
+    return []
+
+
 def is_typing_seq_ambiguous(method: Method,
                             other_method: Method,
                             typing_seq: List[tp.Type],
@@ -402,13 +412,15 @@ def is_typing_seq_ambiguous(method: Method,
     sub = _infer_sub_for_method(other_method, typing_seq, api_graph)
     if sub is None:
         return False
+    method_type_params = _get_type_parameters_from_api(method, api_graph)
+    other_type_params = _get_type_parameters_from_api(other_method, api_graph)
     if not with_erasure and not is_substitution_ambiguous(
-            method.type_parameters, other_method.type_parameters,
+            method_type_params, other_type_params,
             type_var_map or {}, sub):
         return False
 
-    sub1 = _default_substitution(method.type_parameters, with_erasure)
-    sub2 = _default_substitution(other_method.type_parameters, with_erasure)
+    sub1 = _default_substitution(method_type_params, with_erasure)
+    sub2 = _default_substitution(other_type_params, with_erasure)
     curr_typing_seq = [tp.substitute_type(t, sub1) for t in curr_typing_seq]
     other_typing_seq = [tp.substitute_type(t, sub2) for t in other_typing_seq]
     if curr_typing_seq == other_typing_seq:
