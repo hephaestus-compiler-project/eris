@@ -36,6 +36,7 @@ class ASTVisitor():
             ast.ComparisonExpr: self.visit_comparison_expr,
             ast.ArithExpr: self.visit_arith_expr,
             ast.Conditional: self.visit_conditional,
+            ast.MultiConditional: self.visit_multiconditional,
             ast.Is: self.visit_is,
             ast.New: self.visit_new,
             ast.FieldAccess: self.visit_field_access,
@@ -140,6 +141,10 @@ class ASTVisitor():
 
     def visit_conditional(self, node):
         raise NotImplementedError('visit_conditional() must be implemented')
+
+    def visit_multiconditional(self, node):
+        raise NotImplementedError(
+            "visit_multiconditional() must be implemented")
 
     def visit_is(self, node):
         raise NotImplementedError('visit_is() must be implemented')
@@ -254,6 +259,9 @@ class DefaultVisitor(ASTVisitor):
     def visit_conditional(self, node):
         return self._visit_node(node)
 
+    def visit_multiconditional(self, node):
+        return self._visit_node(node)
+
     def visit_is(self, node):
         return self._visit_node(node)
 
@@ -345,6 +353,17 @@ class ASTExprUpdate(DefaultVisitor):
             node.true_branch = self.new_node
         else:
             node.false_branch = self.new_node
+
+    def visit_multiconditional(self, node):
+        i = 0
+        if node.root_cond and self.index == 0:
+            node.root_cond = self.new_node
+            i = 1
+        if self.index >= len(node.conditions) + i:
+            index = self.index - len(node.conditions) + i
+            node.branches[index] = self.new_node
+        else:
+            node.conditions[self.index] = self.new_node
 
     def visit_new(self, node):
         node.args[self.index] = ast.CallArgument(self.new_node)

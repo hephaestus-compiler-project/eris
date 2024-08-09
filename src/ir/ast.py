@@ -1740,6 +1740,65 @@ class Assignment(Expr):
         return False
 
 
+class MultiConditional(Expr):
+    def __init__(self, conditions: List[Expr],
+                 branches: List[Union[Block, Expr]],
+                 inferred_type: types.Type,
+                 root_cond: Expr = None,
+                 is_expression: bool = True):
+        assert len(conditions) == len(branches) or \
+            len(conditions) == len(branches) - 1
+        self.conditions = conditions
+        self.branches = branches
+        self.inferred_type = inferred_type
+        self.root_cond = root_cond
+        self.is_expression = is_expression
+
+    def has_variable(self):
+        exprs = self.conditions + self.branches
+        if self.root_cond is not None:
+            exprs.append(self.root_cond)
+        return any(e.has_variable() for e in exprs)
+
+    def children(self):
+        exprs = []
+        if self.root_cond is not None:
+            exprs.append(self.root_cond)
+        exprs.extend(self.conditions + self.branches)
+        return exprs
+
+    def update_children(self, children):
+        super().update_children(children)
+        i = 0
+        if self.root_cond:
+            self.root_cond = children[0]
+            i += 1
+        for j, c in enumerate(children[i:len(self.conditions) + i]):
+            self.conditions[j] = c
+        i = i + len(self.conditions)
+        for j, c in enumerate(children[i:]):
+            self.branches[j] = j
+
+    def is_bottom(self):
+        return all(e.is_bottom() for e in self.branches)
+
+    def get_type(self):
+        return self.inferred_type
+
+    def __hash__(self):
+        return hash((self.root_cond, tuple(self.conditions),
+                     tuple(self.branches), self.is_expression))
+
+    def is_equal(self, other):
+        if isinstance(other, MultiConditional):
+            return (check_default_eq(self.root_cond, other.root_cond) and
+                    check_list_eq(self.conditions, other.conditions) and
+                    check_list_eq(self.branches, other.branches) and
+                    self.inferred_type == other.inferred_type and
+                    self.is_expression == other.is_expression)
+        return False
+
+
 class TryCatch(Expr):
     def __init__(self, try_block: Block, catch_blocks: Dict[str, Block]):
         super().__init__()

@@ -271,6 +271,20 @@ class ExprLocationAnalysis(LocationAnalysis):
             self.locations.append(Loc(node.false_branch, node, 2, self.depth,
                                       deepcopy(self.scope)))
 
+    def visit_multiconditional(self, node):
+        prev_depth = self.depth
+        self.depth += 1
+        super().visit_multiconditional(node)
+        self.depth = prev_depth
+        i = 0
+        if node.root_cond is not None:
+            i += 1
+        i = i + len(node.branches)
+        for j, c in enumerate(node.branches):
+            self.parents[c] = (node, i + j)
+            self.locations.append(Loc(c, node, i + j, self.depth,
+                                      deepcopy(self.scope)))
+
     def visit_new(self, node):
         prev_depth = self.depth
         self.depth += 1

@@ -864,6 +864,76 @@ class GroovyTranslator(BaseTranslator):
         return res
 
     @append_to
+    def visit_multiconditional(self, node):
+        prev_inside_is = self._inside_is
+        prev_namespace = self._namespace
+        self._inside_is = node.is_expression
+        children = node.children()
+        i = 0
+        if node.root_cond is not None:
+            children[i].accept(self)  # cond
+            i += 1
+
+        old_ident = self.ident
+        self.ident += 2
+        for j in range(len(node.conditions)):
+            children[i + j].accept(self)  # conditions
+        i = i + len(node.conditions)
+        for j in range(len(node.branches)):
+            self._namespace = prev_namespace + (f'case_block{j}',)
+            children[i + j].accept(self)  # branches
+
+        self._namespace = prev_namespace
+        children_res = self.pop_children_res(children)
+        root_cond_res = None
+        i = 0
+        if node.root_cond is not None:
+            root_cond_res = children_res[0]
+            i += 1
+        condition_res = children_res[i:len(node.conditions) + i]
+        i = i + len(node.conditions)
+        branch_res = children_res[i:]
+        assert len(condition_res) == len(branch_res) or \
+            len(condition_res) == len(branch_res) - 1
+
+        if not node.is_expression:
+            for i in range(len(node.branches)):
+                branch_res[i] = self.get_ident() + "return " + \
+                    branch_res[i].lstrip()
+        prefix = (
+            "switch {\n"
+            if node.root_cond is None
+            else "switch ({expr}) {{\n".format(expr=root_cond_res.lstrip())
+        )
+        case_exprs_str = []
+        for i in range(len(node.branches)):
+            if i < len(node.conditions):
+                case_exprs_str.append(
+                    "{ident}case {case_expr} -> {body}".format(
+                        ident=self.get_ident(),
+                        case_expr=condition_res[i].lstrip().strip(),
+                        body=branch_res[i].lstrip()
+                    )
+                )
+            else:
+                case_exprs_str.append(
+                    "{ident}default -> {body}".format(
+                        ident=self.get_ident(),
+                        body=branch_res[i].lstrip()
+                    )
+                )
+
+        res = "{ident}({prefix}{body}\n{ident}".format(
+            ident=self.get_ident(old_ident=old_ident),
+            prefix=prefix,
+            body="\n".join(case_exprs_str)
+        )
+        res += "})"
+        self.ident = old_ident
+        self._inside_is = prev_inside_is
+        return res
+
+    @append_to
     def visit_is(self, node):
         old_ident = self.ident
         self.ident = 0

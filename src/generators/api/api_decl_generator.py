@@ -357,6 +357,19 @@ class APIDeclarationGenerator(APIClientGenerator):
 
     def convert_constructor(self, m: ag.Constructor,
                             ns_spec: dict) -> ast.Constructor:
+        if self.bt_factory.get_language() == "kotlin" and \
+                ns_spec["name"].rsplit(".", 1)[1].lower() in [
+                    self.bt_factory.get_char_type().name.lower(),
+                    self.bt_factory.get_byte_type().name.lower(),
+                    self.bt_factory.get_short_type().name.lower(),
+                    self.bt_factory.get_integer_type().name.lower(),
+                    self.bt_factory.get_long_type().name.lower(),
+                    self.bt_factory.get_double_type().name.lower(),
+                    self.bt_factory.get_float_type().name.lower(),
+                    self.bt_factory.get_boolean_type().name.lower(),
+                    self.bt_factory.get_string_type().name.lower(),
+                ]:
+            return None
         body = []
         this_call = self.generate_this_call(m)
         if this_call is not None:
@@ -423,6 +436,17 @@ class APIDeclarationGenerator(APIClientGenerator):
                 inferred_type=(args[1].path[-1]
                                if args[2].path[-1].is_subtype(args[1].path[-1])
                                else args[2].path[-1])
+            ),
+            "_when_": lambda args: ast.MultiConditional(
+                [a.expr for a in args[1:m.metadata["conditions"] + 1]],
+                [a.expr for a in args[m.metadata["conditions"] + 1:]],
+                inferred_type=functools.reduce(
+                    lambda acc, x: acc if x.is_subtype(acc) else x,
+                    [a.path[-1] for a in args[m.metadata["conditions"] + 1:]],
+                    args[m.metadata["conditions"] + 1].path[-1]
+                ),
+                root_cond=args[0].expr,
+                is_expression=True
             ),
             "_try_": lambda args: ast.TryCatch(
                 ast.Block([args[0].expr], False),

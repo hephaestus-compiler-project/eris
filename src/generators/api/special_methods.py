@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import List
 import itertools
 
@@ -78,6 +79,42 @@ def create_try_methods(nu_methods=3):
         extra_parameters = ["T"] * (i + 1)
         copied_obj = method_obj.copy()
         copied_obj["parameters"] = ["T", "T"] + extra_parameters
+        methods.append(copied_obj)
+    return methods
+
+
+def create_when_methods(nu_methods=5):
+    method_obj = {
+        "name": "_when_",
+        "parameters": [
+            "X",
+            "X",
+            "X",
+            "Y",
+            "Y",
+            "Y",
+        ],
+        "return_type": "Y",
+        "type_parameters": ["X", "Y"],
+        "is_static": True,
+        "is_constructor": False,
+        "access_mod": "public",
+        "other_metadata": {
+            "symbol": "_when_",
+            "is_special": True,
+            "conditions": 2
+        }
+    }
+    methods = []
+    methods.append(method_obj)
+    nu_methods -= 1
+    for i in range(nu_methods):
+        extra_parameters = ["X", "X", "X"] + (["X"] * (i + 1))
+        case_parameters = ["Y", "Y", "Y"] + (["Y"] * (i + 1))
+        copied_obj = deepcopy(method_obj)
+        copied_obj["parameters"] = extra_parameters + case_parameters
+        copied_obj["other_metadata"]["conditions"] = \
+            method_obj["other_metadata"]["conditions"] + (i + 1)
         methods.append(copied_obj)
     return methods
 
@@ -321,6 +358,9 @@ KOTLIN_SPECIAL_METHODS = {
 KOTLIN_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
     create_try_methods()
 )
+KOTLIN_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+    create_when_methods()
+)
 
 
 GROOVY_SPECIAL_METHODS = {
@@ -526,4 +566,7 @@ GROOVY_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
     create_arithmetic_methods(["char"], "java.lang.Number",
                               second_types=["byte", "short", "int", "float",
                                             "double"])
+)
+GROOVY_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+    create_when_methods()
 )
