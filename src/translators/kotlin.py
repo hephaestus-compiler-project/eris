@@ -1112,3 +1112,16 @@ class KotlinTranslator(BaseTranslator):
         self._namespace = prev_namespace
         self._children_res.append(res)
         return res
+
+    @append_to
+    def visit_return(self, node):
+        children = node.children()
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        res = "{ident}return{expr}".format(
+            ident=self.get_ident(old_ident=self.ident),
+            expr=children_res[0].lstrip() if node.expr else ""
+        )
+        self._children_res.append(res)
+        return res

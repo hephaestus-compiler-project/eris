@@ -45,6 +45,7 @@ class ASTVisitor():
             ast.Program: self.visit_program,
             ast.Block: self.visit_block,
             ast.TryCatch: self.visit_trycatch,
+            ast.Return: self.visit_return,
         }
         visitor = visitors.get(node.__class__)
         if visitor is None:
@@ -164,6 +165,9 @@ class ASTVisitor():
     def visit_trycatch(self, node):
         raise NotImplementedError('visit_trycatch() must be implemented')
 
+    def visit_return(self, node):
+        raise NotImplementedError('visit_return() must be implemented')
+
 
 class DefaultVisitor(ASTVisitor):
 
@@ -280,6 +284,9 @@ class DefaultVisitor(ASTVisitor):
     def visit_trycatch(self, node):
         return self._visit_node(node)
 
+    def visit_return(self, node):
+        return self._visit_node(node)
+
 
 class DefaultVisitorUpdate(DefaultVisitor):
 
@@ -383,4 +390,8 @@ class ASTExprUpdate(DefaultVisitor):
         if self.index == -1:
             node.receiver = self.new_node
         else:
+            node.expr = self.new_node
+
+    def visit_return(self, node):
+        if self.index == 0:
             node.expr = self.new_node

@@ -1829,3 +1829,28 @@ class TryCatch(Expr):
             return (self.try_block == other.try_block and
                     self.catch_blocks == other.catch_blocks)
         return False
+
+
+class Return(Expr):
+    def __init__(self, expr: Expr):
+        super().__init__()
+        self.expr = expr
+
+    def has_variable(self):
+        return self.expr and self.expr.has_variable()
+
+    def children(self):
+        return [self.expr] if self.expr else []
+
+    def update_children(self, children):
+        if not self.expr:
+            return
+        self.expr = children[0]
+
+    def __hash__(self):
+        return hash(self.expr)
+
+    def is_equal(self, other):
+        if isinstance(other, Return):
+            return self.expr == other.expr
+        return False

@@ -1159,3 +1159,39 @@ class GroovyTranslator(BaseTranslator):
         self.ident = old_ident
         self._cast_number = prev_cast_number
         return res
+
+    @append_to
+    def visit_trycatch(self, node):
+        prev_namespace = self._namespace
+        children = node.children()
+        old_ident = self.ident
+        self.ident += 2
+        children[0].accept(self)  # try
+        self._namespace = prev_namespace + ('try_block',)
+        for i, k in enumerate(node.catch_blocks):
+            self._namespace = prev_namespace + (f"catch_{k}_block",)
+            children[i + 1].accept(self)
+        children_res = self.pop_children_res(children)
+        ident = self.get_ident(old_ident=old_ident)
+        catch_bodies = [
+            f"{ident}catch ({k} e)\n{children_res[i + 1]}"
+            for i, k in enumerate(node.catch_blocks.keys())
+        ]
+        catch_bodies_str = "\n".join(catch_bodies)
+
+        res = f"{ident}try\n{children_res[0]}\n{catch_bodies_str}"
+        self.ident = old_ident
+        self._namespace = prev_namespace
+        return res
+
+    @append_to
+    def visit_return(self, node):
+        children = node.children()
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        res = "{ident}return{expr}".format(
+            ident=self.get_ident(old_ident=self.ident),
+            expr=children_res[0].lstrip() if node.expr else ""
+        )
+        return res
