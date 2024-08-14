@@ -370,19 +370,6 @@ class APIDeclarationGenerator(APIClientGenerator):
 
     def convert_constructor(self, m: ag.Constructor,
                             ns_spec: dict) -> ast.Constructor:
-        if self.bt_factory.get_language() == "kotlin" and \
-                ns_spec["name"].rsplit(".", 1)[1].lower() in [
-                    self.bt_factory.get_char_type().name.lower(),
-                    self.bt_factory.get_byte_type().name.lower(),
-                    self.bt_factory.get_short_type().name.lower(),
-                    self.bt_factory.get_integer_type().name.lower(),
-                    self.bt_factory.get_long_type().name.lower(),
-                    self.bt_factory.get_double_type().name.lower(),
-                    self.bt_factory.get_float_type().name.lower(),
-                    self.bt_factory.get_boolean_type().name.lower(),
-                    self.bt_factory.get_string_type().name.lower(),
-                ]:
-            return None
         body = []
         this_call = self.generate_this_call(m)
         if this_call is not None:
