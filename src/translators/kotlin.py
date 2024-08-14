@@ -1112,7 +1112,7 @@ class KotlinTranslator(BaseTranslator):
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        res = "{ident}return{expr}".format(
+        res = "{ident}return {expr}".format(
             ident=self.get_ident(old_ident=self.ident),
             expr=children_res[0].lstrip() if node.expr else ""
         )

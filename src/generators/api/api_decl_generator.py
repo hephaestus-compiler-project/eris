@@ -21,8 +21,21 @@ from src.modules.logging import log, log_onerror, log_error
 CATCH_EXCEPTIONS = {
     "kotlin": [
         "java.lang.Exception",
+        "java.io.IOException",
         "java.lang.NumberFormatException",
-        "java.io.IOException"
+        "java.lang.IllegalStateException",
+        "java.lang.AssertionError",
+        "java.lang.ClassCastException",
+        "java.lang.ArrayStoreException",
+    ],
+    "groovy": [
+        "java.lang.Exception",
+        "java.io.IOException",
+        "java.lang.NumberFormatException",
+        "java.lang.IllegalStateException",
+        "java.lang.AssertionError",
+        "java.lang.ClassCastException",
+        "java.lang.ArrayStoreException",
     ],
 }
 
@@ -563,6 +576,8 @@ class APIDeclarationGenerator(APIClientGenerator):
                 self.block_variables = False
                 base_expr = ast.Block(body_block[::-1])
                 alt_expr = self.generate_expr(block_type)
+                if block_type != self.bt_factory.get_void_type():
+                    alt_expr = ast.Return(alt_expr)
                 true_expr, false_expr = ((base_expr, alt_expr)
                                          if utils.random.bool()
                                          else (alt_expr, base_expr))
@@ -617,8 +632,15 @@ class APIDeclarationGenerator(APIClientGenerator):
                          if not isinstance(d, ast.ParameterDeclaration)]
 
             assignments = self.generate_assignments(m, var_decls)
-            body = expr if not var_decls else ast.Block(
-                var_decls + assignments + [expr])
+            if not var_decls:
+                body = expr
+            else:
+                expr = (
+                    ast.Return(expr)
+                    if out_type != self.bt_factory.get_void_type()
+                    else expr
+                )
+                body = ast.Block(var_decls + assignments + [expr])
             body = self.add_control_flow(body, out_type)
             self.type_eraser.reset_target_type()
         self.remove_local_variables(m)

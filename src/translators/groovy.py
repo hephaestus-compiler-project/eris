@@ -3,6 +3,7 @@
 import re
 from collections import OrderedDict
 
+from src import utils
 from src.ir import ast, groovy_types as gt, types as tp, type_utils as tu
 from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
@@ -896,10 +897,6 @@ class GroovyTranslator(BaseTranslator):
         assert len(condition_res) == len(branch_res) or \
             len(condition_res) == len(branch_res) - 1
 
-        if not node.is_expression:
-            for i in range(len(node.branches)):
-                branch_res[i] = self.get_ident() + "return " + \
-                    branch_res[i].lstrip()
         prefix = (
             "switch {\n"
             if node.root_cond is None
@@ -922,13 +919,16 @@ class GroovyTranslator(BaseTranslator):
                         body=branch_res[i].lstrip()
                     )
                 )
+        open_paren, close_paren = ("(", ")") if node.is_expression else ("",
+                                                                         "")
 
-        res = "{ident}({prefix}{body}\n{ident}".format(
+        res = "{ident}{op}{prefix}{body}\n{ident}".format(
             ident=self.get_ident(old_ident=old_ident),
             prefix=prefix,
+            op=open_paren,
             body="\n".join(case_exprs_str)
         )
-        res += "})"
+        res += "}" + close_paren
         self.ident = old_ident
         self._inside_is = prev_inside_is
         return res
@@ -1174,7 +1174,7 @@ class GroovyTranslator(BaseTranslator):
         children_res = self.pop_children_res(children)
         ident = self.get_ident(old_ident=old_ident)
         catch_bodies = [
-            f"{ident}catch ({k} e)\n{children_res[i + 1]}"
+            f"{ident}catch ({k} {utils.random.word()})\n{children_res[i + 1]}"
             for i, k in enumerate(node.catch_blocks.keys())
         ]
         catch_bodies_str = "\n".join(catch_bodies)
@@ -1190,7 +1190,7 @@ class GroovyTranslator(BaseTranslator):
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        res = "{ident}return{expr}".format(
+        res = "{ident}return {expr}".format(
             ident=self.get_ident(old_ident=self.ident),
             expr=children_res[0].lstrip() if node.expr else ""
         )
