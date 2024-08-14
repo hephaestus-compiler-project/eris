@@ -1854,3 +1854,6 @@ class Return(Expr):
         if isinstance(other, Return):
             return self.expr == other.expr
         return False
+
+    def get_type_info(self):
+        return self.expr.get_type_info()
