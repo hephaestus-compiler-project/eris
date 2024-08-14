@@ -216,15 +216,17 @@ class KotlinTranslator(BaseTranslator):
         res += "\n" + "\n".join(children_res[:-1])
         if children_res[:-1]:
             res += "\n"
-        ret_keyword = (self.get_ident() + "return "
-                       if self._use_return_keyword(node) else "")
         body = ""
         if children_res:
-            body = children_res[-1].lstrip() if ret_keyword else children_res[-1]
+            body = (
+                children_res[-1].lstrip()
+                if self._use_return_keyword(node)
+                else children_res[-1]
+            )
         if children_res:
-            res += ret_keyword + body + "\n"
+            res += body + "\n"
         else:
-            res += ret_keyword + "\n"
+            res += "\n"
         res += (self.get_ident(old_ident=max(self.ident - 2, 0)) + "}"
                 if not is_lambda else "")
         self.is_unit = is_unit
@@ -789,14 +791,6 @@ class KotlinTranslator(BaseTranslator):
         children[2].accept(self)  # false branch
         self._namespace = prev_namespace
         children_res = self.pop_children_res(children)
-        if not node.is_expression:
-            if isinstance(node.true_branch, ast.Expr):
-                children_res[1] = self.get_ident() + "return " + \
-                    children_res[1].lstrip()
-
-            if isinstance(node.false_branch, ast.Expr):
-                children_res[2] = self.get_ident() + "return " + \
-                    children_res[2].lstrip()
         if node.is_expression:
             res = "{ident}(if ({cond})\n{body}\n{ident}else\n{else_body})".format(
                 ident=self.get_ident(old_ident=old_ident),
@@ -845,10 +839,8 @@ class KotlinTranslator(BaseTranslator):
         assert len(condition_res) == len(branch_res) or \
             len(condition_res) == len(branch_res) - 1
 
-        if not node.is_expression:
-            for i in range(len(node.branches)):
-                branch_res[i] = self.get_ident() + "return " + \
-                    branch_res[i].lstrip()
+        open_paren, close_paren = ("(", ")") if node.is_expression else ("",
+                                                                         "")
         prefix = (
             "when {\n"
             if node.root_cond is None
@@ -872,12 +864,13 @@ class KotlinTranslator(BaseTranslator):
                     )
                 )
 
-        res = "{ident}({prefix}{body}\n{ident}".format(
+        res = "{ident}{op}{prefix}{body}\n{ident}".format(
             ident=self.get_ident(old_ident=old_ident),
+            op=open_paren,
             prefix=prefix,
             body="\n".join(case_exprs_str)
         )
-        res += "})"
+        res += "}" + close_paren
         self.ident = old_ident
         self._children_res.append(res)
 
