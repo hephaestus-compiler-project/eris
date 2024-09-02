@@ -319,8 +319,7 @@ class ASTExprUpdate(DefaultVisitor):
         node.expr = self.new_node
 
     def visit_func_decl(self, node):
-        if isinstance(node.body, ast.Expr):
-            node.body = self.new_node
+        node.body = self.new_node
 
     def visit_lambda(self, node):
         if isinstance(node.body, ast.Expr):
@@ -362,12 +361,11 @@ class ASTExprUpdate(DefaultVisitor):
             node.false_branch = self.new_node
 
     def visit_multiconditional(self, node):
-        i = 0
+        i = 0 if not node.root_cond else 1
         if node.root_cond and self.index == 0:
             node.root_cond = self.new_node
-            i = 1
         if self.index >= len(node.conditions) + i:
-            index = self.index - len(node.conditions) + i
+            index = self.index - len(node.conditions) - i
             node.branches[index] = self.new_node
         else:
             node.conditions[self.index] = self.new_node
