@@ -4,7 +4,8 @@ import os
 import sys
 
 from src.generators import Generator
-from src.generators.api import APIClientGenerator, APIDeclarationGenerator
+from src.generators.api import (
+    APIClientGenerator, APIDeclarationGenerator, CFGGenerator)
 from src.transformations.type_erasure import TypeErasure
 from src.transformations.type_overwriting import TypeOverwriting
 from src.utils import random, read_lines, load_program
@@ -27,6 +28,7 @@ class ProgramProcessor():
         'base': Generator,
         'api': APIClientGenerator,
         'api-decl': APIDeclarationGenerator,
+        "cfg": CFGGenerator,
     }
 
     def __init__(self, proc_id, args, packages: tuple):
@@ -58,7 +60,7 @@ class ProgramProcessor():
             "logger": logger,
             "options": self.args.options["Generator"][self.args.generator],
         }
-        if self.args.generator == "api" or self.args.generator == "api-decl":
+        if self.args.generator in ["api-decl", "api", "cfg"]:
             docs = {}
             for api_path in os.listdir(self.args.api_doc_path):
                 with open(os.path.join(self.args.api_doc_path, api_path)) as f:
@@ -122,7 +124,7 @@ class ProgramProcessor():
         if not self.program_generator.has_next():
             return None, None
         kwargs = {}
-        if self.args.generator == "api-decl":
+        if self.args.generator in ["api-decl", "cfg"]:
             kwargs["package_name"] = "src." + self.packages[0]
         self.program_generator.prepare_next_program(self.proc_id, **kwargs)
         self.current_transformation = 0

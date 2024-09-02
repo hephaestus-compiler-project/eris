@@ -82,6 +82,45 @@ class LocationAnalysis(DefaultVisitor):
         self.locations: List[Loc] = []
 
 
+class BlockAnalysis(LocationAnalysis):
+    def __init__(self):
+        super().__init__()
+        self.depth = 0
+        self.flow_variables = []
+
+    def visit_func_decl(self, node):
+        super().visit_func_decl(node)
+        if node.body and isinstance(node.body, ast.Block):
+            self.locations.append(Loc(node.body, node, 0, 0, {}))
+
+    def visit_conditional(self, node):
+        super().visit_conditional(node)
+        if node.true_branch and isinstance(node.true_branch, ast.Block):
+            self.locations.append(Loc(node.true_branch, node, 1, 0, {}))
+        if node.false_branch and isinstance(node.false_branch, ast.Block):
+            self.locations.append(Loc(node.false_branch, node, 2, 0, {}))
+
+    def visit_multiconditional(self, node):
+        super().visit_multiconditional(node)
+        i = 0
+        if node.root_cond is not None:
+            i += 1
+        i = i + len(node.conditions)
+        for j, branch in enumerate(node.branches):
+            if isinstance(branch, ast.Block):
+                self.locations.append(Loc(branch, node, i + j, 0, {}))
+
+    def visit_trycatch(self, node):
+        super().visit_trycatch(node)
+        if isinstance(node.try_block, ast.Block):
+            self.locations.append(Loc(node.try_block, node, 0, 0, {}))
+        for i, block in enumerate(node.catch_blocks.values()):
+            self.locations.append(Loc(block, node, i + 1, 0, {}))
+
+    def visit_variable(self, node):
+        self.flow_variables.append(node.name)
+
+
 class ExprLocationAnalysis(LocationAnalysis):
     def __init__(self):
         super().__init__()
@@ -279,7 +318,7 @@ class ExprLocationAnalysis(LocationAnalysis):
         i = 0
         if node.root_cond is not None:
             i += 1
-        i = i + len(node.branches)
+        i = i + len(node.conditions)
         for j, c in enumerate(node.branches):
             self.parents[c] = (node, i + j)
             self.locations.append(Loc(c, node, i + j, self.depth,

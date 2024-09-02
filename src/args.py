@@ -12,7 +12,7 @@ cwd = os.getcwd()
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "-g", "--generator",
-    choices=["base", "api", "api-decl"],
+    choices=["base", "api", "api-decl", "cfg"],
     default="base",
     help="Type of generator"
 )
@@ -241,7 +241,7 @@ parser.add_argument(
 parser.add_argument(
     "--error-enumerator",
     default=None,
-    choices=["type"],
+    choices=["type", "flow-type"],
     help="Select a strategy for enumerating errors in a given program"
 )
 
@@ -266,6 +266,13 @@ args.options = {
             "error-enumerator": args.error_enumerator,
         },
         "api-decl": {
+            "api-rules": args.api_rules,
+            "error-enumerator": args.error_enumerator,
+            "library-path": args.library_path,
+            "path-search-strategy": args.path_search_strategy,
+            "erase-types": args.erase_types,
+        },
+        "cfg": {
             "api-rules": args.api_rules,
             "error-enumerator": args.error_enumerator,
             "library-path": args.library_path,
@@ -305,7 +312,7 @@ cfg.prob.local_variable_prob = args.local_variable_prob
 
 
 def is_api_driven(args):
-    return args.generator == "api" or args.generator == "api-decl"
+    return args.generator in ["api-decl", "api", "cfg"]
 
 
 def validate_args(args):
