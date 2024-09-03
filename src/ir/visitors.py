@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 from src.ir import ast
 from src.ir import types
 
@@ -369,6 +371,17 @@ class ASTExprUpdate(DefaultVisitor):
             node.branches[index] = self.new_node
         else:
             node.conditions[self.index] = self.new_node
+
+    def visit_trycatch(self, node):
+        if self.index == 0:
+            node.try_block = self.new_node
+        catch_blocks = OrderedDict()
+        for i, (k, v) in node.catch_blocks.items():
+            if i + 1 == self.index:
+                catch_blocks[k] = self.new_node
+            else:
+                catch_blocks[k] = v
+        node.catch_blocks = catch_blocks
 
     def visit_new(self, node):
         node.args[self.index] = ast.CallArgument(self.new_node)
