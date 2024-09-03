@@ -162,7 +162,7 @@ def tree2cfgtree(tree):
                 nx.set_node_attributes(graph, {str(neighbor): True},
                                        name="inactive")
         else:
-            random_nodes = utils.random.integer(2, 2)
+            random_nodes = utils.random.integer(2, 4)
             new_nodes = []
             for i in range(random_nodes):
                 t_n = f"{neighbors[0]}_{i}"
@@ -212,6 +212,8 @@ class CFGGenerator(APIClientGenerator):
         self.api_namespaces = utils.random.shuffle(api_namespaces)
         self.ErrorEnumerator = get_error_enumerator(
             self.options.get("error-enumerator"))
+        self.max_local_vars = options.get("max-local-vars", 5)
+        self.max_cfg_nodes = options.get("max-cfg-nodes", 25)
 
     def _fork_api_spec(self, specs: Tuple[str, dict],
                        selected_namespaces: List[str],
@@ -409,17 +411,28 @@ class CFGGenerator(APIClientGenerator):
 
     def generate_cfg_tree(self) -> nx.Graph:
         while True:
-            nu_nodes = utils.random.integer(min_int=15, max_int=30)
+            nu_nodes = utils.random.integer(min_int=5,
+                                            max_int=self.max_cfg_nodes)
             yield tree2cfgtree(nx.random_unlabeled_rooted_tree(nu_nodes))
 
     def create_local_vars(self):
-        max_vars = 10
+        types = self.api_graph.get_reg_types()
+        candidate_types = [
+            t for t in types
+            if t.is_type_constructor() or len(t.get_supertypes()) > 3
+        ]
+        if not candidate_types:
+            candidate_types = types
         local_vars = []
-        for i in range(utils.random.integer(1, max_vars)):
-            var_type = utils.random.choice(self.api_graph.get_reg_types())
+        ref_type = utils.random.choice(types)
+        type_pool = {t for t in ref_type.get_supertypes()
+                     if t != self.bt_factory.get_any_type()}
+        type_pool = list(type_pool)
+        for i in range(utils.random.integer(1, self.max_local_vars)):
+            var_type = utils.random.choice(type_pool)
             if var_type.is_type_constructor():
                 var_type = tu.instantiate_type_constructor(
-                    var_type, self.api_graph.get_reg_types())
+                    var_type, candidate_types)
                 if var_type is None:
                     continue
                 var_type = var_type[0]
@@ -439,10 +452,12 @@ class CFGGenerator(APIClientGenerator):
     def create_assignments(self, local_vars):
         if not local_vars:
             return []
-        max_assignments = 5
+        max_assignments = len(local_vars)
         assignments = []
+        var_pool = list(local_vars)
         for i in range(utils.random.integer(0, max_assignments)):
-            local_var = utils.random.choice(local_vars)
+            local_var = utils.random.choice(var_pool)
+            var_pool.remove(local_var)
             out_type = local_var.get_type()
             kwargs = {
                 "name": local_var.name,
@@ -454,9 +469,9 @@ class CFGGenerator(APIClientGenerator):
             )
             var_type = utils.random.choice(list(subtypes))
             if var_type.is_type_constructor():
-                var_type = tu.instantiate_type_constructor(
+                var_type, _ = tu.instantiate_type_constructor(
                     var_type, self.api_graph.get_reg_types())
-            expr = self.generate_expr(var_type)
+            expr = self._generate_expr_from_node(var_type).expr
             kwargs["expr"] = expr
             assignments.append(ast.Assignment(**kwargs))
         return assignments
