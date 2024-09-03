@@ -440,10 +440,7 @@ class CFGGenerator(APIClientGenerator):
             expr = self.generate_expr(var_type)
             var_decl = ast.VariableDeclaration(var_name, expr,
                                                is_final=False,
-                                               var_type=self.bt_factory.get_any_type())
-            var_decl.inferred_type = var_type
-            if self.bt_factory.get_language() != "kotlin":
-                var_decl.omit_type()
+                                               var_type=var_type)
             self.context.add_var(self.namespace, var_decl.name, var_decl)
             self.api_graph.add_variable_node(var_decl.name, var_type)
             local_vars.append(var_decl)
@@ -564,15 +561,6 @@ class CFGGenerator(APIClientGenerator):
             else:
                 pass
         root_block = blocks[root_node]
-        if local_vars:
-            local_var = utils.random.choice(local_vars)
-            root_block.body.append(
-                ast.VariableDeclaration(
-                    utils.random.word(),
-                    ast.Variable(local_var.name),
-                    is_final=True,
-                    var_type=local_var.inferred_type)
-            )
         func_decl = ast.FunctionDeclaration(
             "test", [], self.bt_factory.get_void_type(), root_block,
             ast.FunctionDeclaration.FUNCTION)
@@ -587,8 +575,6 @@ class CFGGenerator(APIClientGenerator):
         Generates a well-typed program from the given API namespace.
         """
         forked_spec = self.fork_api_spec(api_namespace, False)
-        # forked_spec.update(
-        #     self.SPECIAL_METHODS[self.bt_factory.get_language()])
         forked_spec.update(get_extra_api_components(
             self.api_docs, lambda x: x.get("functional_interface", False)))
         api_builder = self.API_GRAPH_BUILDERS[self.language](

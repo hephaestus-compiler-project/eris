@@ -3,11 +3,13 @@ from typing import NamedTuple
 
 import networkx as nx
 
+from src import utils
 from src.ir import ast
-from src.ir.visitors import ASTExprUpdate
+from src.ir.visitors import ASTExprUpdate, DefaultVisitor
 from src.generators.api import nodes
 from src.ir.builtins import BuiltinFactory
 from src.generators import Generator
+from src.generators.api.nodes import Variable
 from src.enumerators.analyses import BlockAnalysis
 from src.enumerators.error import ErrorEnumerator
 
@@ -17,6 +19,39 @@ class Loc(NamedTuple):
     parent: ast.Node
     index: int
     block_index: int
+
+
+class VariableEraseType(DefaultVisitor):
+    def __init__(self, variable_name: str, bt_factory):
+        self.bt_factory = bt_factory
+        self.variable_name = variable_name
+
+    def visit_var_decl(self, node):
+        if node.name == self.variable_name:
+            node.inferred_type = node.var_type
+            node.var_type = self.bt_factory.get_any_type()
+            if self.bt_factory.get_language() != "kotlin":
+                node.omit_type()
+
+
+class AssignmentInjection(DefaultVisitor):
+    def __init__(self, var_name, var_type):
+        self.var_name = var_name
+        self.var_type = var_type
+
+    def visit_func_decl(self, node):
+        if isinstance(node.body, ast.Block) and any(
+            isinstance(n, ast.VariableDeclaration) and n.name == self.var_name
+                for n in node.body.body):
+            node.body.body.append(
+                ast.VariableDeclaration(
+                    utils.random.word(),
+                    ast.Variable(self.var_name),
+                    is_final=True,
+                    var_type=self.var_type
+                )
+
+            )
 
 
 class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
@@ -32,9 +67,15 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         self.location_map = {}
         super().__init__(program, program_gen, bt_factory)
 
+    def reset_state(self):
+        self.error_loc = None
+        self.new_node = None
+        self.analysis = BlockAnalysis()
+        self.end_indices = {}
+        self.location_map = {}
+
     def get_candidate_program_locations(self):
         self.analysis.visit_program(self.program)
-        self.flow_variable = self.analysis.flow_variables[0]
         return self.to_locs(self.analysis.cfgs["test"])
 
     def to_locs(self, cfg: nx.DiGraph):
@@ -125,11 +166,13 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         return colored_cfg
 
     def get_programs_with_error(self, location):
-        # var_type = self.api_graph.get_concrete_output_type(
-        #    nodes.Variable(self.flow_variable))
+        var_type = self.api_graph.get_concrete_output_type(
+            nodes.Variable(self.flow_variable))
+        incmp_t = utils.random.choice([t for t in var_type.get_supertypes()
+                                       if t != var_type])
         assignment = ast.Assignment(
             self.flow_variable,
-            self.program_gen.generate_expr(self.bt_factory.get_integer_type())
+            self.program_gen._generate_expr_from_node(incmp_t).expr
         )
         new_expr = deepcopy(location.expr)
         new_expr.body.insert(location.block_index, assignment)
@@ -159,5 +202,25 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                f" - Expected type {var_type}\n"
                f" - New expression {expr_str}\n"
                f" - Parent block: {type(self.error_loc.parent)}\n"
-               f" - Inserted error at index: {self.error_loc.block_index}")
+               f" - Inserted error at index: {self.error_loc.block_index}\n"
+               f" - Flow variable: {self.flow_variable}")
         return msg
+
+    def enumerate_programs(self):
+        flow_vars = [
+            n for n in self.program_gen.api_graph.api_graph.nodes()
+            if isinstance(n, Variable)
+        ]
+        original_program = self.program
+        for flow_variable in flow_vars:
+            self.program = deepcopy(original_program)
+            self.reset_state()
+            self.flow_variable = flow_variable.name
+            VariableEraseType(flow_variable.name, self.bt_factory).visit(
+                self.program
+            )
+            AssignmentInjection(
+                flow_variable.name,
+                self.api_graph.get_concrete_output_type(flow_variable),
+            ).visit(self.program)
+            yield from super().enumerate_programs()

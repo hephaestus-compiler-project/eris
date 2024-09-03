@@ -257,9 +257,6 @@ class BlockAnalysis(LocationAnalysis):
             self.block_parents[block] = (node, i + 1)
         self.add_merge_node()
 
-    def visit_variable(self, node):
-        self.flow_variables.append(node.name)
-
 
 class ExprLocationAnalysis(LocationAnalysis):
     def __init__(self):
