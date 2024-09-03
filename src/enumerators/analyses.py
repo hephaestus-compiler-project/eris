@@ -108,7 +108,9 @@ class BlockAnalysis(LocationAnalysis):
         self.block_parents = {}
 
     def get_parent_of_block(self, block_id: int):
-        block = self.block_map[block_id]
+        block = self.block_map.get(block_id)
+        if block is None:
+            return None
         return self.block_parents[block]
 
     def pop_parent_block(self):
@@ -210,6 +212,7 @@ class BlockAnalysis(LocationAnalysis):
         if len(node.conditions) == len(node.branches):
             child_id = next(self.id_gen)
             cfg.add_node(child_id)
+            cfg.add_edge(parent_id, child_id)
 
         i = 0
         if node.root_cond is not None:
@@ -223,13 +226,27 @@ class BlockAnalysis(LocationAnalysis):
     def visit_trycatch(self, node):
         parent_id = self.get_parent_block()
         cfg = self.get_current_cfg()
-        branches = [node.try_block] + list(node.catch_blocks.values())
+        branches = [node.try_block]
         for branch in branches:
             is_block = isinstance(branch, ast.Block)
             child_id = None
             if is_block:
                 child_id = self.add_block_to_cfg(cfg, branch)
                 cfg.add_edge(parent_id, child_id)
+                self.add_block_to_stack(child_id)
+            self.visit(branch)
+            if is_block:
+                self.pop_parent_block()
+        branches = list(node.catch_blocks.values())
+        exc_id = next(self.id_gen)
+        cfg.add_node(exc_id)
+        cfg.add_edge(parent_id, exc_id)
+        for branch in branches:
+            is_block = isinstance(branch, ast.Block)
+            child_id = None
+            if is_block:
+                child_id = self.add_block_to_cfg(cfg, branch)
+                cfg.add_edge(exc_id, child_id)
                 self.add_block_to_stack(child_id)
             self.visit(branch)
             if is_block:

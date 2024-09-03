@@ -40,8 +40,12 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
     def to_locs(self, cfg: nx.DiGraph):
         locations = []
         for node in nx.topological_sort(cfg):
+            block = self.analysis.block_map.get(node)
+            if block is None:
+                continue
             parent, parent_index = self.analysis.get_parent_of_block(node)
-            block = self.analysis.block_map[node]
+            if block is None:
+                continue
             end_index = self.get_block_end_index(node, cfg)
             loc = Loc(block, parent, parent_index, end_index)
             self.location_map[node] = loc
@@ -55,6 +59,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         leaf_nodes = [n for n in colored_cfg.nodes()
                       if colored_cfg.out_degree(n) == 0]
         assert len(leaf_nodes) == 1
+
         leaf_node = leaf_nodes[0]
         for n in colored_cfg.nodes():
             is_bad = True
@@ -63,7 +68,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                        for p in path[1:]):
                     is_bad = False
                     break
-            if is_bad:
+            if is_bad and n in self.location_map:
                 bad_locations.add(self.location_map[n])
         filtered_locs = [loc for loc in locations if loc not in bad_locations]
         return filtered_locs
@@ -71,7 +76,8 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
     def get_block_end_index(self, block_id, cfg):
         block = self.analysis.block_map[block_id]
         block_children = [self.analysis.block_map[n]
-                          for n in cfg.neighbors(block_id)]
+                          for n in cfg.neighbors(block_id)
+                          if n in self.analysis.block_map]
         len_block = len(block.body)
         end_index = len_block
         for i, node in enumerate(block.body[::-1]):
@@ -106,7 +112,9 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
     def color_cfg(self, cfg: nx.DiGraph, flow_variable: str) -> nx.DiGraph:
         colored_cfg = cfg.copy()
         for block_id in nx.topological_sort(cfg):
-            block = self.analysis.block_map[block_id]
+            block = self.analysis.block_map.get(block_id)
+            if block is None:
+                continue
             start_index, end_index = self.get_block_indices(block_id, cfg)
             for stmt in block.body[start_index:end_index]:
                 if isinstance(stmt, ast.Assignment) and \
