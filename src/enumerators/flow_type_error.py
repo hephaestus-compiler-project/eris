@@ -1,12 +1,22 @@
 from copy import deepcopy
+from typing import NamedTuple
+
+import networkx as nx
 
 from src.ir import ast
 from src.ir.visitors import ASTExprUpdate
 from src.generators.api import nodes
 from src.ir.builtins import BuiltinFactory
 from src.generators import Generator
-from src.enumerators.analyses import BlockAnalysis, Loc
+from src.enumerators.analyses import BlockAnalysis
 from src.enumerators.error import ErrorEnumerator
+
+
+class Loc(NamedTuple):
+    expr: ast.Node
+    parent: ast.Node
+    index: int
+    block_index: int
 
 
 class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
@@ -18,16 +28,93 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         self.error_loc = None
         self.new_node = None
         self.analysis = BlockAnalysis()
+        self.end_indices = {}
+        self.location_map = {}
         super().__init__(program, program_gen, bt_factory)
 
     def get_candidate_program_locations(self):
         self.analysis.visit_program(self.program)
         self.flow_variable = self.analysis.flow_variables[0]
-        print(self.flow_variable)
-        return self.analysis.locations
+        return self.to_locs(self.analysis.cfgs["test"])
+
+    def to_locs(self, cfg: nx.DiGraph):
+        locations = []
+        for node in nx.topological_sort(cfg):
+            parent, parent_index = self.analysis.get_parent_of_block(node)
+            block = self.analysis.block_map[node]
+            end_index = self.get_block_end_index(node, cfg)
+            loc = Loc(block, parent, parent_index, end_index)
+            self.location_map[node] = loc
+            locations.append(loc)
+        return locations
 
     def filter_program_locations(self, locations):
-        return locations
+        bad_locations = set()
+        colored_cfg = self.color_cfg(self.analysis.cfgs["test"],
+                                     self.flow_variable)
+        leaf_nodes = [n for n in colored_cfg.nodes()
+                      if colored_cfg.out_degree(n) == 0]
+        assert len(leaf_nodes) == 1
+        leaf_node = leaf_nodes[0]
+        for n in colored_cfg.nodes():
+            is_bad = True
+            for path in nx.all_simple_paths(colored_cfg, n, leaf_node):
+                if all(not colored_cfg.nodes[p].get("green", False)
+                       for p in path[1:]):
+                    is_bad = False
+                    break
+            if is_bad:
+                bad_locations.add(self.location_map[n])
+        filtered_locs = [loc for loc in locations if loc not in bad_locations]
+        return filtered_locs
+
+    def get_block_end_index(self, block_id, cfg):
+        block = self.analysis.block_map[block_id]
+        block_children = [self.analysis.block_map[n]
+                          for n in cfg.neighbors(block_id)]
+        len_block = len(block.body)
+        end_index = len_block
+        for i, node in enumerate(block.body[::-1]):
+            if isinstance(node, ast.Conditional):
+                if node.true_branch in block_children:
+                    end_index = len_block - i - 1
+                    break
+            if isinstance(node, ast.MultiConditional):
+                if node.branches[0] in block_children:
+                    end_index = len_block - i - 1
+                    break
+            if isinstance(node, ast.TryCatch):
+                if node.try_block in block_children:
+                    end_index = len_block - i - 1
+                    break
+        if not block_children:
+            end_index -= 1
+        return end_index
+
+    def get_block_indices(self, block_id, cfg):
+        block = self.analysis.block_map[block_id]
+        end_index = self.get_block_end_index(block_id, cfg)
+        indices = self.end_indices.get(block)
+        if not indices:
+            start_index = 0
+            self.end_indices[block] = {end_index}
+        else:
+            start_index = max(indices) + 1
+            self.end_indices[block].add(end_index)
+        return start_index, end_index
+
+    def color_cfg(self, cfg: nx.DiGraph, flow_variable: str) -> nx.DiGraph:
+        colored_cfg = cfg.copy()
+        for block_id in nx.topological_sort(cfg):
+            block = self.analysis.block_map[block_id]
+            start_index, end_index = self.get_block_indices(block_id, cfg)
+            for stmt in block.body[start_index:end_index]:
+                if isinstance(stmt, ast.Assignment) and \
+                        stmt.name == flow_variable:
+                    nx.set_node_attributes(colored_cfg, {block_id: True},
+                                           name="green")
+
+        return colored_cfg
 
     def get_programs_with_error(self, location):
         # var_type = self.api_graph.get_concrete_output_type(
@@ -37,7 +124,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
             self.program_gen.generate_expr(self.bt_factory.get_integer_type())
         )
         new_expr = deepcopy(location.expr)
-        new_expr.body.append(assignment)
+        new_expr.body.insert(location.block_index, assignment)
         upd = ASTExprUpdate(location.index, new_expr)
         upd.visit(location.parent)
         self.add_err_message(location, assignment)
@@ -63,5 +150,6 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         msg = (f"Added assignment for variable {self.flow_variable}\n"
                f" - Expected type {var_type}\n"
                f" - New expression {expr_str}\n"
-               f" - Parent block: {type(self.error_loc.parent)}")
+               f" - Parent block: {type(self.error_loc.parent)}\n"
+               f" - Inserted error at index: {self.error_loc.block_index}")
         return msg
