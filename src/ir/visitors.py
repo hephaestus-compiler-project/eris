@@ -376,7 +376,7 @@ class ASTExprUpdate(DefaultVisitor):
         if self.index == 0:
             node.try_block = self.new_node
         catch_blocks = OrderedDict()
-        for i, (k, v) in node.catch_blocks.items():
+        for i, (k, v) in enumerate(node.catch_blocks.items()):
             if i + 1 == self.index:
                 catch_blocks[k] = self.new_node
             else:
