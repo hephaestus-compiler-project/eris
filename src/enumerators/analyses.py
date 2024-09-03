@@ -1,6 +1,8 @@
 from copy import deepcopy
 from typing import NamedTuple, List, Dict, Tuple
 
+import networkx as nx
+
 from src.ir import ast, types as tp
 from src.ir.visitors import DefaultVisitor
 
@@ -83,39 +85,160 @@ class LocationAnalysis(DefaultVisitor):
 
 
 class BlockAnalysis(LocationAnalysis):
+    """
+    An analysis used to identify all the available blocks in the program.
+    Also, it constructs the CFG of every function in the program.
+    """
     def __init__(self):
         super().__init__()
         self.depth = 0
         self.flow_variables = []
 
+        # Map every function with its cfg
+        self.cfgs = {}
+        # Keep the name of the current function
+        self.func_name: str = None
+        # A stack with the blocks
+        self.blocks = []
+        # Map node ids with the corresponding blocks
+        self.block_map = {}
+        # Generator for node ids
+        self.id_gen = iter(range(10000))
+        # Track the parents of blocks in the AST
+        self.block_parents = {}
+
+    def get_parent_of_block(self, block_id: int):
+        block = self.block_map[block_id]
+        return self.block_parents[block]
+
+    def pop_parent_block(self):
+        if self.blocks:
+            return self.blocks.pop()
+        return None
+
+    def get_parent_block(self):
+        if self.blocks:
+            return self.blocks[-1]
+        return None
+
+    def add_block_to_stack(self, block_id):
+        node = self.blocks.append(block_id)
+        return node
+
+    def get_current_cfg(self):
+        if self.func_name:
+            return self.cfgs[self.func_name]
+        return None
+
+    def add_block_to_cfg(self, cfg, block):
+        node_id = next(self.id_gen)
+        cfg.add_node(node_id)
+        self.block_map[node_id] = block
+        return node_id
+
+    def add_cfg(self, func_name: str, cfg: nx.DiGraph):
+        self.cfgs[func_name] = cfg
+
+    def add_merge_node(self):
+        parent_id = self.get_parent_block()
+        parent_block = self.block_map[parent_id]
+        cfg = self.get_current_cfg()
+        leaf_nodes = [n for n in cfg.nodes()
+                      if cfg.out_degree(n) == 0 and nx.has_path(
+                          cfg, parent_id, n)]
+        if len(leaf_nodes) > 1:
+            merge_node = self.add_block_to_cfg(cfg, parent_block)
+            for leaf in leaf_nodes:
+                cfg.add_edge(leaf, merge_node)
+            self.pop_parent_block()
+            self.add_block_to_stack(merge_node)
+
     def visit_func_decl(self, node):
-        super().visit_func_decl(node)
+        prev_func_name = self.func_name
+        self.func_name = node.name
+        is_block = False
         if node.body and isinstance(node.body, ast.Block):
-            self.locations.append(Loc(node.body, node, 0, 0, {}))
+            cfg = nx.DiGraph()
+            self.add_cfg(node.name, cfg)
+            block_id = self.add_block_to_cfg(cfg, node.body)
+            self.add_block_to_stack(block_id)
+            self.block_parents[node.body] = (node, 0)
+            is_block = True
+        super().visit_func_decl(node)
+        if is_block:
+            self.pop_parent_block()
+        self.func_name = prev_func_name
 
     def visit_conditional(self, node):
-        super().visit_conditional(node)
+        parent_id = self.get_parent_block()
+        cfg = self.get_current_cfg()
+        self.visit(node.cond)  # Visit conditional
+        branches = [node.true_branch, node.false_branch]
+        for branch in branches:
+            is_block = isinstance(branch, ast.Block)
+            child_id = None
+            if is_block:
+                child_id = self.add_block_to_cfg(cfg, branch)
+                cfg.add_edge(parent_id, child_id)
+                self.add_block_to_stack(child_id)
+            self.visit(branch)
+            if is_block:
+                self.pop_parent_block()
+
         if node.true_branch and isinstance(node.true_branch, ast.Block):
-            self.locations.append(Loc(node.true_branch, node, 1, 0, {}))
+            self.block_parents[node.true_branch] = (node, 1)
         if node.false_branch and isinstance(node.false_branch, ast.Block):
-            self.locations.append(Loc(node.false_branch, node, 2, 0, {}))
+            self.block_parents[node.false_branch] = (node, 2)
+        self.add_merge_node()
 
     def visit_multiconditional(self, node):
-        super().visit_multiconditional(node)
+        parent_id = self.get_parent_block()
+        cfg = self.get_current_cfg()
+        self.visit(node.root_cond)
+        for cond in node.conditions:
+            self.visit(cond)
+        for branch in node.branches:
+            is_block = isinstance(branch, ast.Block)
+            child_id = None
+            if is_block:
+                child_id = self.add_block_to_cfg(cfg, branch)
+                cfg.add_edge(parent_id, child_id)
+                self.add_block_to_stack(child_id)
+            self.visit(branch)
+            if is_block:
+                self.pop_parent_block()
+        if len(node.conditions) == len(node.branches):
+            child_id = next(self.id_gen)
+            cfg.add_node(child_id)
+
         i = 0
         if node.root_cond is not None:
             i += 1
         i = i + len(node.conditions)
         for j, branch in enumerate(node.branches):
             if isinstance(branch, ast.Block):
-                self.locations.append(Loc(branch, node, i + j, 0, {}))
+                self.block_parents[branch] = (node, i + j)
+        self.add_merge_node()
 
     def visit_trycatch(self, node):
-        super().visit_trycatch(node)
+        parent_id = self.get_parent_block()
+        cfg = self.get_current_cfg()
+        branches = [node.try_block] + list(node.catch_blocks.values())
+        for branch in branches:
+            is_block = isinstance(branch, ast.Block)
+            child_id = None
+            if is_block:
+                child_id = self.add_block_to_cfg(cfg, branch)
+                cfg.add_edge(parent_id, child_id)
+                self.add_block_to_stack(child_id)
+            self.visit(branch)
+            if is_block:
+                self.pop_parent_block()
         if isinstance(node.try_block, ast.Block):
-            self.locations.append(Loc(node.try_block, node, 0, 0, {}))
+            self.block_parents[node.try_block] = (node, 0)
         for i, block in enumerate(node.catch_blocks.values()):
-            self.locations.append(Loc(block, node, i + 1, 0, {}))
+            self.block_parents[block] = (node, i + 1)
+        self.add_merge_node()
 
     def visit_variable(self, node):
         self.flow_variables.append(node.name)
