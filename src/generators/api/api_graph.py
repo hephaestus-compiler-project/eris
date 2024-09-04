@@ -546,8 +546,6 @@ class APIGraph():
                 for node in source_nodes
                 if self.api_graph.in_degree(node) == 0
             ]
-            source_nodes = [s for s in source_nodes
-                            if not isinstance(s, Variable)]
             self.source_nodes_of[target] = source_nodes
         return source_nodes, target
 
