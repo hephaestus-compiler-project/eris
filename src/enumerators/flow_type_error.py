@@ -12,6 +12,7 @@ from src.generators import Generator
 from src.generators.api.nodes import Variable
 from src.enumerators.analyses import BlockAnalysis
 from src.enumerators.error import ErrorEnumerator
+from src.enumerators.utils import IncompatibleTyping
 
 
 class Loc(NamedTuple):
@@ -168,18 +169,19 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
     def get_programs_with_error(self, location):
         var_type = self.api_graph.get_concrete_output_type(
             nodes.Variable(self.flow_variable))
-        incmp_t = utils.random.choice([t for t in var_type.get_supertypes()
-                                       if t != var_type])
-        assignment = ast.Assignment(
-            self.flow_variable,
-            self.program_gen._generate_expr_from_node(incmp_t).expr
-        )
-        new_expr = deepcopy(location.expr)
-        new_expr.body.insert(location.block_index, assignment)
-        upd = ASTExprUpdate(location.index, new_expr)
-        upd.visit(location.parent)
-        self.add_err_message(location, assignment)
-        yield self.program
+        typer = IncompatibleTyping(self.api_graph, self.bt_factory)
+        for incmp_t in typer.enumerate_incompatible_typings(var_type,
+                                                            location):
+            assignment = ast.Assignment(
+                self.flow_variable,
+                self.program_gen._generate_expr_from_node(incmp_t).expr
+            )
+            new_expr = deepcopy(location.expr)
+            new_expr.body.insert(location.block_index, assignment)
+            upd = ASTExprUpdate(location.index, new_expr)
+            upd.visit(location.parent)
+            self.add_err_message(location, assignment)
+            yield self.program
 
     def add_err_message(self, loc, new_node, *args):
         self.error_loc = loc
