@@ -35,24 +35,31 @@ class VariableEraseType(DefaultVisitor):
                 node.omit_type()
 
 
-class AssignmentInjection(DefaultVisitor):
-    def __init__(self, var_name, var_type):
-        self.var_name = var_name
-        self.var_type = var_type
+class StatementInjection(DefaultVisitor):
+    def __init__(self, statement, flow_variable: str, policy: str):
+        self.statement = statement
+        self.flow_variable = flow_variable
+        self.policy = policy
 
     def visit_func_decl(self, node):
         if isinstance(node.body, ast.Block) and any(
-            isinstance(n, ast.VariableDeclaration) and n.name == self.var_name
+            isinstance(n, ast.VariableDeclaration) and n.name == self.flow_variable
                 for n in node.body.body):
-            node.body.body.append(
-                ast.VariableDeclaration(
-                    utils.random.word(),
-                    ast.Variable(self.var_name),
-                    is_final=True,
-                    var_type=self.var_type
-                )
-
-            )
+            match self.policy:
+                case "last":
+                    node.body.body.append(self.statement)
+                case "after-decl":
+                    index = 0
+                    for i, stmt in enumerate(node.body.body):
+                        if isinstance(stmt, ast.VariableDeclaration) and \
+                                stmt.name == self.flow_variable:
+                            index = i + 1
+                            break
+                    assert index != 0
+                    node.body.body.insert(index, self.statement)
+                case _:
+                    raise NotImplementedError(
+                        "Policy {self.policy} not supported")
 
 
 class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
@@ -221,8 +228,25 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
             VariableEraseType(flow_variable.name, self.bt_factory).visit(
                 self.program
             )
-            AssignmentInjection(
-                flow_variable.name,
-                self.api_graph.get_concrete_output_type(flow_variable),
+            var_type = self.api_graph.get_concrete_output_type(flow_variable)
+            merge_var_decl = ast.VariableDeclaration(
+                utils.random.word(),
+                ast.Variable(self.flow_variable),
+                is_final=True,
+                var_type=var_type
+            )
+            # Insert merge variable declaration at the end of block.
+            StatementInjection(
+                merge_var_decl, self.flow_variable, "last"
             ).visit(self.program)
+            if self.bt_factory.get_language() == "kotlin":
+                assignment = ast.Assignment(
+                    self.flow_variable,
+                    self.program_gen._generate_expr_from_node(var_type).expr
+                )
+                StatementInjection(
+                    assignment,
+                    self.flow_variable,
+                    "after-decl"
+                ).visit(self.program)
             yield from super().enumerate_programs()
