@@ -74,6 +74,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         self.end_indices = {}
         self.location_map = {}
         super().__init__(program, program_gen, bt_factory)
+        self.enumerate_all_types = False
 
     def reset_state(self):
         self.error_loc = None
@@ -177,8 +178,10 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         var_type = self.api_graph.get_concrete_output_type(
             nodes.Variable(self.flow_variable))
         typer = IncompatibleTyping(self.api_graph, self.bt_factory)
-        for incmp_t in typer.enumerate_incompatible_typings(var_type,
-                                                            location):
+        type_gen = typer.enumerate_incompatible_typings(var_type, location)
+        if not self.enumerate_all_types:
+            type_gen = [next(type_gen)]
+        for incmp_t in type_gen:
             assignment = ast.Assignment(
                 self.flow_variable,
                 self.program_gen._generate_expr_from_node(incmp_t).expr
