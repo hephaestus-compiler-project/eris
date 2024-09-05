@@ -244,6 +244,12 @@ parser.add_argument(
     choices=["type", "flow-type"],
     help="Select a strategy for enumerating errors in a given program"
 )
+parser.add_argument(
+    "--max-cfg-nodes",
+    default=50,
+    type=int,
+    help="Maximum nodes in CFG graph (only applicable when --generator cfg)"
+)
 
 
 args = parser.parse_args()
@@ -278,6 +284,7 @@ args.options = {
             "library-path": args.library_path,
             "path-search-strategy": args.path_search_strategy,
             "erase-types": args.erase_types,
+            "max-cfg-nodes": args.max_cfg_nodes,
         }
     },
     'Translator': {

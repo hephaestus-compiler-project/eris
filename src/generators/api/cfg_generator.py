@@ -213,7 +213,7 @@ class CFGGenerator(APIClientGenerator):
         self.ErrorEnumerator = get_error_enumerator(
             self.options.get("error-enumerator"))
         self.max_local_vars = options.get("max-local-vars", 5)
-        self.max_cfg_nodes = options.get("max-cfg-nodes", 25)
+        self.max_cfg_nodes = options.get("max-cfg-nodes")
 
     def _fork_api_spec(self, specs: Tuple[str, dict],
                        selected_namespaces: List[str],
