@@ -510,6 +510,17 @@ class CFGGenerator(APIClientGenerator):
              for i in range(nu_edges - 2)}
         )
 
+    def create_loop(self, children_blocks: List[ast.Block],
+                    nu_edges: int) -> ast.Loop:
+        assert len(children_blocks) == 1
+        return ast.Loop(
+            children_blocks[0],
+            loop_type=utils.random.choice([
+                ast.Loop.WHILE_LOOP,
+                ast.Loop.FOR_LOOP,
+            ])
+        )
+
     def generate_program_from_cfg_tree(self, tree: nx.Graph) -> ast.Program:
         self.context = Context()
         self.namespace += ("test",)
@@ -530,7 +541,7 @@ class CFGGenerator(APIClientGenerator):
             nu_neighbors = len(neighbors)
             children_blocks = []
             if nu_neighbors > 1:
-                for neighbor in neighbors:
+                for i, neighbor in enumerate(neighbors):
                     if not tree.nodes[neighbor].get("inactive", False):
                         assignments = self.create_assignments(local_vars)
                         children_block = ast.Block(assignments)
@@ -554,10 +565,18 @@ class CFGGenerator(APIClientGenerator):
                     assert len(parents) <= 1
                     if not parents:
                         continue
-                    parent = parents[0]
-                    block = blocks[parent]
-                    stack.append((neighbors[0], block))
-                    blocks[neighbors[0]] = block
+                    if utils.random.bool():
+                        parent = parents[0]
+                        block = blocks[parent]
+                        stack.append((neighbors[0], block))
+                        blocks[neighbors[0]] = block
+                    else:
+                        assignments = self.create_assignments(local_vars)
+                        children_block = ast.Block(assignments)
+                        stack.append((neighbors[0], block))
+                        blocks[neighbors[0]] = children_block
+                        loop = self.create_loop([children_block], 1)
+                        block.body.append(loop)
             else:
                 pass
         root_block = blocks[root_node]

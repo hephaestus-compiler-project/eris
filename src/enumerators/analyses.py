@@ -257,6 +257,28 @@ class BlockAnalysis(LocationAnalysis):
             self.block_parents[block] = (node, i + 1)
         self.add_merge_node()
 
+    def visit_loop(self, node):
+        parent_id = self.get_parent_block()
+        cfg = self.get_current_cfg()
+        branches = [node.block]
+        for branch in branches:
+            is_block = isinstance(branch, ast.Block)
+            child_id = None
+            if is_block:
+                child_id = self.add_block_to_cfg(cfg, branch)
+                cfg.add_edge(parent_id, child_id)
+                self.add_block_to_stack(child_id)
+            self.visit(branch)
+            if is_block:
+                self.pop_parent_block()
+        if isinstance(node.block, ast.Block):
+            self.block_parents[node.block] = (node, 0)
+
+        parent_block = self.block_map[parent_id]
+        merge_node = self.add_block_to_cfg(cfg, parent_block)
+        cfg.add_edge(child_id, merge_node)
+        cfg.add_edge(parent_id, merge_node)
+
 
 class ExprLocationAnalysis(LocationAnalysis):
     def __init__(self):
