@@ -1,10 +1,11 @@
+import itertools
 from copy import deepcopy
 from typing import NamedTuple
 
 import networkx as nx
 
 from src import utils
-from src.ir import ast
+from src.ir import ast, types as tp
 from src.ir.visitors import ASTExprUpdate, DefaultVisitor
 from src.generators.api import nodes
 from src.ir.builtins import BuiltinFactory
@@ -175,8 +176,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         return colored_cfg
 
     def get_programs_with_error(self, location):
-        var_type = self.api_graph.get_concrete_output_type(
-            nodes.Variable(self.flow_variable))
+        var_type = self.var_type
         typer = IncompatibleTyping(self.api_graph, self.bt_factory)
         type_gen = typer.enumerate_incompatible_typings(var_type, location)
         if not self.enumerate_all_types:
@@ -218,6 +218,28 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                f" - Flow variable: {self.flow_variable}")
         return msg
 
+    def select_type_for_merge_var(self, var_type: tp.Type) -> tp.Type:
+        supertypes = [t for t in var_type.get_supertypes()
+                      if t != self.bt_factory.get_any_type()]
+        supertype = utils.random.choice(supertypes)
+        if supertype.is_parameterized():
+            variants = [supertype]
+            type_args = [i for i, targ in enumerate(supertype.type_args)
+                         if not targ.is_wildcard()]
+            s = type_args
+            for subset in itertools.chain.from_iterable(
+                    itertools.combinations(s, r) for r in range(len(s) + 1)):
+                new_type_args = list(supertype.type_args)
+                for index in subset:
+                    type_arg = supertype.type_args[index]
+                    new_type_arg = tp.WildCardType(
+                        bound=type_arg, variance=tp.Covariant)
+                    new_type_args[index] = new_type_arg
+                variants.append(supertype.t_constructor.new(new_type_args))
+            return utils.random.choice(variants)
+
+        return supertype
+
     def enumerate_programs(self):
         flow_vars = [
             n for n in self.program_gen.api_graph.api_graph.nodes()
@@ -232,6 +254,10 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                 self.program
             )
             var_type = self.api_graph.get_concrete_output_type(flow_variable)
+            var_type = self.select_type_for_merge_var(var_type)
+            if not var_type.is_parameterized():
+                break
+            self.var_type = var_type
             merge_var_decl = ast.VariableDeclaration(
                 utils.random.word(),
                 ast.Variable(self.flow_variable),
