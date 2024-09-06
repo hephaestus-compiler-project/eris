@@ -1118,3 +1118,22 @@ class KotlinTranslator(BaseTranslator):
         )
         self._children_res.append(res)
         return res
+
+    @append_to
+    def visit_loop(self, node):
+        children = node.children()
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        loop_prefix = (
+            "while (true)"
+            if node.loop_type == ast.Loop.WHILE_LOOP
+            else "for (i in 1..2)"
+        )
+        res = "{ident}{prefix}{body}".format(
+            ident=self.get_ident(old_ident=self.ident),
+            prefix=loop_prefix,
+            body=children_res[0]
+        )
+        self._children_res.append(res)
+        return res

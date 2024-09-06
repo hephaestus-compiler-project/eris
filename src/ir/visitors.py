@@ -48,6 +48,7 @@ class ASTVisitor():
             ast.Block: self.visit_block,
             ast.TryCatch: self.visit_trycatch,
             ast.Return: self.visit_return,
+            ast.Loop: self.visit_loop,
         }
         visitor = visitors.get(node.__class__)
         if visitor is None:
@@ -170,6 +171,9 @@ class ASTVisitor():
     def visit_return(self, node):
         raise NotImplementedError('visit_return() must be implemented')
 
+    def visit_loop(self, node):
+        raise NotImplementedError('visit_loop() must be implemented')
+
 
 class DefaultVisitor(ASTVisitor):
 
@@ -289,6 +293,9 @@ class DefaultVisitor(ASTVisitor):
     def visit_return(self, node):
         return self._visit_node(node)
 
+    def visit_loop(self, node):
+        return self._visit_node(node)
+
 
 class DefaultVisitorUpdate(DefaultVisitor):
 
@@ -406,3 +413,9 @@ class ASTExprUpdate(DefaultVisitor):
     def visit_return(self, node):
         if self.index == 0:
             node.expr = self.new_node
+
+    def visit_loop(self, node):
+        if self.index == 0:
+            node.block = self.new_node
+        else:
+            node.cond = self.new_node

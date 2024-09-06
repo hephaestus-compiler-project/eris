@@ -1857,3 +1857,43 @@ class Return(Expr):
 
     def get_type_info(self):
         return self.expr.get_type_info()
+
+
+class Loop(Expr):
+    WHILE_LOOP = 0
+    FOR_LOOP = 1
+
+    def __init__(self, block: Block, cond: Expr = None,
+                 loop_type: int = WHILE_LOOP):
+        super().__init__()
+        self.block = block
+        self.cond = cond
+        self.loop_type = loop_type
+
+    def has_variable(self):
+        return self.block.has_variable() or \
+            (self.cond and self.cond.has_variable())
+
+    def children(self):
+        children = [self.block]
+        if self.cond:
+            children.append(self.block)
+        return children
+
+    def update_children(self, children):
+        self.block = children[0]
+        if len(children) > 1:
+            self.cond = children[-1]
+
+    def __hash__(self):
+        return hash((self.block, self.cond, self.loop_type))
+
+    def is_equal(self, other):
+        if isinstance(other, Loop):
+            return (self.block.is_equal(other.block) and
+                    self.cond == other.cond and
+                    self.loop_type == other.loop_type)
+        return False
+
+    def get_type_info(self):
+        return self.expr.get_type_info()
