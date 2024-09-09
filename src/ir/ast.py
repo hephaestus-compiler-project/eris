@@ -377,7 +377,7 @@ class CallArgument(Node):
     def is_equal(self, other):
         if isinstance(other, CallArgument):
             return (self.name == other.name and
-                    self.expr.is_equal(other.is_equal))
+                    self.expr.is_equal(other.expr))
         return False
 
 
@@ -1653,7 +1653,7 @@ class FunctionCall(Expr):
         if isinstance(other, FunctionCall):
             return (self.func == other.func and
                     check_list_eq(self.args, other.args) and
-                    check_list_eq(self.type_args, other.type_args) and
+                    self.type_args == other.type_args and
                     check_default_eq(self.receiver, other.receiver) and
                     self.is_ref_call == other.is_ref_call)
         return False
