@@ -162,13 +162,18 @@ def tree2cfgtree(tree):
                 nx.set_node_attributes(graph, {str(neighbor): True},
                                        name="inactive")
         else:
-            random_nodes = utils.random.integer(2, 4)
+            random_nodes = utils.random.integer(1, 4)
             new_nodes = []
             for i in range(random_nodes):
                 t_n = f"{neighbors[0]}_{i}"
                 new_nodes.append(t_n)
                 graph.add_node(t_n)
                 graph.add_edge(str(n), t_n)
+            # We just created a single node. This corresponds to a loop.
+            # Mark the node accordingly.
+            if len(new_nodes) == 1:
+                nx.set_node_attributes(graph, {new_nodes[0]: True},
+                                       name="loop")
             if [t for t in tree.neighbors(neighbors[0]) if t > neighbors[0]]:
                 for s in new_nodes:
                     graph.add_edge(s, str(neighbors[0]))
@@ -565,15 +570,16 @@ class CFGGenerator(APIClientGenerator):
                     assert len(parents) <= 1
                     if not parents:
                         continue
-                    if utils.random.bool():
+                    if not tree.nodes[n].get("loop", False):
                         parent = parents[0]
                         block = blocks[parent]
                         stack.append((neighbors[0], block))
                         blocks[neighbors[0]] = block
                     else:
+                        # This is a single node that represents a loop.
                         assignments = self.create_assignments(local_vars)
                         children_block = ast.Block(assignments)
-                        stack.append((neighbors[0], block))
+                        stack.append((neighbors[0], children_block))
                         blocks[neighbors[0]] = children_block
                         loop = self.create_loop([children_block], 1)
                         block.body.append(loop)
