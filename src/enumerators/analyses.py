@@ -275,9 +275,23 @@ class BlockAnalysis(LocationAnalysis):
             self.block_parents[node.block] = (node, 0)
 
         parent_block = self.block_map[parent_id]
+        # Create a node that represents the exit of the loop
         merge_node = self.add_block_to_cfg(cfg, parent_block)
-        cfg.add_edge(child_id, merge_node)
+
+        # Connect the parent node with the exit node.
         cfg.add_edge(parent_id, merge_node)
+
+        # Try to find all leaf nodes created inside the loop.
+        leaf_nodes = [n for n in cfg.nodes()
+                      if cfg.out_degree(n) == 0 and nx.has_path(
+                          cfg, child_id, n)]
+        if not leaf_nodes:
+            leaf_nodes = [child_id]
+        assert len(leaf_nodes) == 1
+        # Connect these leaf nodes with the exit node.
+        cfg.add_edge(leaf_nodes[0], merge_node)
+        # Connect these leaf nodes with the entry of the loop.
+        cfg.add_edge(leaf_nodes[0], child_id, cycle=True)
 
 
 class ExprLocationAnalysis(LocationAnalysis):
