@@ -1,14 +1,14 @@
 import itertools
 from copy import deepcopy
-from typing import NamedTuple
+from typing import NamedTuple, Any, Tuple
 
 import networkx as nx
 
 from src import utils
 from src.ir import ast, types as tp
+from src.ir.builtins import BuiltinFactory
 from src.ir.visitors import ASTExprUpdate, DefaultVisitor
 from src.generators.api import nodes
-from src.ir.builtins import BuiltinFactory
 from src.generators import Generator
 from src.generators.api.nodes import Variable
 from src.enumerators.analyses import BlockAnalysis
@@ -37,38 +37,92 @@ class VariableEraseType(DefaultVisitor):
 
 
 class StatementInjection(DefaultVisitor):
-    def __init__(self, statement, flow_variable: str, policy: str):
+    def __init__(self, statement: ast.Node, parent_block: ast.Block,
+                 flow_variable: str, policy: str):
         self.statement = statement
+        # This is the block to inject the variable
+        self.parent_block = parent_block
         self.flow_variable = flow_variable
         self.policy = policy
 
-    def visit_func_decl(self, node):
-        if isinstance(node.body, ast.Block) and any(
-            isinstance(n, ast.VariableDeclaration) and n.name == self.flow_variable
-                for n in node.body.body):
-            match self.policy:
-                case "last":
-                    node.body.body.append(self.statement)
-                case "after-decl":
-                    index = 0
-                    for i, stmt in enumerate(node.body.body):
-                        if isinstance(stmt, ast.VariableDeclaration) and \
-                                stmt.name == self.flow_variable:
-                            index = i + 1
-                            break
-                    assert index != 0
-                    node.body.body.insert(index, self.statement)
-                case _:
-                    raise NotImplementedError(
-                        "Policy {self.policy} not supported")
+    def visit_block(self, node: ast.Block):
+        if not node.is_equal(self.parent_block):
+            super().visit_block(node)
+            return
+        match self.policy:
+            case "last":
+                node.body.append(self.statement)
+            case "after-decl":
+                index = -1
+                for i, stmt in enumerate(node.body):
+                    if isinstance(stmt, ast.VariableDeclaration) and \
+                            stmt.name == self.flow_variable:
+                        index = i + 1
+                        break
+                if index != -1:
+                    node.body.insert(index, self.statement)
+            case _:
+                raise NotImplementedError(
+                    "Policy {self.policy} not supported")
+
+
+def _get_source_and_prefix(source: Any, target: Any,
+                           graph: nx.DiGraph) -> Tuple[Any, bool]:
+    new_source = source
+    remove_prefix = True
+    if source == target:
+        new_sources = [n for n in graph.neighbors(source)
+                       if nx.has_path(graph, n, target)]
+        if new_sources:
+            new_source = new_sources[0]
+            remove_prefix = False
+    return new_source, remove_prefix
+
+
+def _get_variance(type_param: tp.TypeParameter) -> tp.Variance:
+    variances = [tp.Covariant, tp.Contravariant]
+    if type_param.is_covariant():
+        variances = [tp.Covariant]
+    elif type_param.is_contravariant():
+        variances = [tp.Contravariant]
+    else:
+        variances = [tp.Covariant, tp.Contravariant]
+    return utils.random.choice(variances)
+
+
+def _select_type_for_merge_var(var_type: tp.Type,
+                               bt_factory: BuiltinFactory) -> tp.Type:
+    supertypes = [t for t in var_type.get_supertypes()
+                  if t != bt_factory.get_any_type()]
+    supertype = utils.random.choice(supertypes)
+    if supertype.is_parameterized():
+        variants = [supertype]
+        type_args = [i for i, targ in enumerate(supertype.type_args)
+                     if not targ.is_wildcard()]
+        s = type_args
+        for subset in itertools.chain.from_iterable(
+                itertools.combinations(s, r) for r in range(len(s) + 1)):
+            new_type_args = list(supertype.type_args)
+            for index in subset:
+                type_arg = supertype.type_args[index]
+                type_param = supertype.t_constructor.type_parameters[index]
+                new_type_arg = tp.WildCardType(
+                    bound=type_arg, variance=_get_variance(type_param))
+                new_type_args[index] = new_type_arg
+            variants.append(supertype.t_constructor.new(new_type_args))
+        return utils.random.choice(variants)
+
+    return supertype
 
 
 class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
     name = "FlowBasedTypeErrorEnumerator"
+    CACHE_SIZE = 150000
+    ROOT_NODE = 0
 
     def __init__(self, program: ast.Program, program_gen: Generator,
                  bt_factory: BuiltinFactory):
-        self.api_graph = program_gen.api_graph
+        self.api_graph = getattr(program_gen, "api_graph", None)
         self.error_loc = None
         self.new_node = None
         self.analysis = BlockAnalysis()
@@ -76,6 +130,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         self.location_map = {}
         super().__init__(program, program_gen, bt_factory)
         self.enumerate_all_types = False
+        self.cache = set()
 
     def reset_state(self):
         self.error_loc = None
@@ -83,14 +138,22 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         self.analysis = BlockAnalysis()
         self.end_indices = {}
         self.location_map = {}
+        if len(self.cache) > self.CACHE_SIZE:
+            self.cache = set()
 
     def get_candidate_program_locations(self):
-        self.analysis.visit_program(self.program)
+        self.analysis = BlockAnalysis()
+        self.analysis.visit(self.program)
         return self.to_locs(self.analysis.cfgs["test"])
 
     def to_locs(self, cfg: nx.DiGraph):
         locations = []
-        for node in nx.topological_sort(cfg):
+        acyclic_graph = cfg.copy()
+        to_remove = [(a, b)
+                     for a, b, data in acyclic_graph.edges(data=True)
+                     if data.get("cycle", False)]
+        acyclic_graph.remove_edges_from(to_remove)
+        for node in nx.topological_sort(acyclic_graph):
             block = self.analysis.block_map.get(node)
             if block is None:
                 continue
@@ -107,24 +170,29 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         bad_locations = set()
         colored_cfg = self.color_cfg(self.analysis.cfgs["test"],
                                      self.flow_variable)
-        leaf_nodes = [n for n in colored_cfg.nodes()
-                      if colored_cfg.out_degree(n) == 0]
-        assert len(leaf_nodes) == 1
-
-        leaf_node = leaf_nodes[0]
+        target = self.merge_location
         for n in colored_cfg.nodes():
             is_bad = True
-            for path in nx.all_simple_paths(colored_cfg, n, leaf_node):
+            if not nx.has_path(colored_cfg, n, target):
+                if n in self.location_map:
+                    bad_locations.add(self.location_map[n])
+            source, remove_prefix = _get_source_and_prefix(
+                n, target, colored_cfg)
+            for path in nx.all_simple_paths(colored_cfg, source, target):
+                pp = path
+                if remove_prefix:
+                    pp = path[1:] if path != [target] else path
                 if all(not colored_cfg.nodes[p].get("green", False)
-                       for p in path[1:]):
+                       for p in pp):
                     is_bad = False
                     break
             if is_bad and n in self.location_map:
                 bad_locations.add(self.location_map[n])
+
         filtered_locs = [loc for loc in locations if loc not in bad_locations]
         return filtered_locs
 
-    def get_block_end_index(self, block_id, cfg):
+    def get_block_end_index(self, block_id: int, cfg: nx.DiGraph) -> int:
         block = self.analysis.block_map[block_id]
         block_children = [self.analysis.block_map[n]
                           for n in cfg.neighbors(block_id)
@@ -144,11 +212,15 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                 if node.try_block in block_children:
                     end_index = len_block - i - 1
                     break
+            if isinstance(node, ast.Loop):
+                end_index = len_block - i - 1
+                break
         if not block_children:
             end_index -= 1
         return end_index
 
-    def get_block_indices(self, block_id, cfg):
+    def get_block_indices(self, block_id: int,
+                          cfg: nx.DiGraph) -> Tuple[int, int]:
         block = self.analysis.block_map[block_id]
         end_index = self.get_block_end_index(block_id, cfg)
         indices = self.end_indices.get(block)
@@ -162,7 +234,12 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
 
     def color_cfg(self, cfg: nx.DiGraph, flow_variable: str) -> nx.DiGraph:
         colored_cfg = cfg.copy()
-        for block_id in nx.topological_sort(cfg):
+        acyclic_graph = cfg.copy()
+        to_remove = [(a, b)
+                     for a, b, data in acyclic_graph.edges(data=True)
+                     if data.get("cycle", False)]
+        acyclic_graph.remove_edges_from(to_remove)
+        for block_id in nx.topological_sort(acyclic_graph):
             block = self.analysis.block_map.get(block_id)
             if block is None:
                 continue
@@ -181,13 +258,18 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         type_gen = typer.enumerate_incompatible_typings(var_type, location)
         if not self.enumerate_all_types:
             type_gen = [next(type_gen)]
+        inverse_map = {v: k for k, v in self.location_map.items()}
         for incmp_t in type_gen:
-            assignment = ast.Assignment(
-                self.flow_variable,
-                self.program_gen._generate_expr_from_node(incmp_t).expr
-            )
+            expr = self.program_gen._generate_expr_from_node(incmp_t).expr
+            expr.mk_typed(ast.TypePair(expected=self.var_type,
+                                       actual=incmp_t))
+            assignment = ast.Assignment(self.flow_variable, expr)
+            index = location.block_index
+            if inverse_map[location] == self.merge_location and \
+                    not isinstance(location, ast.Loop):
+                index -= 1
             new_expr = deepcopy(location.expr)
-            new_expr.body.insert(location.block_index, assignment)
+            new_expr.body.insert(index, assignment)
             upd = ASTExprUpdate(location.index, new_expr)
             upd.visit(location.parent)
             self.add_err_message(location, assignment)
@@ -204,6 +286,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
 
         var_type = self.api_graph.get_concrete_output_type(
             nodes.Variable(self.flow_variable))
+        actual_t = self.new_node.expr.get_type_info()[1]
         # Get the string representation of expressions
         translator = self.program_gen.translator
         translator.context = self.program.context
@@ -212,33 +295,12 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         translator._reset_state()
         msg = (f"Added assignment for variable {self.flow_variable}\n"
                f" - Expected type {var_type}\n"
+               f" - Actual type {actual_t}\n"
                f" - New expression {expr_str}\n"
                f" - Parent block: {type(self.error_loc.parent)}\n"
                f" - Inserted error at index: {self.error_loc.block_index}\n"
                f" - Flow variable: {self.flow_variable}")
         return msg
-
-    def select_type_for_merge_var(self, var_type: tp.Type) -> tp.Type:
-        supertypes = [t for t in var_type.get_supertypes()
-                      if t != self.bt_factory.get_any_type()]
-        supertype = utils.random.choice(supertypes)
-        if supertype.is_parameterized():
-            variants = [supertype]
-            type_args = [i for i, targ in enumerate(supertype.type_args)
-                         if not targ.is_wildcard()]
-            s = type_args
-            for subset in itertools.chain.from_iterable(
-                    itertools.combinations(s, r) for r in range(len(s) + 1)):
-                new_type_args = list(supertype.type_args)
-                for index in subset:
-                    type_arg = supertype.type_args[index]
-                    new_type_arg = tp.WildCardType(
-                        bound=type_arg, variance=tp.Covariant)
-                    new_type_args[index] = new_type_arg
-                variants.append(supertype.t_constructor.new(new_type_args))
-            return utils.random.choice(variants)
-
-        return supertype
 
     def enumerate_programs(self):
         flow_vars = [
@@ -246,17 +308,35 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
             if isinstance(n, Variable)
         ]
         original_program = self.program
-        for flow_variable in flow_vars:
+        self.analysis.visit(self.program)
+        cfg = self.analysis.cfgs["test"]
+        block_map = self.analysis.block_map.copy()
+        # These are the candidate locations to inject the merge variable.
+        merge_locations = [
+            n for n in cfg.nodes()
+            if cfg.in_degree(n) != 0 and n in block_map
+        ]
+        for flow_variable, merge_location in itertools.product(
+            flow_vars, merge_locations
+        ):
             self.program = deepcopy(original_program)
             self.reset_state()
+            self.analysis.visit(self.program)
+            cfg = self.analysis.cfgs["test"]
+            induced_nodes = nx.ancestors(cfg, merge_location)
+            induced_nodes.add(merge_location)
+            subg = cfg.subgraph(induced_nodes)
+            if any(nx.is_isomorphic(g, subg) for g in self.cache):
+                continue
+            else:
+                self.cache.add(subg)
             self.flow_variable = flow_variable.name
+            # erase the type of the variable make it flow-sensitive.
             VariableEraseType(flow_variable.name, self.bt_factory).visit(
                 self.program
             )
             var_type = self.api_graph.get_concrete_output_type(flow_variable)
-            var_type = self.select_type_for_merge_var(var_type)
-            if not var_type.is_parameterized():
-                break
+            var_type = _select_type_for_merge_var(var_type, self.bt_factory)
             self.var_type = var_type
             merge_var_decl = ast.VariableDeclaration(
                 utils.random.word(),
@@ -264,10 +344,8 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                 is_final=True,
                 var_type=var_type
             )
-            # Insert merge variable declaration at the end of block.
-            StatementInjection(
-                merge_var_decl, self.flow_variable, "last"
-            ).visit(self.program)
+            self.merge_location = merge_location
+            self.analysis.block_map[merge_location].body.append(merge_var_decl)
             if self.bt_factory.get_language() == "kotlin":
                 assignment = ast.Assignment(
                     self.flow_variable,
@@ -275,6 +353,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                 )
                 StatementInjection(
                     assignment,
+                    self.analysis.block_map[self.ROOT_NODE],
                     self.flow_variable,
                     "after-decl"
                 ).visit(self.program)
