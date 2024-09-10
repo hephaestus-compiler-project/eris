@@ -34,9 +34,42 @@ def test_block_analysis():
     enumerator = FlowBasedTypeErrorEnumerator(func_decl, None,
                                               kt.KotlinBuiltinFactory())
     enumerator.flow_variable = "x"
-    enumerator.target_node = 4
+    enumerator.merge_location = 4
     locations = enumerator.get_candidate_program_locations()
     assert len(locations) == 6
     new_locations = enumerator.filter_program_locations(locations)
     inverse_map = {v: k for k, v in enumerator.location_map.items()}
     assert [inverse_map[loc] for loc in new_locations] == [1, 2, 3]
+
+
+def test_block_analysis2():
+    var_decl = ast.VariableDeclaration("x", to_expr(kt.String),
+                                       is_final=False, var_type=kt.String)
+    var_decl.var_type = kt.Any
+    true_block = ast.Block([
+        ast.VariableDeclaration("y", ast.Variable("x"), is_final=True,
+                                var_type=kt.String)
+    ])
+    false_block = ast.Block([])
+    cond = ast.MultiConditional([to_expr(kt.String), to_expr(kt.String)],
+                                [true_block, false_block],
+                                root_cond=to_expr(kt.String),
+                                inferred_type=kt.Unit,
+                                is_expression=False)
+    func_decl = ast.FunctionDeclaration(
+        "test",
+        [],
+        kt.Unit,
+        ast.Block([var_decl, cond]),
+        ast.FunctionDeclaration.FUNCTION
+    )
+
+    enumerator = FlowBasedTypeErrorEnumerator(func_decl, None,
+                                              kt.KotlinBuiltinFactory())
+    enumerator.flow_variable = "x"
+    enumerator.merge_location = 1
+    locations = enumerator.get_candidate_program_locations()
+    assert len(locations) == 4
+    new_locations = enumerator.filter_program_locations(locations)
+    inverse_map = {v: k for k, v in enumerator.location_map.items()}
+    assert [inverse_map[loc] for loc in new_locations] == [1]
