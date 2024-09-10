@@ -162,21 +162,27 @@ def tree2cfgtree(tree):
                 nx.set_node_attributes(graph, {str(neighbor): True},
                                        name="inactive")
         else:
-            random_nodes = utils.random.integer(1, 4)
-            new_nodes = []
-            for i in range(random_nodes):
-                t_n = f"{neighbors[0]}_{i}"
-                new_nodes.append(t_n)
-                graph.add_node(t_n)
-                graph.add_edge(str(n), t_n)
-            # We just created a single node. This corresponds to a loop.
-            # Mark the node accordingly.
-            if len(new_nodes) == 1:
-                nx.set_node_attributes(graph, {new_nodes[0]: True},
+            if utils.random.bool():
+                # We randomly decide to split the node into 2-4 nodes and
+                # merge the paths that stem from these nodes to a new
+                # merge node.
+                random_nodes = utils.random.integer(2, 4)
+                new_nodes = []
+                for i in range(random_nodes):
+                    t_n = f"{neighbors[0]}_{i}"
+                    new_nodes.append(t_n)
+                    graph.add_node(t_n)
+                    graph.add_edge(str(n), t_n)
+                if [t for t in tree.neighbors(neighbors[0]) if t > neighbors[0]]:
+                    for s in new_nodes:
+                        graph.add_edge(s, str(neighbors[0]))
+            else:
+                # We just created a single node. This corresponds to a loop.
+                # Mark the node accordingly.
+                graph.add_node(str(neighbors[0]))
+                graph.add_edge(str(n), str(neighbors[0]))
+                nx.set_node_attributes(graph, {str(neighbors[0]): True},
                                        name="loop")
-            if [t for t in tree.neighbors(neighbors[0]) if t > neighbors[0]]:
-                for s in new_nodes:
-                    graph.add_edge(s, str(neighbors[0]))
     return graph
 
 
@@ -567,10 +573,9 @@ class CFGGenerator(APIClientGenerator):
             elif nu_neighbors == 1:
                 if tree.neighbors(neighbors[0]):
                     parents = list(tree.predecessors(n))
-                    assert len(parents) <= 1
                     if not parents:
                         continue
-                    if not tree.nodes[n].get("loop", False):
+                    if not tree.nodes[neighbors[0]].get("loop", False):
                         parent = parents[0]
                         block = blocks[parent]
                         stack.append((neighbors[0], block))
