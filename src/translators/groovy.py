@@ -48,6 +48,8 @@ class GroovyTranslator(BaseTranslator):
     executable = "Main.jar"
     ident_value = " "
 
+    EXCLUDED_METADATA = {"primary"}
+
     def __init__(self, package=None, options={}):
         super().__init__(package, options)
         self.types = []
@@ -501,7 +503,9 @@ class GroovyTranslator(BaseTranslator):
         body_res = children_res[-1] if node.body else ''
         self.ident = old_ident
         constructor_name = node.name.rsplit(".", )[-1]
-        modifiers = get_modifier_list(node.metadata)
+        excluded_metadata = set(self.EXCLUDED_METADATA) & {"abstract"}
+        modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
+                                       if k in excluded_metadata})
         modifiers = " ".join(modifiers) + " " if modifiers else ""
         return "{modifiers}{name}({params}){body}".format(
             modifiers=modifiers,

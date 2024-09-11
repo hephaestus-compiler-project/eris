@@ -38,7 +38,8 @@ class KotlinTranslator(BaseTranslator):
     executable = "program.jar"
     ident_value = " "
 
-    EXCLUDED_METADATA = ["final", "override", "open", "static", "default"]
+    EXCLUDED_METADATA = {"final", "override", "open", "static", "default",
+                         "primary"}
 
     def __init__(self, package=None, options={}):
         super().__init__(package, options)
@@ -326,13 +327,6 @@ class KotlinTranslator(BaseTranslator):
 
         is_sam = tu.is_sam(self.context, cls_decl=node)
         class_prefix = "interface" if is_sam else node.get_class_prefix()
-        body = ""
-        if function_res:
-            body = " {{\n{function_res}\n{old_ident}}}".format(
-                function_res="\n\n".join(function_res),
-                old_ident=" " * old_ident
-            )
-
         base_cls_name = node.name.rsplit(".", 1)[-1]
         superclasses = get_superclasses_interfaces()
         res = "{ident}{f}{o}{p} {n}".format(
@@ -1030,8 +1024,8 @@ class KotlinTranslator(BaseTranslator):
                 if isinstance(node.receiver, ast.BottomConstant)
                 else children_res[0]
             )
-            func = node.func
             args = children_res[1:]
+            func = node.func
         else:
             receiver_expr, func = (
                 ("", node.func)
