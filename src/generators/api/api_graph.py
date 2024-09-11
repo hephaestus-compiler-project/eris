@@ -141,7 +141,8 @@ class APIGraph():
         "scala": {
             "hashCode": [],
             "toString": [],
-            "equals": ["Any"]
+            "equals": ["AnyRef"],
+            "clone": [],
         },
     }
 
@@ -544,7 +545,11 @@ class APIGraph():
             source_nodes = [
                 node
                 for node in source_nodes
-                if self.api_graph.in_degree(node) == 0
+                if (self.api_graph.in_degree(node) == 0 and
+                    not (
+                        isinstance(node, Constructor) and
+                        node.metadata.get("abstract", False)
+                    ))
             ]
             self.source_nodes_of[target] = source_nodes
         return source_nodes, target
@@ -857,6 +862,10 @@ class APIGraph():
         if not isinstance(method, Method) or receiver is None:
             return False
         child_params = [p.t for p in method.parameters]
+        obj_methods = self.OBJECT_METHODS[self.bt_factory.get_language()]
+        params = obj_methods.get(method.name)
+        if params is not None and params == [p.name for p in child_params]:
+            return True
         for supertype in {st for st in receiver.get_supertypes()
                           if st != receiver}:
             # Get the substitution of the supertype and its type constructor
