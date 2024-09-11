@@ -552,6 +552,11 @@ class APIGraph():
                     ))
             ]
             self.source_nodes_of[target] = source_nodes
+        else:
+            # Clear the cached source nodes and remove any nodes not
+            # included in the current API graph.
+            source_nodes = [s for s in source_nodes
+                            if not isinstance(s, Variable)]
         return source_nodes, target
 
     def _get_paths(self, source, target):
