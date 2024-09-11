@@ -1,5 +1,11 @@
+import re
+
 from src.ir import ast, scala_types as sc, types as tp
+from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
+from src.translators.utils import (
+    strip_fqn, get_modifier_list, is_parent_interface,
+    get_class_type_from_context, package_consistency)
 
 
 def append_to(visit):
@@ -14,6 +20,10 @@ class ScalaTranslator(BaseTranslator):
 
     filename = "program.scala"
     incorrect_filename = "incorrect.scala"
+    ident_value = " "
+
+    EXCLUDED_METADATA = ["final", "override", "open", "static", "default",
+                         "public"]
 
     def __init__(self, package=None, options={}):
         super().__init__(package, options)
@@ -23,6 +33,7 @@ class ScalaTranslator(BaseTranslator):
         self.is_lambda = False
         self._cast_integers = False
         self.context = None
+        self._namespace = ast.GLOBAL_NAMESPACE
 
         # We need nodes_stack to assign lambdas to vars when needed.
         # Specifically, in visit_lambda we use `var y = ` as a prefix only if
@@ -38,6 +49,19 @@ class ScalaTranslator(BaseTranslator):
         self._cast_integers = False
         self._nodes_stack = [None]
         self.context = None
+        self._namespace = ast.GLOBAL_NAMESPACE
+
+    def _package_consistency(self, res: str) -> str:
+        if self.package:
+            package_prefix = self.package.split(".", 1)[0]
+            new = re.sub(package_prefix + r"\.[a-z]+", self.package, res)
+            return new
+        return res
+
+    def get_ident(self, extra=0, old_ident=None):
+        if old_ident:
+            return old_ident * self.ident_value
+        return (self.ident + extra) * self.ident_value
 
     @staticmethod
     def get_filename():
@@ -57,6 +81,8 @@ class ScalaTranslator(BaseTranslator):
         else:
             return "? >: " + self.get_type_name(t_arg.bound)
 
+    @package_consistency
+    @strip_fqn
     def get_type_name(self, t):
         if t.is_wildcard():
             t = t.get_bound_rec()
@@ -82,6 +108,7 @@ class ScalaTranslator(BaseTranslator):
 
     def visit_program(self, node):
         self.context = node.context
+        self.lib_spec = node.lib
         children = node.children()
         for c in children:
             c.accept(self)
@@ -106,17 +133,12 @@ class ScalaTranslator(BaseTranslator):
         res += ";\n".join(children_res[:-1])
         if children_res[:-1]:
             res += ";\n"
-        ret_keyword = (
-            "return "
-            if node.is_func_block and not is_unit and not is_lambda
-            else ""
-        )
         if children_res:
-            res += " " * self.ident + ret_keyword + \
+            res += " " * self.ident + \
                    children_res[-1] + ";\n" + \
                    " " * self.ident
         else:
-            res += " " * self.ident + ret_keyword + ";\n" + \
+            res += " " * self.ident + ";\n" + \
                    " " * self.ident
         res += "}"
         self.is_unit = is_unit
@@ -137,48 +159,187 @@ class ScalaTranslator(BaseTranslator):
             self.get_type_name(node.class_type) + "(" + ", ".join(
                 children_res) + ")")
 
-    @append_to
-    def visit_class_decl(self, node):
+    def create_companion_object(self, node):
+        static_fields = [f for f in node.fields
+                         if f.metadata.get("static", False)]
+        static_methods = [m for m in node.functions
+                          if m.metadata.get("static", False)]
+        static_inner_members = [
+            c for c in node.extra_declarations
+            if c.metadata.get("static", False)
+        ]
+        children = static_inner_members + static_fields + static_methods
+        if not children:
+            return None
         old_ident = self.ident
-        self.ident += 2
-        children = node.children()
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        field_res = [children_res[i]
-                     for i, _ in enumerate(node.fields)]
-        len_fields = len(field_res)
-        superclasses_res = [children_res[i + len_fields]
-                            for i, _ in enumerate(node.superclasses)]
-        len_supercls = len(superclasses_res)
-        function_res = [children_res[i + len_fields + len_supercls]
-                        for i, _ in enumerate(node.functions)]
-        len_functions = len(function_res)
-        type_parameters_res = ", ".join(
-            children_res[len_fields + len_supercls + len_functions:])
+        base_cls_name = node.name.rsplit(".", 1)[-1]
+        res = "{ident}object {name} {{\n{body}\n{ident}}}".format(
+            ident=self.get_ident(old_ident=old_ident),
+            name=base_cls_name,
+            body="\n\n".join(children_res)
+        )
+        self.ident = old_ident
+        return res
+
+    def _create_children(self, children):
+        for c in children:
+            c.accept(self)
+        return self.pop_children_res(children)
+
+    def create_fields(self, node):
+        non_static_fields = [f for f in node.fields
+                             if not f.metadata.get("static", False)]
+        return self._create_children(non_static_fields)
+
+    def create_functions(self, node):
+        non_static_functions = [m for m in node.functions
+                                if not m.metadata.get("static", False)]
+        return self._create_children(non_static_functions)
+
+    def create_constructors(self, node):
+        if not node.constructors:
+            return self._create_children(node.constructors)
+        if len(node.constructors) == 1:
+            primary_con = node.constructors[0]
+        else:
+            primary_constructors = [
+                con
+                for con in node.constructors
+                if con.metadata.get("primary", False)
+            ]
+            primary_con = primary_constructors[0]
+        res = ",".join([
+            f"{p.name}: {self.get_type_name(p.get_type())}"
+            for p in primary_con.params
+        ])
+        res = f"({res})"
+        children_res = [res]
+        secondary_cons = [con for con in node.constructors
+                          if con != primary_con]
+        children_res.extend(self._create_children(secondary_cons))
+        return children_res
+
+    def create_type_params(self, node):
+        return self._create_children(node.type_parameters)
+
+    def create_extra_declarations(self, node):
+        non_static_members = [c for c in node.extra_declarations
+                              if not c.metadata.get("static", False)]
+        return self._create_children(non_static_members)
+
+    def get_superclasses_interfaces(self, node: ast.ClassDeclaration):
+        superclasses, interfaces = [], []
+        for cls_inst in node.superclasses:
+            cls_name = cls_inst.class_type.name
+            if cls_name in [sc.Any.name, sc.AnyRef.name]:
+                continue
+            cls_inst = self.get_type_name(cls_inst.class_type)
+            class_type = get_class_type_from_context(
+                cls_name, self.context, self._namespace, self.lib_spec)
+            is_interface = (class_type == ast.ClassDeclaration.INTERFACE or
+                            is_parent_interface(node.name, cls_name,
+                                                self.lib_spec))
+            if is_interface:
+                interfaces.append(cls_inst)
+                continue
+            super_cls_name = cls_inst
+            if not node.constructors:
+                super_cls_name += "()"
+                superclasses.append(super_cls_name)
+                continue
+
+            if len(node.constructors) == 1:
+                primary_con = node.constructors[0]
+            else:
+                # Find the primary constructor
+                primary_cons = [
+                    con for con in node.constructors
+                    if con.metadata.get("primary", False)
+                ]
+                if not primary_cons:
+                    import pdb; pdb.set_trace()
+                primary_con = primary_cons[0]
+
+            # Find the super call (if any) inside the primary constructor
+            super_call = None
+            for elem in primary_con.body.body:
+                if isinstance(elem, ast.FunctionCall) and \
+                        elem.func == ast.FunctionCall.SUPER:
+                    super_call = elem
+                    break
+            res = ""
+            if super_call:
+                res = self._create_children([elem])[0].replace(
+                    ast.FunctionCall.SUPER, "").replace("`", "").lstrip()
+            superclasses.append(super_cls_name + res)
+        return superclasses + interfaces
+
+    @append_to
+    @change_namespace
+    def visit_class_decl(self, node):
+
+        old_ident = self.ident
+        self.ident += 2
+        companion_obj = self.create_companion_object(node)
+        field_res = self.create_fields(node)
+        function_res = self.create_functions(node)
+        constr_res = self.create_constructors(node)
+        type_parameters_res = self.create_type_params(node)
+        extra_decl_res = self.create_extra_declarations(node)
 
         class_prefix = node.get_class_prefix().replace("interface", "trait")
-
-        res = "{ident}{open_}{prefix} {name}".format(
-            ident=" " * old_ident,
-            open_=("open "
-                   if (not node.is_final or
-                       node.class_type == ast.ClassDeclaration.INTERFACE)
-                   else ""),
-            prefix=class_prefix,
-            name=node.name,
+        base_cls_name = node.name.rsplit(".", 1)[-1]
+        superclasses = self.get_superclasses_interfaces(node)
+        use_final = (
+            node.is_final and node.class_type != ast.ClassDeclaration.INTERFACE
         )
+        res = "{ident}{o}{p} {n}".format(
+            ident=" " * old_ident,
+            o="final " if use_final else "",
+            p=class_prefix,
+            n=base_cls_name
+        )
+        start_brace = (field_res or constr_res or function_res or
+                       extra_decl_res)
+        primary_con_res = ""
+        if constr_res:
+            primary_con_res = constr_res[0]
+            constr_res = constr_res[1:]
 
         if type_parameters_res:
-            res = "{}[{}]".format(res, type_parameters_res)
+            res = "{}[{}]".format(res, ", ".join(type_parameters_res))
+
+        if primary_con_res:
+            res += primary_con_res
+
+        if superclasses:
+            res += " extends " + ", ".join(superclasses)
+
+        # Now create the body of class consisting of field, functions,
+        # constructors, or other nested classes.
+
+        # Now add a starting curly brace.
+        if start_brace:
+            res += " " * old_ident + "{\n"
         if field_res:
-            res = "{}({})".format(
-                res, ", ".join(field_res))
-        if superclasses_res:
-            res += " extends " + ", ".join(superclasses_res)
+            res += "\n".join(field_res) + "\n"
+        if constr_res:
+            res += "\n\n".join(constr_res) + "\n"
         if function_res:
-            res += " {\n" + "\n\n".join(
-                function_res) + "\n" + " " * old_ident + "}"
+            res += "\n\n".join(function_res) + "\n"
+        if extra_decl_res:
+            res += "\n\n".join(extra_decl_res) + "\n"
+        # Add an ending curly brace.
+        if start_brace:
+            res += " " * old_ident + "}"
+
+        if companion_obj:
+            res += "\n"
+            res += companion_obj.lstrip()
+
         self.ident = old_ident
         self._children_res.append(res)
 
@@ -191,10 +352,10 @@ class ScalaTranslator(BaseTranslator):
                 else ""
             ),
             name=self.get_type_name(node),
-            bound=' <: ' + (
-                self.get_type_name(node.bound)
+            bound=(
+                "<: " + self.get_type_name(node.bound)
                 if node.bound is not None
-                else "Any & java.lang.Object"
+                else ""
             )
         ))
 
@@ -235,10 +396,17 @@ class ScalaTranslator(BaseTranslator):
 
     @append_to
     def visit_field_decl(self, node):
-        prefix = 'final ' if not node.can_override else ''
+        prefix = " " * self.ident
+        prefix += '' if node.can_override else 'final '
         prefix += '' if not node.override else 'override '
+        modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
+                                       if (k not in self.EXCLUDED_METADATA and
+                                           v not in self.EXCLUDED_METADATA)})
+        prefix += " ".join(modifiers) + " " if modifiers else ""
         prefix += 'val ' if node.is_final else 'var '
         res = prefix + node.name + ": " + self.get_type_name(node.field_type)
+        if "abstract" not in modifiers:
+            res += " = ???"
         self._children_res.append(res)
 
     @append_to
@@ -264,6 +432,26 @@ class ScalaTranslator(BaseTranslator):
         self._children_res.append(res)
 
     @append_to
+    @change_namespace
+    def visit_constructor(self, node):
+        old_ident = self.ident
+        self.ident += 2
+        children = node.children()
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        param_res = [children_res[i] for i, _ in enumerate(node.params)]
+        body_res = children_res[-1] if node.body else ''
+        res = "{ident}def this({params}) = {body}".format(
+            ident=" " * old_ident,
+            params=", ".join(param_res),
+            body=body_res
+        )
+        self.ident = old_ident
+        self._children_res.append(res)
+
+    @append_to
+    @change_namespace
     def visit_func_decl(self, node):
         old_ident = self.ident
         self.ident += 2
@@ -291,9 +479,14 @@ class ScalaTranslator(BaseTranslator):
             else ""
         )
         prefix += "" if not node.override else "override "
+        modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
+                                       if (k not in self.EXCLUDED_METADATA
+                                           and v not in self.EXCLUDED_METADATA)
+                                       })
+        prefix += " ".join(modifiers) + " " if modifiers else ""
         type_params = (
             "[" + type_parameters_res + "]" if type_parameters_res else "")
-        res = prefix + "def " + node.name + type_params + "(" + ", ".join(
+        res = prefix + "def " + f"`{node.name}`" + type_params + "(" + ", ".join(
             param_res) + ")"
         if node.ret_type:
             res += ": " + self.get_type_name(node.ret_type)
@@ -561,6 +754,7 @@ class ScalaTranslator(BaseTranslator):
         else:
             receiver_expr = ""
         res = "{}{}{}".format(" " * self.ident, receiver_expr, node.field)
+        res = self._package_consistency(res)
         self._children_res.append(res)
 
     @append_to
@@ -610,6 +804,7 @@ class ScalaTranslator(BaseTranslator):
                 receiver=receiver,
                 name=node.func
             )
+        res = self._package_consistency(res)
         self._children_res.append(res)
 
     @append_to
@@ -634,22 +829,27 @@ class ScalaTranslator(BaseTranslator):
                 if isinstance(node.receiver, ast.BottomConstant)
                 else children_res[0]
             )
-            func = node.func
             args = children_res[1:]
+            func = node.func
         else:
             receiver_expr, func = (
-                ("this.", func)
+                ("", node.func)
                 if len(segs) == 1
                 else (segs[0], segs[1])
             )
             args = children_res
-        res = "{ident}{rec}.`{name}`{type_args}({args})".format(
+        if receiver_expr:
+            receiver_expr += "."
+        if func not in [ast.FunctionCall.SUPER, ast.FunctionCall.THIS]:
+            func = f"`{func}`"
+        res = "{ident}{rec}{func}{type_args}({args})".format(
             ident=" " * self.ident,
             rec=receiver_expr,
-            name=func,
+            func=func,
             type_args=type_args,
             args=", ".join(args)
         )
+        res = self._package_consistency(res)
         self._children_res.append(res)
 
     @append_to
@@ -681,6 +881,20 @@ class ScalaTranslator(BaseTranslator):
                 field=node.name,
                 expr=children_res[0]
             )
+        res = self._package_consistency(res)
         self.ident = old_ident
         self._cast_integers = prev
         self._children_res.append(res)
+
+    @append_to
+    def visit_return(self, node):
+        children = node.children()
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        res = "{ident}return {expr}".format(
+            ident=self.get_ident(old_ident=self.ident),
+            expr=children_res[0].lstrip() if node.expr else ""
+        )
+        self._children_res.append(res)
+        return res

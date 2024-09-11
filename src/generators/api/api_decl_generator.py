@@ -14,7 +14,9 @@ from src.compilers import compile_program
 from src.generators.api import builder, api_graph as ag, matcher as match
 from src.generators.api.api_generator import APIClientGenerator
 from src.generators.api.special_methods import (
-    GROOVY_SPECIAL_METHODS, KOTLIN_SPECIAL_METHODS)
+    GROOVY_SPECIAL_METHODS, KOTLIN_SPECIAL_METHODS,
+    JAVA_SPECIAL_METHODS, SCALA_SPECIAL_METHODS
+)
 from src.modules.logging import log, log_onerror, log_error
 
 
@@ -29,6 +31,24 @@ CATCH_EXCEPTIONS = {
         "java.lang.ArrayStoreException",
     ],
     "groovy": [
+        "java.lang.Exception",
+        "java.io.IOException",
+        "java.lang.NumberFormatException",
+        "java.lang.IllegalStateException",
+        "java.lang.AssertionError",
+        "java.lang.ClassCastException",
+        "java.lang.ArrayStoreException",
+    ],
+    "java": [
+        "java.lang.Exception",
+        "java.io.IOException",
+        "java.lang.NumberFormatException",
+        "java.lang.IllegalStateException",
+        "java.lang.AssertionError",
+        "java.lang.ClassCastException",
+        "java.lang.ArrayStoreException",
+    ],
+    "scala": [
         "java.lang.Exception",
         "java.io.IOException",
         "java.lang.NumberFormatException",
@@ -147,6 +167,8 @@ class APIDeclarationGenerator(APIClientGenerator):
     SPECIAL_METHODS = {
         "groovy": GROOVY_SPECIAL_METHODS,
         "kotlin": KOTLIN_SPECIAL_METHODS,
+        "scala": SCALA_SPECIAL_METHODS,
+        "java": JAVA_SPECIAL_METHODS,
     }
 
     def __init__(self, api_docs, options={}, language=None,
@@ -259,7 +281,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         forked_spec = self._fork_api_spec(specs, selected_namespaces)
         keys = forked_spec.keys()
         for elem in included_libs:
-            if elem not in keys:
+            if elem not in keys and elem in self.api_docs:
                 forked_spec[elem] = self.api_docs[elem]
         self._add_missing_api_specs(forked_spec)
         return forked_spec
@@ -384,7 +406,8 @@ class APIDeclarationGenerator(APIClientGenerator):
                 ast.ParameterDeclaration(f"p{i}", p.t, vararg=p.variable)
                 for i, p in enumerate(m.parameters)
             ],
-            body=ast.Block(body)
+            body=ast.Block(body),
+            metadata=m.metadata
         )
 
     def generate_expr_from_special_method(self, m: ag.Method,

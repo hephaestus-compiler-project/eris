@@ -570,3 +570,7 @@ GROOVY_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
 GROOVY_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
     create_when_methods()
 )
+
+
+JAVA_SPECIAL_METHODS = {}
+SCALA_SPECIAL_METHODS = {}
