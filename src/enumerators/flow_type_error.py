@@ -266,7 +266,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
             assignment = ast.Assignment(self.flow_variable, expr)
             index = location.block_index
             if inverse_map[location] == self.merge_location and \
-                    not isinstance(location, ast.Loop):
+                    not isinstance(location.parent, ast.Loop):
                 index -= 1
             new_expr = deepcopy(location.expr)
             new_expr.body.insert(index, assignment)
