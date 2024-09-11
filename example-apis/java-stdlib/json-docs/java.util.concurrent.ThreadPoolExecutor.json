@@ -5,7 +5,7 @@
   "inherits": [
     "java.util.concurrent.AbstractExecutorService"
   ],
-  "class_type": 0,
+  "class_type": 2,
   "methods": [
     {
       "name": "allowCoreThreadTimeOut",
