@@ -417,7 +417,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         if symbol == "_when_":
             # For certain cases, we the condition expressions in certain
             # expressions can only be constants, not compound expressions.
-            branch_params = [p for p in parameters if "." in p.name]
+            branch_params = [p for p in parameters if p.name == "Y"]
             cond_params = [p for p in parameters if p not in branch_params]
             branch_args = self._generate_args(branch_params,
                                               [[p] for p in branch_params],
