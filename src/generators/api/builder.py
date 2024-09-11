@@ -8,7 +8,7 @@ from typing import List, Dict, Set
 import networkx as nx
 
 from src.config import cfg
-from src.ir import BUILTIN_FACTORIES, types as tp, kotlin_types as kt
+from src.ir import BUILTIN_FACTORIES, types as tp, kotlin_types as kt, ast
 from src.ir.builtins import BuiltinFactory
 from src.generators.api.api_graph import (APIGraph, IN, OUT, APINode, Method,
                                           Constructor, Field, Parameter)
@@ -156,6 +156,7 @@ class APIGraphBuilder(ABC):
     def _process_class(self, class_api: dict):
         if class_api.get("access_mod", PUBLIC) == PROTECTED:
             return
+        self.is_primary = True
         self.api_language = class_api.get("language", self.api_language)
         self.class_name = class_api["name"]
         self.class_api = class_api
@@ -424,6 +425,11 @@ class APIGraphBuilder(ABC):
         metadata.update(method_api.get("other_metadata", {}))
 
         if is_constructor:
+            metadata["primary"] = self.is_primary
+            if self.is_primary:
+                self.is_primary = False
+            metadata["abstract"] = \
+                self.class_api["class_type"] == ast.ClassDeclaration.ABSTRACT
             method_node = Constructor(receiver_name, parameters,
                                       metadata)
         elif is_static:
