@@ -410,15 +410,35 @@ class APIDeclarationGenerator(APIClientGenerator):
             metadata=m.metadata
         )
 
+    def _generate_special_methods_args(self, m: ag.Method, depth: int,
+                                       type_var_map: dict):
+        parameters = [param.t for param in m.parameters]
+        symbol = m.metadata["symbol"]
+        if symbol == "_when_":
+            # For certain cases, we the condition expressions in certain
+            # expressions can only be constants, not compound expressions.
+            branch_params = [p for p in parameters if "." in p.name]
+            cond_params = [p for p in parameters if p not in branch_params]
+            branch_args = self._generate_args(branch_params,
+                                              [[p] for p in branch_params],
+                                              depth + 1, type_var_map)
+            cond_args = self._generate_args(cond_params,
+                                            [[p] for p in cond_params],
+                                            cfg.limits.max_depth + 1,
+                                            type_var_map)
+            args = branch_args + cond_args
+        else:
+            args = self._generate_args(parameters,
+                                       [[p] for p in parameters],
+                                       depth + 1, type_var_map)
+        return args
+
     def generate_expr_from_special_method(self, m: ag.Method,
                                           depth: int,
                                           type_var_map: dict) -> ast.Expr:
-        parameters = [param.t for param in m.parameters]
-        args = self._generate_args(parameters,
-                                   [[p] for p in parameters],
-                                   depth + 1, type_var_map)
         catch_exceptions = CATCH_EXCEPTIONS.get(
             self.bt_factory.get_language(), [])
+        args = self._generate_special_methods_args(m, depth, type_var_map)
         converters = {
             "!": lambda args: ast.UnaryExpr(args[0].expr,
                                             ast.Operator("!"),
