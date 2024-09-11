@@ -16,7 +16,9 @@ from src.compilers import compile_program
 from src.generators.api import builder, api_graph as ag, matcher as match
 from src.generators.api.api_generator import APIClientGenerator
 from src.generators.api.special_methods import (
-    GROOVY_SPECIAL_METHODS, KOTLIN_SPECIAL_METHODS)
+    GROOVY_SPECIAL_METHODS, KOTLIN_SPECIAL_METHODS,
+    SCALA_SPECIAL_METHODS, JAVA_SPECIAL_METHODS
+)
 from src.modules.logging import log, log_onerror, log_error
 
 
@@ -31,6 +33,24 @@ CATCH_EXCEPTIONS = {
         "java.lang.ArrayStoreException",
     ],
     "groovy": [
+        "java.lang.Exception",
+        "java.io.IOException",
+        "java.lang.NumberFormatException",
+        "java.lang.IllegalStateException",
+        "java.lang.AssertionError",
+        "java.lang.ClassCastException",
+        "java.lang.ArrayStoreException",
+    ],
+    "scala": [
+        "java.lang.Exception",
+        "java.io.IOException",
+        "java.lang.NumberFormatException",
+        "java.lang.IllegalStateException",
+        "java.lang.AssertionError",
+        "java.lang.ClassCastException",
+        "java.lang.ArrayStoreException",
+    ],
+    "java": [
         "java.lang.Exception",
         "java.io.IOException",
         "java.lang.NumberFormatException",
@@ -200,6 +220,8 @@ class CFGGenerator(APIClientGenerator):
     SPECIAL_METHODS = {
         "groovy": GROOVY_SPECIAL_METHODS,
         "kotlin": KOTLIN_SPECIAL_METHODS,
+        "scala": SCALA_SPECIAL_METHODS,
+        "java": JAVA_SPECIAL_METHODS,
     }
 
     def __init__(self, api_docs, options={}, language=None,
@@ -321,7 +343,7 @@ class CFGGenerator(APIClientGenerator):
                                           replace_fqn)
         keys = forked_spec.keys()
         for elem in included_libs:
-            if elem not in keys:
+            if elem not in keys and elem in self.api_docs:
                 forked_spec[elem] = self.api_docs[elem]
         self._add_missing_api_specs(forked_spec)
         return forked_spec
@@ -501,13 +523,12 @@ class CFGGenerator(APIClientGenerator):
             if len(children_blocks) == nu_edges
             else len(children_blocks)
         )
-        t = utils.random.choice([t for t in self.api_graph.get_reg_types()
-                                 if not t.is_type_constructor()])
+        cond_type = self.bt_factory.get_integer_type()
         return ast.MultiConditional(
-            [self.generate_expr(t) for _ in range(nu_cases)],
+            [self.generate_expr(cond_type) for _ in range(nu_cases)],
             children_blocks,
             self.bt_factory.get_void_type(),
-            self.generate_expr(t),
+            self.generate_expr(cond_type),
             is_expression=False
         )
 
