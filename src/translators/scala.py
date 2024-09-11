@@ -129,18 +129,20 @@ class ScalaTranslator(BaseTranslator):
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        res = "{\n"
-        res += ";\n".join(children_res[:-1])
+        res = (self.get_ident(old_ident=max(self.ident - 2, 0)) + "{"
+               if not is_lambda else "")
+        res += "\n" + "\n".join(children_res[:-1])
         if children_res[:-1]:
-            res += ";\n"
+            res += "\n"
+        body = ""
         if children_res:
-            res += " " * self.ident + \
-                   children_res[-1] + ";\n" + \
-                   " " * self.ident
+            body = children_res[-1]
+        if children_res:
+            res += body + "\n"
         else:
-            res += " " * self.ident + ";\n" + \
-                   " " * self.ident
-        res += "}"
+            res += "\n"
+        res += (self.get_ident(old_ident=max(self.ident - 2, 0)) + "}"
+                if not is_lambda else "")
         self.is_unit = is_unit
         self.is_lambda = is_lambda
         self._children_res.append(res)
@@ -259,8 +261,6 @@ class ScalaTranslator(BaseTranslator):
                     con for con in node.constructors
                     if con.metadata.get("primary", False)
                 ]
-                if not primary_cons:
-                    import pdb; pdb.set_trace()
                 primary_con = primary_cons[0]
 
             # Find the super call (if any) inside the primary constructor
@@ -632,6 +632,26 @@ class ScalaTranslator(BaseTranslator):
         self._children_res.append(" " * self.ident + node.name)
 
     @append_to
+    def visit_unary_expr(self, node):
+        old_ident = self.ident
+        self.ident = 0
+        children = node.children()
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        if node.is_prefix:
+            res = "{ident}{operator}({expr})"
+        else:
+            res = "{ident}({expr}){operator}"
+        res = res.format(
+            ident=self.get_ident(old_ident=old_ident),
+            operator=node.operator,
+            expr=children_res[0]
+        )
+        self.ident = old_ident
+        self._children_res.append(res)
+
+    @append_to
     def visit_binary_expr(self, node):
         old_ident = self.ident
         self.ident = 0
@@ -684,18 +704,97 @@ class ScalaTranslator(BaseTranslator):
 
     @append_to
     def visit_conditional(self, node):
+        prev_namespace = self._namespace
+        children = node.children()
+        children[0].accept(self)  # cond
         old_ident = self.ident
         self.ident += 2
-        children = node.children()
-        for c in children:
-            c.accept(self)
+        self._namespace = prev_namespace + ('true_block',)
+        children[1].accept(self)  # true branch
+        self._namespace = prev_namespace + ('false_block',)
+        children[2].accept(self)  # false branch
+        self._namespace = prev_namespace
         children_res = self.pop_children_res(children)
-        res = "{ident}(if ({cond}) then\n{true}\n{ident}else\n{false})".format(
-            ident=" " * old_ident,
-            cond=children_res[0][self.ident:],
-            true=children_res[1],
-            false=children_res[2]
+        if node.is_expression:
+            res = "{ident}(if ({cond}) then\n{body}\n{ident}else\n{else_body})".format(
+                ident=self.get_ident(old_ident=old_ident),
+                cond=children_res[0].lstrip(),
+                body=children_res[1],
+                else_body=children_res[2]
+            )
+        else:
+            res = "{ident}if (({if_condition})) then\n{body}\n{ident}else\n{else_body}".format(
+                ident=self.get_ident(old_ident=old_ident),
+                if_condition=children_res[0].lstrip(),
+                body=children_res[1],
+                else_body=children_res[2]
+            )
+        self.ident = old_ident
+        self._children_res.append(res)
+
+    @append_to
+    def visit_multiconditional(self, node):
+        prev_namespace = self._namespace
+        children = node.children()
+        i = 0
+        if node.root_cond is not None:
+            children[i].accept(self)  # cond
+            i += 1
+
+        old_ident = self.ident
+        self.ident += 2
+        for j in range(len(node.conditions)):
+            children[i + j].accept(self)  # conditions
+        i = i + len(node.conditions)
+        for j in range(len(node.branches)):
+            self._namespace = prev_namespace + (f'case_block{j}',)
+            children[i + j].accept(self)  # branches
+
+        self._namespace = prev_namespace
+        children_res = self.pop_children_res(children)
+        root_cond_res = None
+        i = 0
+        if node.root_cond is not None:
+            root_cond_res = children_res[0]
+            i += 1
+        condition_res = children_res[i:len(node.conditions) + i]
+        i = i + len(node.conditions)
+        branch_res = children_res[i:]
+        assert len(condition_res) == len(branch_res) or \
+            len(condition_res) == len(branch_res) - 1
+
+        open_paren, close_paren = ("(", ")") if node.is_expression else ("",
+                                                                         "")
+        prefix = (
+            "match {\n"
+            if node.root_cond is None
+            else "({expr}) match {{\n".format(expr=root_cond_res.lstrip())
         )
+        case_exprs_str = []
+        for i in range(len(node.branches)):
+            if i < len(node.conditions):
+                case_exprs_str.append(
+                    "{ident}case {case_expr} => {body}".format(
+                        ident=self.get_ident(),
+                        case_expr=condition_res[i].lstrip().strip(),
+                        body=branch_res[i].lstrip()
+                    )
+                )
+            else:
+                case_exprs_str.append(
+                    "{ident}case _ => {body}".format(
+                        ident=self.get_ident(),
+                        body=branch_res[i].lstrip()
+                    )
+                )
+
+        res = "{ident}{op}{prefix}{body}\n{ident}".format(
+            ident=self.get_ident(old_ident=old_ident),
+            op=open_paren,
+            prefix=prefix,
+            body="\n".join(case_exprs_str)
+        )
+        res += "}" + close_paren
         self.ident = old_ident
         self._children_res.append(res)
 
@@ -708,9 +807,9 @@ class ScalaTranslator(BaseTranslator):
             c.accept(self)
         children_res = self.pop_children_res(children)
         res = "{ident}{expr}.isInstanceOf[{t}]".format(
-            ident=" " * old_ident,
+            ident=self.get_ident(old_ident=old_ident),
             expr=children_res[0],
-            t=self.get_type_name(node.rexpr))
+            t=self.get_type_name(node.etype))
         self.ident = old_ident
         self._children_res.append(res)
 
@@ -885,6 +984,32 @@ class ScalaTranslator(BaseTranslator):
         self.ident = old_ident
         self._cast_integers = prev
         self._children_res.append(res)
+
+    @append_to
+    def visit_trycatch(self, node):
+        prev_namespace = self._namespace
+        children = node.children()
+        old_ident = self.ident
+        self.ident += 2
+        children[0].accept(self)  # try
+        self._namespace = prev_namespace + ('try_block',)
+        for i, k in enumerate(node.catch_blocks):
+            self._namespace = prev_namespace + (f"catch_{k}_block",)
+            children[i + 1].accept(self)
+        children_res = self.pop_children_res(children)
+        ident = self.get_ident(old_ident=old_ident)
+        catch_bodies = [
+            f"{ident}case (e: {k}) => \n{children_res[i + 1]}"
+            for i, k in enumerate(node.catch_blocks.keys())
+        ]
+        catch_bodies_str = "\n".join(catch_bodies)
+        catch_bodies_str = f"{ident}catch {{\n{catch_bodies_str}\n{ident}}}"
+
+        res = f"{ident}(try\n{children_res[0]}\n{catch_bodies_str})"
+        self.ident = old_ident
+        self._namespace = prev_namespace
+        self._children_res.append(res)
+        return res
 
     @append_to
     def visit_return(self, node):

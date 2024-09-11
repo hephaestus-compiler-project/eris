@@ -83,19 +83,22 @@ def create_try_methods(nu_methods=3):
     return methods
 
 
-def create_when_methods(nu_methods=5):
+def create_when_methods(nu_methods=5, cond_type=None):
+    cond_type = cond_type or "X"
+    type_params = ["X", "Y"] if cond_type == "X" else ["Y"]
+
     method_obj = {
         "name": "_when_",
         "parameters": [
-            "X",
-            "X",
-            "X",
+            cond_type,
+            cond_type,
+            cond_type,
             "Y",
             "Y",
             "Y",
         ],
         "return_type": "Y",
-        "type_parameters": ["X", "Y"],
+        "type_parameters": type_params,
         "is_static": True,
         "is_constructor": False,
         "access_mod": "public",
@@ -109,7 +112,8 @@ def create_when_methods(nu_methods=5):
     methods.append(method_obj)
     nu_methods -= 1
     for i in range(nu_methods):
-        extra_parameters = ["X", "X", "X"] + (["X"] * (i + 1))
+        extra_parameters = [cond_type, cond_type, cond_type] + \
+            ([cond_type] * (i + 1))
         case_parameters = ["Y", "Y", "Y"] + (["Y"] * (i + 1))
         copied_obj = deepcopy(method_obj)
         copied_obj["parameters"] = extra_parameters + case_parameters
@@ -573,4 +577,150 @@ GROOVY_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
 
 
 JAVA_SPECIAL_METHODS = {}
-SCALA_SPECIAL_METHODS = {}
+SCALA_SPECIAL_METHODS = {
+    "builtin.ops": {
+        "name": "builtin.ops",
+        "is_class": False,
+        "language": "scala",
+        "type_parameters": [],
+        "inherits": [],
+        "implements": [],
+        "fields": [],
+        "methods": [
+            {
+                "name": "!",
+                "parameters": [
+                    "scala.Boolean",
+                ],
+                "return_type": "scala.Boolean",
+                "type_parameters": [],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "!",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "&&",
+                "parameters": [
+                    "scala.Boolean",
+                    "scala.Boolean"
+                ],
+                "return_type": "scala.Boolean",
+                "type_parameters": [],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "&&",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "||",
+                "parameters": [
+                    "scala.Boolean",
+                    "scala.Boolean"
+                ],
+                "return_type": "scala.Boolean",
+                "type_parameters": [],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "||",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "==",
+                "parameters": [
+                    "T",
+                    "T"
+                ],
+                "return_type": "scala.Boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "==",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "!=",
+                "parameters": [
+                    "T",
+                    "T"
+                ],
+                "return_type": "scala.Boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "!=",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "_if_",
+                "parameters": [
+                    "scala.Boolean",
+                    "T",
+                    "T"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "_if_",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "_try_",
+                "parameters": [
+                    "T",
+                    "T"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "_try_",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "_is_",
+                "parameters": [
+                    "T"
+                ],
+                "return_type": "scala.Boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "_is_",
+                    "is_special": True,
+                }
+            },
+        ]
+    }
+
+}
+SCALA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+    create_try_methods()
+)
+SCALA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+    create_when_methods(cond_type="scala.Int")
+)
