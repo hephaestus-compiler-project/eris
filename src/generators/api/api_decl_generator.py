@@ -422,10 +422,13 @@ class APIDeclarationGenerator(APIClientGenerator):
             branch_args = self._generate_args(branch_params,
                                               [[p] for p in branch_params],
                                               depth + 1, type_var_map)
+            prev_state = self.block_variables
+            self.block_variables = True
             cond_args = self._generate_args(cond_params,
                                             [[p] for p in cond_params],
                                             cfg.limits.max_depth + 1,
                                             type_var_map)
+            self.block_variables = prev_state
             args = branch_args + cond_args
         else:
             args = self._generate_args(parameters,
