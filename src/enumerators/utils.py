@@ -88,7 +88,6 @@ class IncompatibleTyping():
         string = self.bt_factory.get_string_type()
         void = self.bt_factory.get_void_type()
 
-        # TODO for the rest of the languages
         excluded_types = {
             "groovy": {
                 byte_.name: bytes_,
@@ -98,6 +97,30 @@ class IncompatibleTyping():
                 float_.name: bytes_ | shorts | ints | longs | floats,
                 double_.name: bytes_ | shorts | ints | longs | floats | doubles,
                 char_.name: chars,
+                bool_.name: types,
+                string.name: types,
+                void.name: types,
+            },
+            "java": {
+                byte_.name: bytes_,
+                short_.name: bytes_ | shorts,
+                int_.name: bytes_ | shorts | ints,
+                long_.name: bytes_ | shorts | ints | longs,
+                float_.name: bytes_ | shorts | ints | longs | floats,
+                double_.name: bytes_ | shorts | ints | longs | floats | doubles,
+                char_.name: chars,
+                bool_.name: types,
+                string.name: types,
+                void.name: types,
+            },
+            "scala": {
+                byte_.name: bytes_,
+                short_.name: bytes_ | shorts,
+                int_.name: bytes_ | shorts | ints,
+                long_.name: bytes_ | shorts | ints | longs,
+                float_.name: bytes_ | shorts | ints | longs | floats,
+                double_.name: bytes_ | shorts | ints | longs | floats | doubles,
+                char_.name: chars | ints | longs | floats | doubles,
                 bool_.name: types,
                 string.name: types,
                 void.name: types,
