@@ -118,7 +118,7 @@ class KotlinTranslator(BaseTranslator):
         if t.is_wildcard():
             t = t.get_bound_rec()
             if t is None:
-                return kt.Any
+                t = kt.Any
 
             return self.get_type_name(t)
         if isinstance(t, kt.RawType):

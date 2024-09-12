@@ -87,7 +87,7 @@ class ScalaTranslator(BaseTranslator):
         if t.is_wildcard():
             t = t.get_bound_rec()
             if t is None:
-                return sc.Any
+                t = sc.Any
             return self.get_type_name(t)
         if isinstance(t, sc.RawType):
             converted_t = t.t_constructor.new(
