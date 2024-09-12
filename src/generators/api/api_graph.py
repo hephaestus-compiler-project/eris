@@ -168,8 +168,7 @@ class APIGraph():
             for t in self.subtyping_graph.nodes()
             if (
                 not (t.is_parameterized() and t.has_type_variables()) and
-                not (t.name == self.bt_factory.get_void_type().name and
-                     getattr(t, "primive", False))
+                not (t.name == self.bt_factory.get_void_type().name)
             )
         ]
         self.types.append(self.bt_factory.get_array_type())
