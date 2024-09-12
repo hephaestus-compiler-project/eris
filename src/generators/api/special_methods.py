@@ -576,7 +576,169 @@ GROOVY_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
 )
 
 
-JAVA_SPECIAL_METHODS = {}
+JAVA_SPECIAL_METHODS = {
+    "builtin.ops": {
+        "name": "builtin.ops",
+        "is_class": False,
+        "language": "java",
+        "type_parameters": [],
+        "inherits": [],
+        "implements": [],
+        "fields": [],
+        "methods": [
+            {
+                "name": "!",
+                "parameters": [
+                    "boolean",
+                ],
+                "return_type": "boolean",
+                "type_parameters": [],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "!",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "&&",
+                "parameters": [
+                    "boolean",
+                    "boolean"
+                ],
+                "return_type": "boolean",
+                "type_parameters": [],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "&&",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "||",
+                "parameters": [
+                    "boolean",
+                    "boolean"
+                ],
+                "return_type": "boolean",
+                "type_parameters": [],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "||",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "==",
+                "parameters": [
+                    "T",
+                    "T"
+                ],
+                "return_type": "boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "==",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "!=",
+                "parameters": [
+                    "T",
+                    "T"
+                ],
+                "return_type": "boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "!=",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "_if_",
+                "parameters": [
+                    "boolean",
+                    "T",
+                    "T"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "_if_",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "[]",
+                "parameters": [
+                    "T[]",
+                    "int"
+                ],
+                "return_type": "T",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "[]",
+                    "is_special": True,
+                }
+            },
+            {
+                "name": "_is_",
+                "parameters": [
+                    "T"
+                ],
+                "return_type": "boolean",
+                "type_parameters": ["T"],
+                "is_static": True,
+                "is_constructor": False,
+                "access_mod": "public",
+                "other_metadata": {
+                    "symbol": "_is_",
+                    "is_special": True,
+                }
+            },
+        ]
+    }
+
+}
+JAVA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+    create_comparison_methods([
+        "char",
+        "byte",
+        "short",
+        "int",
+        "long",
+        "double",
+        "float"
+    ])
+)
+JAVA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+    create_arithmetic_methods([
+        "byte",
+        "short",
+        "int",
+    ], "int")
+)
+JAVA_SPECIAL_METHODS["builtin.ops"]["methods"].extend(
+    create_when_methods(cond_type="int")
+)
+
 SCALA_SPECIAL_METHODS = {
     "builtin.ops": {
         "name": "builtin.ops",

@@ -55,6 +55,30 @@ def append_to(visit):
     return inner
 
 
+def cond_statement(expr) -> bool:
+    return (
+        isinstance(expr, (ast.Conditional, ast.MultiConditional)) and
+        not expr.is_expression
+    )
+
+
+def get_constant(t: tp.Type) -> str:
+    is_primitive = getattr(t, "primitive", False)
+    ret_value = ""
+    match is_primitive:
+        case True:
+            match t.name:
+                case jt.Char.name:
+                    ret_value = "'c'"
+                case jt.Boolean.name:
+                    ret_value = "false"
+                case _:
+                    ret_value = "1"
+        case False:
+            ret_value = "null"
+    return ret_value
+
+
 class JavaTranslator(BaseTranslator):
 
     filename = "Main.java"
@@ -292,6 +316,7 @@ class JavaTranslator(BaseTranslator):
 
     @append_to
     def visit_block(self, node):
+
         children = node.children()
         is_func_non_void_block = self.is_func_non_void_block
         is_nested_func_block = self.is_nested_func_block
@@ -310,6 +335,19 @@ class JavaTranslator(BaseTranslator):
         children_res = self.pop_children_res(children)
         self.is_func_non_void_block = is_func_non_void_block
         self.is_nested_func_block = is_nested_func_block
+        if (children and
+                not isinstance(children[-1],
+                               (ast.VariableDeclaration,
+                                ast.FunctionCall,
+                                ast.Assignment,
+                                ast.Return,
+                                ast.TryCatch)) and
+                not cond_statement(children[-1])):
+            var_prefix = 'Object'
+            sugar = "{p} x_{x} = ".format(p=var_prefix, x=self._x_counter)
+            children_res[-1] = f"{sugar}{children_res[-1]};"
+            self._x_counter += 1
+
         # A block could be the body of a function or the body of an if statement
         if len(children_res) == 0:  # empty block
             res = "{{{old_ident}}}".format(
@@ -334,21 +372,7 @@ class JavaTranslator(BaseTranslator):
                 stmts="\n".join(children_res),
                 old_ident=self.get_ident(extra=-2)
             )
-        # if not self._parent_is_function():
-        #     etype = jt.Void
-        #     if len(children) > 0:
-        #         etype = tu.get_type_hint(children[-1],
-        #                                  self.context,
-        #                                  self._namespace,
-        #                                  jt.JavaBuiltinFactory(),
-        #                                  self.types,
-        #                                  smart_casts=self.smart_casts)
-        #     etype_str = self.get_type_name(etype, get_boxed_void=True)
-        #     etype_str = PRIMITIVES_TO_BOXED.get(etype_str, etype_str)
-        #     res = "((Function0<{etype}>) (() -> {res})).apply();".format(
-        #         etype=etype_str,
-        #         res=res
-        #     )
+
         return res
 
     @append_to
@@ -583,11 +607,15 @@ class JavaTranslator(BaseTranslator):
     @append_to
     def visit_field_decl(self, node):
         modifiers = get_modifier_list(node.metadata)
-        return "{final}{modifiers}{field_type} {name};".format(
+        rexpr = ""
+        if "static" in modifiers:
+            rexpr = f" = {get_constant(node.get_type())}"
+        return "{final}{modifiers}{field_type} {name}{rexpr};".format(
             final="final " if node.is_final else "",
             modifiers=" ".join(modifiers) + " " if modifiers else "",
             field_type=self.get_type_name(node.field_type),
-            name=node.name
+            name=node.name,
+            rexpr=rexpr
         )
 
     @append_to
@@ -674,6 +702,18 @@ class JavaTranslator(BaseTranslator):
                 if node.get_type() != jt.Void:
                     body_res = ut.add_string_at(
                         body_res, "return ", ut.leading_spaces(body_res))
+                is_cond_expr = \
+                    isinstance(node.body, (ast.UnaryExpr, ast.BinaryExpr)) or (
+                        isinstance(node.body,
+                                   (ast.Conditional, ast.MultiConditional)) and
+                        node.body.is_expression)
+                if node.get_type() == jt.Void and is_cond_expr:
+                    var_prefix = 'Object'
+                    sugar = "{ident}{p} x_{x} = ".format(
+                        ident=self.get_ident(), p=var_prefix,
+                        x=self._x_counter)
+                    body_res = f"{sugar}{body_res};"
+                    self._x_counter += 1
                 body = "{{\n{body};\n{ident}}}".format(
                     body=body_res,
                     ident=self.get_ident(old_ident=old_ident)
@@ -681,18 +721,7 @@ class JavaTranslator(BaseTranslator):
             else:
                 body = body_res
         new_ident = self.get_ident(old_ident=self.ident - 2)
-        is_primitive = getattr(node.get_type(), "primitive", False)
-        match is_primitive:
-            case True:
-                match node.get_type().name:
-                    case jt.Char.name:
-                        ret_value = "'c'"
-                    case jt.Boolean.name:
-                        ret_value = "false"
-                    case _:
-                        ret_value = "1"
-            case False:
-                ret_value = "null"
+        ret_value = get_constant(node.get_type())
         return_catch = (
             "" if node.get_type() == jt.Void
             else f"return {ret_value};"
@@ -875,21 +904,21 @@ class JavaTranslator(BaseTranslator):
 
     @append_to
     def visit_array_expr(self, node):
+        def is_only_array_t(t):
+            while isinstance(t, tp.ParameterizedType):
+                if t.t_constructor.name != jt.Array.name:
+                    return False
+                t = t.type_args[0]
+
+            return True
+
         has_type_var = node.array_type.type_args[0].has_type_variables()
         if not node.length:
-            new_stmt = "new {etype}".format(
-                etype=self.get_type_name(node.array_type.type_args[0],
-                                         for_array=True)
-            )
-            if has_type_var:
-                new_stmt = "({etype}[]) new Object".format(
-                    etype=self.get_type_name(node.array_type.type_args[0],
-                                             for_array=True)
-                )
+            etype = self.get_type_name(node.array_type)
 
-            return "{ident}{new}[0]{semicolon}".format(
+            return "{ident}({etype}) null{semicolon}".format(
                 ident=self.get_ident(),
-                new=new_stmt,
+                etype=etype,
                 semicolon=";" if self._parent_is_block() else ""
             )
         old_ident = self.ident
@@ -901,7 +930,7 @@ class JavaTranslator(BaseTranslator):
             c.accept(self)
         children_res = self.pop_children_res(children)
 
-        if has_type_var:
+        if has_type_var or not is_only_array_t(node.array_type):
             new_stmt = "({etype}) new Object[]".format(
                 etype=self.get_type_name(node.array_type)
             )
@@ -937,12 +966,48 @@ class JavaTranslator(BaseTranslator):
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        res = "{ident}({left} {operator} {right}){semicolon}".format(
+        if not node.operator.wrap:
+            res = "{ident}({left} {operator} {right})".format(
+                ident=self.get_ident(old_ident=old_ident),
+                left=children_res[0],
+                operator=node.operator,
+                right=children_res[1]
+            )
+        else:
+            is_array = isinstance(node.lexpr, ast.ArrayExpr)
+            paren1, paren2 = (
+                ("(", ")")
+                if isinstance(node.lexpr, ast.BottomConstant) or is_array
+                else ("", "")
+            )
+            res = "{ident}{p1}{left}{p2}{operator1}{right}{operator2}".format(
+                ident=self.get_ident(old_ident=old_ident),
+                left=children_res[0],
+                p1=paren1,
+                p2=paren2,
+                operator1=node.operator.name[:-1],
+                operator2=node.operator.name[-1],
+                right=children_res[1]
+            )
+        self.ident = old_ident
+        return res
+
+    @append_to
+    def visit_unary_expr(self, node):
+        old_ident = self.ident
+        self.ident = 0
+        children = node.children()
+        for c in children:
+            c.accept(self)
+        children_res = self.pop_children_res(children)
+        if node.is_prefix:
+            res = "{ident}{operator}({expr})"
+        else:
+            res = "{ident}({expr}){operator}"
+        res = res.format(
             ident=self.get_ident(old_ident=old_ident),
-            left=children_res[0],
             operator=node.operator,
-            right=children_res[1],
-            semicolon=";" if self._parent_is_block() else ""
+            expr=children_res[0]
         )
         self.ident = old_ident
         return res
@@ -1058,19 +1123,23 @@ class JavaTranslator(BaseTranslator):
         )
         case_exprs_str = []
         for i in range(len(node.branches)):
+            case_body = branch_res[i].lstrip()
+            if isinstance(node.branches[i], ast.Expr) and not isinstance(
+                    node.branches[i], ast.Return):
+                case_body = f"{case_body};"
             if i < len(node.conditions):
                 case_exprs_str.append(
                     "{ident}case {case_expr} -> {body}".format(
                         ident=self.get_ident(),
                         case_expr=condition_res[i].lstrip().strip(),
-                        body=branch_res[i].lstrip()
+                        body=case_body
                     )
                 )
             else:
                 case_exprs_str.append(
                     "{ident}default -> {body}".format(
                         ident=self.get_ident(),
-                        body=branch_res[i].lstrip()
+                        body=case_body
                     )
                 )
         open_paren, close_paren = ("(", ")") if node.is_expression else ("",
@@ -1091,32 +1160,15 @@ class JavaTranslator(BaseTranslator):
     def visit_is(self, node):
         old_ident = self.ident
         self.ident = 0
-
-        is_variable = False
-        if isinstance(node.lexpr, ast.Variable):
-            is_variable = True
-
         children = node.children()
-        children[0].accept(self)
-        if is_variable:
-            self._visit_is_stack.append(node.lexpr.name)
-        for c in children[1:]:
+        for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-
-        not_1 = "!(" if node.operator.is_not else ""
-        not_2 = ")" if node.operator.is_not else ""
-        new_var = " {name}{suffix}".format(
-                name=node.lexpr.name,
-                suffix=self._visit_is_stack.count(node.lexpr.name) * "_is"
-            ) if is_variable else ""
-        res = "{ident}{not_1}{expr} instanceof {type_to_check}{new}{not_2}".format(
+        res = "{ident}{expr} {is_lit} {type_to_check}".format(
             ident=self.get_ident(old_ident=old_ident),
-            not_1=not_1,
             expr=children_res[0],
-            type_to_check=node.rexpr.get_name(),
-            new=new_var,
-            not_2=not_2)
+            is_lit="!instanceof" if node.operator.is_not else "instanceof",
+            type_to_check=self.get_type_name(node.etype))
         self.ident = old_ident
         return res
 
