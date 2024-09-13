@@ -1040,6 +1040,20 @@ class BottomConstant(Constant):
         return True
 
 
+class NullConstant(Constant):
+    def __init__(self, t: types.Type):
+        super().__init__("__NULL_")
+        self.t = t
+
+    def is_equal(self, other):
+        if isinstance(other, NullConstant):
+            return self.t == other.t
+        return False
+
+    def is_bottom(self):
+        return False
+
+
 class IntegerConstant(Constant):
     # TODO: Support Hex Integer literals, binary integer literals?
     def __init__(self, literal: int, integer_type):

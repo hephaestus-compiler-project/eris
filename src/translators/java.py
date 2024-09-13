@@ -400,6 +400,10 @@ class JavaTranslator(BaseTranslator):
         )
 
     @append_to
+    def visit_null_constant(self, node):
+        return f"{self.get_ident()}null"
+
+    @append_to
     def visit_super_instantiation(self, node):
         return self.get_type_name(node.class_type)
 

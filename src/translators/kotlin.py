@@ -612,6 +612,11 @@ class KotlinTranslator(BaseTranslator):
         self._children_res.append((self.ident * " ") + bottom)
 
     @append_to
+    def visit_null_constant(self, node):
+        res = f"{self.get_ident()}null"
+        self._children_res.append(res)
+
+    @append_to
     def visit_integer_constant(self, node):
         if not self._cast_integers:
             self._children_res.append(" " * self.ident + str(node.literal))

@@ -670,6 +670,10 @@ class GroovyTranslator(BaseTranslator):
         )
 
     @append_to
+    def visit_null_constant(self, node):
+        return f"{self.get_ident()}null"
+
+    @append_to
     def visit_integer_constant(self, node):
         if not self._cast_number and (
                 not self.always_cast_numbers and
