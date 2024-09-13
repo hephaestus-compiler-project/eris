@@ -44,6 +44,7 @@ class APIGraphBuilder(ABC):
         self.subtyping_graph.add_node(self.bt_factory.get_float_type())
         self.subtyping_graph.add_node(self.bt_factory.get_double_type())
         self.subtyping_graph.add_node(self.bt_factory.get_string_type())
+        self.subtyping_graph.add_node(self.bt_factory.get_array_type())
 
         self.functional_types: Dict[tp.Type, tp.ParameterizedType] = {}
         self.class_nodes: dict[str, tp.Type] = {}
@@ -603,6 +604,7 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
 
     def __init__(self, target_language="kotlin", **kwargs):
         super().__init__(target_language, **kwargs)
+        self.subtyping_graph.add_node(tp.NullableType())
 
     def get_type_parser(self, **kwargs):
         parsers = {
@@ -712,6 +714,7 @@ class ScalaAPIGraphBuilder(APIGraphBuilder):
     def __init__(self, target_language="scala", **kwargs):
         super().__init__(target_language, **kwargs)
         self.subtyping_graph.add_node(self.bt_factory.get_anyref_type())
+        self.subtyping_graph.add_node(tp.NullableType())
 
     def get_type_parser(self):
         parsers = {
