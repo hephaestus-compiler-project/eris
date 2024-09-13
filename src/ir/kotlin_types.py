@@ -252,24 +252,6 @@ class SpecializedArrayType(tp.TypeConstructor, AnyType):
         self.supertypes.append(AnyType())
 
 
-class NullableType(tp.TypeConstructor):
-    def __init__(self, name="Nullable"):
-        super().__init__(name, [tp.TypeParameter("T", variance=tp.Covariant)])
-        self.supertypes = []
-
-    def new(self, type_args):
-        def is_nullable(t):
-            return t.is_parameterized() \
-                and isinstance(t.t_constructor, NullableType)
-
-        new_type_args = []
-        for ta in type_args:
-            while is_nullable(ta):
-                ta = ta.type_args[0]
-            new_type_args.append(ta)
-        return super().new(new_type_args)
-
-
 class FunctionType(tp.TypeConstructor, AnyType):
     is_native = True
 

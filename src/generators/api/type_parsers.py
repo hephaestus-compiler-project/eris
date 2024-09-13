@@ -479,7 +479,7 @@ class KotlinTypeParser(TypeParser):
             str_t = str_t[:-1]
             if str_t.startswith("(("):
                 str_t = str_t[1:-1]
-            return kt.NullableType().new([self.parse_type(str_t)])
+            return tp.NullableType().new([self.parse_type(str_t)])
         if str_t.startswith("("):
             str_t = str_t[1:]
         if str_t.endswith(")"):

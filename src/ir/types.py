@@ -223,7 +223,7 @@ class SimpleClassifier(Classifier):
 
     def is_subtype(self, other: Type) -> bool:
         if other.is_parameterized() and \
-                isinstance(other.t_constructor, kt.NullableType):
+                isinstance(other.t_constructor, NullableType):
             other_t = other.type_args[0]
             return self.is_subtype(other_t)
         supertypes = self.get_supertypes()
@@ -870,3 +870,21 @@ class NothingType(Classifier):
 
 
 Nothing = NothingType()
+
+
+class NullableType(TypeConstructor):
+    def __init__(self, name="Nullable"):
+        super().__init__(name, [TypeParameter("T", variance=Covariant)])
+        self.supertypes = []
+
+    def new(self, type_args):
+        def is_nullable(t):
+            return t.is_parameterized() \
+                and isinstance(t.t_constructor, NullableType)
+
+        new_type_args = []
+        for ta in type_args:
+            while is_nullable(ta):
+                ta = ta.type_args[0]
+            new_type_args.append(ta)
+        return super().new(new_type_args)

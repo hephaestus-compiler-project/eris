@@ -13,6 +13,7 @@ DOCS1 = {
         "name": "java.Foo",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [{
             "name": "makeList",
@@ -32,6 +33,7 @@ DOCS1 = {
         "name": "java.List",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [{
             "name": "toSet",
@@ -51,6 +53,7 @@ DOCS1 = {
         "name": "java.Set",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [{
             "name": "add",
@@ -74,6 +77,7 @@ DOCS2 = {
         "name": "java.Foo",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [{
             "name": "makeList",
@@ -91,6 +95,7 @@ DOCS2 = {
         "name": "java.List",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [{
             "name": "toSet",
@@ -108,6 +113,7 @@ DOCS2 = {
         "name": "java.Set",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [{
             "name": "add",
@@ -130,6 +136,7 @@ DOCS3 = {
         "name": "java.Foo",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [
             {
@@ -176,6 +183,7 @@ DOCS3 = {
         "name": "java.List",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [{
             "name": "m4",
@@ -273,7 +281,7 @@ DOCS4 = {
         "functional_interface": False,
         "implements": ["java.Producer<java.lang.String>"],
         "inherits": [],
-        "class_type": 9,
+        "class_type": 0,
         "fields": [],
         "methods": [],
         "language": "java",
@@ -286,6 +294,7 @@ DOCS5 = {
         "name": "java.Foo",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [{
             "name": "makeList",
@@ -305,6 +314,7 @@ DOCS5 = {
         "name": "java.Foo.List",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [{
             "name": "List",
@@ -329,6 +339,7 @@ DOCS6 = {
         "name": "kotlin.Foo",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [
             {
@@ -360,6 +371,7 @@ DOCS6 = {
         "name": "kotlin.List",
         "inherits": [],
         "implements": [],
+        "class_type": 0,
         "fields": [],
         "methods": [{
             "name": "m1",
@@ -374,6 +386,7 @@ DOCS6 = {
         "language": "kotlin"
     },
 }
+
 
 def filter_types(path):
     return [
@@ -482,9 +495,12 @@ def test4():
     path = filter_types(path)
     metadata = copy.copy(FUNC_METADATA)
     metadata["static"] = True
+    con_metadata = copy.copy(FUNC_METADATA)
+    con_metadata["primary"] = True
+    con_metadata["abstract"] = False
     assert path == [
         ag.Method("java.Foo.makeList", "java.Foo", [], [], metadata),
-        ag.Constructor("java.Foo.List", [], FUNC_METADATA)
+        ag.Constructor("java.Foo.List", [], con_metadata)
     ]
     assert assignments == {
         tp.TypeParameter("java.Foo.T1"): jt.String
@@ -505,9 +521,12 @@ def test4():
         b.build_class_node(docs["java.Foo.List"]),
         with_constraints={tp.TypeParameter("java.Foo.T1"): jt.Integer})
     path = filter_types(path)
+    metadata = copy.copy(FUNC_METADATA)
+    metadata["primary"] = True
+    metadata["abstract"] = False
     assert path == [
-        ag.Constructor("java.Foo", [], FUNC_METADATA),
-        ag.Constructor("java.Foo.List", [], FUNC_METADATA)
+        ag.Constructor("java.Foo", [], metadata),
+        ag.Constructor("java.Foo.List", [], metadata)
     ]
     assert assignments == {
         tp.TypeParameter("java.Foo.T1"): jt.Integer
@@ -586,9 +605,12 @@ def test_get_function_refs_of():
     refs = api_graph.get_function_refs_of(
         b.parse_type("java.Producer<java.Foo<java.lang.Integer>>")
     )
+    metadata = copy.copy(FUNC_METADATA)
+    metadata["primary"] = True
+    metadata["abstract"] = False
     assert refs == [
         (
-            ag.Constructor("java.Foo", [], FUNC_METADATA),
+            ag.Constructor("java.Foo", [], metadata),
             {
                 tp.TypeParameter("java.Foo.T1"): b.parse_type("java.lang.Integer")
             }

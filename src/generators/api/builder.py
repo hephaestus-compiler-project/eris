@@ -8,7 +8,7 @@ from typing import List, Dict, Set
 import networkx as nx
 
 from src.config import cfg
-from src.ir import BUILTIN_FACTORIES, types as tp, kotlin_types as kt, ast
+from src.ir import BUILTIN_FACTORIES, types as tp, ast
 from src.ir.builtins import BuiltinFactory
 from src.generators.api.api_graph import (APIGraph, IN, OUT, APINode, Method,
                                           Constructor, Field, Parameter)
@@ -287,7 +287,7 @@ class APIGraphBuilder(ABC):
                 # Dirty solution: upper bounds should not be nullable types.
                 if (self.api_language == "java" and
                         bound.is_parameterized() and
-                        isinstance(bound.t_constructor, kt.NullableType)):
+                        isinstance(bound.t_constructor, tp.NullableType)):
                     bound = bound.type_args[0]
 
             renamed = deepcopy(copied_t)
@@ -650,7 +650,7 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
                                         method_node: APINode,
                                         output_type: tp.Type):
         if isinstance(method_node, Field):
-            output_type = kt.NullableType().new([output_type])
+            output_type = tp.NullableType().new([output_type])
         super().connect_method_with_output_type(method_api, method_node,
                                                 output_type)
 
