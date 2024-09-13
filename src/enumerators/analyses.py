@@ -209,10 +209,10 @@ class BlockAnalysis(LocationAnalysis):
             self.visit(branch)
             if is_block:
                 self.pop_parent_block()
-        if len(node.conditions) == len(node.branches):
-            child_id = next(self.id_gen)
-            cfg.add_node(child_id)
-            cfg.add_edge(parent_id, child_id)
+        # if len(node.conditions) == len(node.branches):
+        #     child_id = next(self.id_gen)
+        #     cfg.add_node(child_id)
+        #     cfg.add_edge(parent_id, child_id)
 
         i = 0
         if node.root_cond is not None:

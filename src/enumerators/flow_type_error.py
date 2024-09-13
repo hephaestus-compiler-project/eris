@@ -24,16 +24,21 @@ class Loc(NamedTuple):
 
 
 class VariableEraseType(DefaultVisitor):
-    def __init__(self, variable_name: str, bt_factory):
+    def __init__(self, variable_name: str, bt_factory,
+                 nullable_option: bool):
         self.bt_factory = bt_factory
         self.variable_name = variable_name
+        self.nullable_option = nullable_option
 
     def visit_var_decl(self, node):
         if node.name == self.variable_name:
             node.inferred_type = node.var_type
-            node.var_type = self.bt_factory.get_any_type()
-            if self.bt_factory.get_language() != "kotlin":
-                node.omit_type()
+            if self.nullable_option:
+                node.var_type = tp.NullableType().new([node.inferred_type])
+            else:
+                node.var_type = self.bt_factory.get_any_type()
+                if self.bt_factory.get_language() != "kotlin":
+                    node.omit_type()
 
 
 class StatementInjection(DefaultVisitor):
@@ -131,6 +136,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         super().__init__(program, program_gen, bt_factory)
         self.enumerate_all_types = False
         self.cache = set()
+        self.nullable_option = True
 
     def reset_state(self):
         self.error_loc = None
@@ -193,12 +199,19 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         return filtered_locs
 
     def get_block_end_index(self, block_id: int, cfg: nx.DiGraph) -> int:
+        acyclic_graph = cfg.copy()
+        to_remove = [(a, b)
+                     for a, b, data in acyclic_graph.edges(data=True)
+                     if data.get("cycle", False)]
+        acyclic_graph.remove_edges_from(to_remove)
         block = self.analysis.block_map[block_id]
         block_children = [self.analysis.block_map[n]
-                          for n in cfg.neighbors(block_id)
+                          for n in acyclic_graph.neighbors(block_id)
                           if n in self.analysis.block_map]
         len_block = len(block.body)
         end_index = len_block
+        if not block_children:
+            return end_index
         for i, node in enumerate(block.body[::-1]):
             if isinstance(node, ast.Conditional):
                 if node.true_branch in block_children:
@@ -213,10 +226,9 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                     end_index = len_block - i - 1
                     break
             if isinstance(node, ast.Loop):
-                end_index = len_block - i - 1
-                break
-        if not block_children:
-            end_index -= 1
+                if node.block in block_children:
+                    end_index = len_block - i - 1
+                    break
         return end_index
 
     def get_block_indices(self, block_id: int,
@@ -255,12 +267,18 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
     def get_programs_with_error(self, location):
         var_type = self.var_type
         typer = IncompatibleTyping(self.api_graph, self.bt_factory)
-        type_gen = typer.enumerate_incompatible_typings(var_type, location)
-        if not self.enumerate_all_types:
-            type_gen = [next(type_gen)]
+        if self.nullable_option:
+            type_gen = [tp.NullableType().new([self.var_type])]
+        else:
+            type_gen = typer.enumerate_incompatible_typings(var_type, location)
+            if not self.enumerate_all_types:
+                type_gen = [next(type_gen)]
         inverse_map = {v: k for k, v in self.location_map.items()}
         for incmp_t in type_gen:
-            expr = self.program_gen._generate_expr_from_node(incmp_t).expr
+            if self.nullable_option:
+                expr = ast.NullConstant(incmp_t)
+            else:
+                expr = self.program_gen._generate_expr_from_node(incmp_t).expr
             expr.mk_typed(ast.TypePair(expected=self.var_type,
                                        actual=incmp_t))
             assignment = ast.Assignment(self.flow_variable, expr)
@@ -268,6 +286,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
             if inverse_map[location] == self.merge_location and \
                     not isinstance(location.parent, ast.Loop):
                 index -= 1
+                pass
             new_expr = deepcopy(location.expr)
             new_expr.body.insert(index, assignment)
             upd = ASTExprUpdate(location.index, new_expr)
@@ -332,11 +351,15 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                 self.cache.add(subg)
             self.flow_variable = flow_variable.name
             # erase the type of the variable make it flow-sensitive.
-            VariableEraseType(flow_variable.name, self.bt_factory).visit(
-                self.program
-            )
-            var_type = self.api_graph.get_concrete_output_type(flow_variable)
-            var_type = _select_type_for_merge_var(var_type, self.bt_factory)
+            original_var_type = self.api_graph.get_concrete_output_type(
+                flow_variable)
+            VariableEraseType(
+                flow_variable.name,
+                self.bt_factory,
+                self.nullable_option
+            ).visit(self.program)
+            var_type = _select_type_for_merge_var(original_var_type,
+                                                  self.bt_factory)
             self.var_type = var_type
             merge_var_decl = ast.VariableDeclaration(
                 utils.random.word(),
@@ -345,11 +368,13 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                 var_type=var_type
             )
             self.merge_location = merge_location
-            self.analysis.block_map[merge_location].body.append(merge_var_decl)
-            if self.bt_factory.get_language() == "kotlin":
+            end_index = self.get_block_end_index(merge_location, cfg)
+            self.analysis.block_map[merge_location].body.insert(
+                end_index, merge_var_decl)
+            if self.bt_factory.get_language() in ["kotlin", "scala"]:
                 assignment = ast.Assignment(
                     self.flow_variable,
-                    self.program_gen._generate_expr_from_node(var_type).expr
+                    self.program_gen.generate_expr(original_var_type)
                 )
                 StatementInjection(
                     assignment,
