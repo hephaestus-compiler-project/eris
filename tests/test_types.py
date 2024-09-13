@@ -619,16 +619,16 @@ def test_raw_types():
 
 def test_nullable_types():
     a = tp.SimpleClassifier("A")
-    na = kt.NullableType().new([a])
+    na = tp.NullableType().new([a])
     assert not na.is_subtype(a)
     assert a.is_subtype(na)
 
     b = tp.SimpleClassifier("B", [a])
-    nb = kt.NullableType().new([b])
+    nb = tp.NullableType().new([b])
     assert nb.is_subtype(na)
     assert b.is_subtype(nb)
     assert b.is_subtype(na)
 
-    nnb = kt.NullableType().new([nb])
+    nnb = tp.NullableType().new([nb])
     assert nnb.is_subtype(na)
     assert b.is_subtype(nnb)
