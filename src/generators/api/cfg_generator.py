@@ -31,6 +31,8 @@ CATCH_EXCEPTIONS = {
         "java.lang.AssertionError",
         "java.lang.ClassCastException",
         "java.lang.ArrayStoreException",
+        "java.lang.IllegalArgumentException",
+        "java.lang.ArithmeticException"
     ],
     "groovy": [
         "java.lang.Exception",
@@ -40,6 +42,8 @@ CATCH_EXCEPTIONS = {
         "java.lang.AssertionError",
         "java.lang.ClassCastException",
         "java.lang.ArrayStoreException",
+        "java.lang.IllegalArgumentException",
+        "java.lang.ArithmeticException"
     ],
     "scala": [
         "java.lang.Exception",
@@ -49,6 +53,8 @@ CATCH_EXCEPTIONS = {
         "java.lang.AssertionError",
         "java.lang.ClassCastException",
         "java.lang.ArrayStoreException",
+        "java.lang.IllegalArgumentException",
+        "java.lang.ArithmeticException"
     ],
     "java": [
         "java.lang.Exception",
@@ -58,6 +64,8 @@ CATCH_EXCEPTIONS = {
         "java.lang.AssertionError",
         "java.lang.ClassCastException",
         "java.lang.ArrayStoreException",
+        "java.lang.IllegalArgumentException",
+        "java.lang.ArithmeticException"
     ],
 }
 
@@ -186,7 +194,7 @@ def tree2cfgtree(tree):
                 # We randomly decide to split the node into 2-4 nodes and
                 # merge the paths that stem from these nodes to a new
                 # merge node.
-                random_nodes = utils.random.integer(2, 4)
+                random_nodes = utils.random.integer(2, 6)
                 new_nodes = []
                 for i in range(random_nodes):
                     t_n = f"{neighbors[0]}_{i}"
@@ -465,7 +473,9 @@ class CFGGenerator(APIClientGenerator):
             var_type = utils.random.choice(type_pool)
             if var_type.is_type_constructor():
                 var_type = tu.instantiate_type_constructor(
-                    var_type, candidate_types)
+                    var_type, candidate_types,
+                    rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
+                )
                 if var_type is None:
                     continue
                 var_type = var_type[0]
@@ -501,7 +511,7 @@ class CFGGenerator(APIClientGenerator):
             if var_type.is_type_constructor():
                 var_type, _ = tu.instantiate_type_constructor(
                     var_type, self.api_graph.get_reg_types())
-            expr = self._generate_expr_from_node(var_type).expr
+            expr = self.generate_expr(var_type)
             kwargs["expr"] = expr
             assignments.append(ast.Assignment(**kwargs))
         return assignments
@@ -549,7 +559,7 @@ class CFGGenerator(APIClientGenerator):
             children_blocks[0],
             loop_type=utils.random.choice([
                 ast.Loop.WHILE_LOOP,
-                ast.Loop.FOR_LOOP,
+                ast.Loop.WHILE_LOOP,
             ])
         )
 
