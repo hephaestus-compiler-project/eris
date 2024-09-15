@@ -189,7 +189,8 @@ class KotlinTranslator(BaseTranslator):
             "import kotlin.system.*",
         ]
         imports = "\n".join(imports) + "\n"
-        self.program = package_str + "\n" + imports + '\n\n'.join(
+        bottom = "fun <T> bottom(): T = TODO()\n\n"
+        self.program = package_str + "\n" + imports + bottom + '\n\n'.join(
             self.pop_children_res(children))
 
     def _use_return_keyword(self, node):
@@ -605,9 +606,9 @@ class KotlinTranslator(BaseTranslator):
 
     @append_to
     def visit_bottom_constant(self, node):
-        bottom = "{}TODO(){}".format(
-            "(" if node.t else "",
-            " as " + self.get_type_name(node.t) + ")" if node.t else ""
+        bottom = "bottom{}()".format(
+            f"<{self.get_type_name(node.t)}>"
+            if node.t else ""
         )
         self._children_res.append((self.ident * " ") + bottom)
 

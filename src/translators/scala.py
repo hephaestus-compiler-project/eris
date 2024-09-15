@@ -120,7 +120,8 @@ class ScalaTranslator(BaseTranslator):
             package_str = 'package ' + self.package + '\n'
         else:
             package_str = ''
-        self.program = package_str + '\n\n'.join(
+        bottom = "def bottom[T](): T = ???\n\n"
+        self.program = package_str + bottom + '\n\n'.join(
             self.pop_children_res(children))
 
     @append_to
@@ -549,9 +550,9 @@ class ScalaTranslator(BaseTranslator):
     @append_to
     def visit_bottom_constant(self, node):
         bottom = (
-            "???"
+            "bottom()"
             if not node.t
-            else "???.asInstanceOf[{}]".format(self.get_type_name(node.t))
+            else "bottom[{}]()".format(self.get_type_name(node.t))
         )
         self._children_res.append((self.ident * " ") + bottom)
 
