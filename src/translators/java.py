@@ -348,7 +348,8 @@ class JavaTranslator(BaseTranslator):
                                 ast.FunctionCall,
                                 ast.Assignment,
                                 ast.Return,
-                                ast.TryCatch)) and
+                                ast.TryCatch,
+                                ast.Loop)) and
                 not cond_statement(children[-1])):
             var_prefix = 'Object'
             sugar = "{p} x_{x} = ".format(p=var_prefix, x=self._x_counter)
@@ -1138,19 +1139,30 @@ class JavaTranslator(BaseTranslator):
             if isinstance(node.branches[i], ast.Expr) and not isinstance(
                     node.branches[i], ast.Return):
                 case_body = f"{case_body};"
+            op = "->" if node.is_expression else ":"
+            if case_body.endswith("}"):
+                case_body = case_body[:-1] + \
+                    f"{self.get_ident(extra=2)}break;\n{self.get_ident()}}}"
+            elif case_body.endswith("}\n"):
+                case_body = case_body[:-1] + \
+                    f"{self.get_ident() + 2}break;\n{self.get_ident()}}}\n"
+            else:
+                case_body = case_body + "{self.get_ident()}break;\n"
             if i < len(node.conditions):
                 case_exprs_str.append(
-                    "{ident}case {case_expr} -> {body}".format(
+                    "{ident}case {case_expr} {op} {body}".format(
                         ident=self.get_ident(),
                         case_expr=condition_res[i].lstrip().strip(),
+                        op=op,
                         body=case_body
                     )
                 )
             else:
                 case_exprs_str.append(
-                    "{ident}default -> {body}".format(
+                    "{ident}default {op} {body}".format(
                         ident=self.get_ident(),
-                        body=case_body
+                        body=case_body,
+                        op=op
                     )
                 )
         open_paren, close_paren = ("(", ")") if node.is_expression else ("",
