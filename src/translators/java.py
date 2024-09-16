@@ -62,23 +62,6 @@ def cond_statement(expr) -> bool:
     )
 
 
-def get_constant(t: tp.Type) -> str:
-    is_primitive = getattr(t, "primitive", False)
-    ret_value = ""
-    match is_primitive:
-        case True:
-            match t.name:
-                case jt.Char.name:
-                    ret_value = "'c'"
-                case jt.Boolean.name:
-                    ret_value = "false"
-                case _:
-                    ret_value = "1"
-        case False:
-            ret_value = "null"
-    return ret_value
-
-
 class JavaTranslator(BaseTranslator):
 
     filename = "Main.java"
@@ -177,6 +160,22 @@ class JavaTranslator(BaseTranslator):
     @staticmethod
     def get_incorrect_filename():
         return JavaTranslator.incorrect_filename
+
+    def get_constant(self, t: tp.Type) -> str:
+        is_primitive = getattr(t, "primitive", False)
+        ret_value = ""
+        match is_primitive:
+            case True:
+                match t.name:
+                    case jt.Char.name:
+                        ret_value = "'c'"
+                    case jt.Boolean.name:
+                        ret_value = "false"
+                    case _:
+                        ret_value = "1"
+            case False:
+                ret_value = "Main.<{}>bottom()".format(self.get_type_name(t))
+        return ret_value
 
     def type_arg2str(self, t_arg):
         if not t_arg.is_wildcard():
@@ -303,9 +302,12 @@ class JavaTranslator(BaseTranslator):
         else:
             package_str = ''
         self.ident = 2
-        main_decls = [
+        bottom_func = self.get_ident() + \
+            "static <T> T bottom() { throw new RuntimeException(); }"
+        main_decls = [bottom_func]
+        main_decls.extend([
             self.get_ident() + "static " + d.lstrip()
-            for d in self._main_children]
+            for d in self._main_children])
         main_method = self.get_ident() + "static " + \
             self._main_method.lstrip() if self._main_method else None
         main_cls = "class Main {{\n{main_decls}{main_method}\n}}".format(
@@ -313,7 +315,7 @@ class JavaTranslator(BaseTranslator):
             main_method="\n\n" + main_method if main_method else ""
         )
         other_classes = "\n\n".join(self.pop_children_res(children))
-        self.program = "{package}{main}{f_interfaces}{other_classes}".format(
+        self.program = "{package}import org.checkerframework.checker.nullness.qual.*;\n{main}{f_interfaces}{other_classes}".format(
             package=package_str,
             main=main_cls,
             f_interfaces=self._get_functional_interfaces(),
@@ -396,15 +398,8 @@ class JavaTranslator(BaseTranslator):
 
     @append_to
     def visit_bottom_constant(self, node):
-        return self.get_ident() + "{}{}null{}{}".format(
-            '(' if self._parent_is_func_ref() else '',
-            (
-                '(' + self.get_type_name(node.t) + ') '
-                if node.t and node.t != tp.Nothing
-                else ''
-            ),
-            ')' if self._parent_is_func_ref() else '',
-            ';' if self._parent_is_block() else ''
+        return self.get_ident() + "Main.{t}bottom()".format(
+            t=f"<{self.get_type_name(node.t)}>" if node.t else ""
         )
 
     @append_to
@@ -601,13 +596,14 @@ class JavaTranslator(BaseTranslator):
         if isinstance(node.expr, (ast.Lambda, ast.FunctionReference)):
             can_infer = False
 
-        var_type = self.get_type_name(node.var_type)
+        if not can_infer:
+            var_type = self.get_type_name(node.var_type)
         main_prefix = self._get_main_prefix('vars', node.name) \
             if self._namespace != ast.GLOBAL_NAMESPACE else ""
         expr = children_res[0].lstrip()
         res = "{ident}{final}{var_type} {main_prefix}{name} = {expr};".format(
             ident=self.get_ident(),
-            final="final " if can_infer else "",
+            final="final " if node.is_final else "",
             var_type=var_type if not can_infer else "var",
             main_prefix=main_prefix,
             name=node.name,
@@ -621,7 +617,7 @@ class JavaTranslator(BaseTranslator):
         modifiers = get_modifier_list(node.metadata)
         rexpr = ""
         if "static" in modifiers:
-            rexpr = f" = {get_constant(node.get_type())}"
+            rexpr = f" = {self.get_constant(node.get_type())}"
         return "{final}{modifiers}{field_type} {name}{rexpr};".format(
             final="final " if node.is_final else "",
             modifiers=" ".join(modifiers) + " " if modifiers else "",
@@ -733,7 +729,7 @@ class JavaTranslator(BaseTranslator):
             else:
                 body = body_res
         new_ident = self.get_ident(old_ident=self.ident - 2)
-        ret_value = get_constant(node.get_type())
+        ret_value = self.get_constant(node.get_type())
         return_catch = (
             "" if node.get_type() == jt.Void
             else f"return {ret_value};"
@@ -1476,11 +1472,13 @@ class JavaTranslator(BaseTranslator):
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
+        i = self._x_counter
         loop_prefix = (
-            "while (true)"
+            "while (Main.<Boolean>bottom())"
             if node.loop_type == ast.Loop.WHILE_LOOP
-            else "for (;;)"
+            else f"for (int i{i} = 0; i{i} < 1; i{i}++)"
         )
+        self._x_counter += 1
         res = "{ident}{prefix}{body}".format(
             ident=self.get_ident(old_ident=self.ident),
             prefix=loop_prefix,
