@@ -91,8 +91,6 @@ class BlockAnalysis(LocationAnalysis):
     """
     def __init__(self):
         super().__init__()
-        self.depth = 0
-        self.flow_variables = []
 
         # Map every function with its cfg
         self.cfgs = {}
@@ -106,6 +104,8 @@ class BlockAnalysis(LocationAnalysis):
         self.id_gen = iter(range(10000))
         # Track the parents of blocks in the AST
         self.block_parents = {}
+        self.green_blocks: Dict[ast.VariableDeclaration, List[ast.Block]] = {}
+        self.variables: Dict[str, ast.VariableDeclaration] = {}
 
     def get_parent_of_block(self, block_id: int):
         block = self.block_map.get(block_id)
@@ -154,6 +154,34 @@ class BlockAnalysis(LocationAnalysis):
                 cfg.add_edge(leaf, merge_node)
             self.pop_parent_block()
             self.add_block_to_stack(merge_node)
+
+    def visit_var_decl(self, node):
+        self.variables[node.name] = node
+
+    def visit_assign(self, node):
+        parent_id = self.get_parent_block()
+        if isinstance(node.expr, ast.Variable):
+            # Revisit
+            cfg = self.get_current_cfg()
+            source = 0  # This is the root node
+            target = parent_id
+            var_decl = self.variables[node.expr.name]
+            if source == target:
+                is_green = target in self.green_blocks.get(var_decl, set())
+            else:
+                is_green = True
+                for path in nx.all_simple_paths(cfg, source, target):
+                    pp = path
+                    if all(p not in self.green_blocks.get(var_decl, set())
+                           for p in pp):
+                        is_green = False
+                        break
+                if is_green:
+                    self.green_blocks.setdefault(
+                        self.variables[node.name], set().add(target))
+        else:
+            self.green_blocks.setdefault(
+                self.variables[node.name], set()).add(parent_id)
 
     def visit_func_decl(self, node):
         prev_func_name = self.func_name
@@ -209,11 +237,6 @@ class BlockAnalysis(LocationAnalysis):
             self.visit(branch)
             if is_block:
                 self.pop_parent_block()
-        # if len(node.conditions) == len(node.branches):
-        #     child_id = next(self.id_gen)
-        #     cfg.add_node(child_id)
-        #     cfg.add_edge(parent_id, child_id)
-
         i = 0
         if node.root_cond is not None:
             i += 1

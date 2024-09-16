@@ -456,6 +456,27 @@ class CFGGenerator(APIClientGenerator):
                                             max_int=self.max_cfg_nodes)
             yield tree2cfgtree(nx.random_unlabeled_rooted_tree(nu_nodes))
 
+    def _get_type(self, t: tp.Type, type_pool: List[tp.Type]) -> tp.Type:
+        if t.is_type_constructor():
+            t = tu.instantiate_type_constructor(
+                t, type_pool,
+                rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
+            )
+            if t is None:
+                return None
+            return t[0]
+        else:
+            return t
+
+    def _create_local_var(self,
+                          var_type: tp.Type) -> ast.VariableDeclaration:
+        var_name = utils.random.word()
+        expr = self.generate_expr(var_type)
+        var_decl = ast.VariableDeclaration(var_name, expr,
+                                           is_final=False,
+                                           var_type=var_type)
+        return var_decl
+
     def create_local_vars(self):
         types = self.api_graph.get_reg_types()
         candidate_types = [
@@ -469,21 +490,21 @@ class CFGGenerator(APIClientGenerator):
         type_pool = {t for t in ref_type.get_supertypes()
                      if t != self.bt_factory.get_any_type()}
         type_pool = list(type_pool)
-        for i in range(utils.random.integer(1, self.max_local_vars)):
-            var_type = utils.random.choice(type_pool)
-            if var_type.is_type_constructor():
-                var_type = tu.instantiate_type_constructor(
-                    var_type, candidate_types,
-                    rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
-                )
-                if var_type is None:
-                    continue
-                var_type = var_type[0]
-            var_name = utils.random.word()
-            expr = self.generate_expr(var_type)
-            var_decl = ast.VariableDeclaration(var_name, expr,
-                                               is_final=False,
-                                               var_type=var_type)
+
+        nu_variables = utils.random.integer(1, self.max_local_vars)
+        nu_same_type_vars = utils.random.integer(1, nu_variables)
+        var_type = self._get_type(utils.random.choice(type_pool), type_pool)
+        for i in range(nu_same_type_vars):
+            var_decl = self._create_local_var(var_type)
+            self.context.add_var(self.namespace, var_decl.name, var_decl)
+            self.api_graph.add_variable_node(var_decl.name, var_type)
+            local_vars.append(var_decl)
+        if len(type_pool) > 1 and not var_type.is_parameterized():
+            type_pool.remove(var_type)
+        for i in range(nu_variables - nu_same_type_vars):
+            var_type = self._get_type(utils.random.choice(type_pool),
+                                      type_pool)
+            var_decl = self._create_local_var(var_type)
             self.context.add_var(self.namespace, var_decl.name, var_decl)
             self.api_graph.add_variable_node(var_decl.name, var_type)
             local_vars.append(var_decl)
@@ -498,6 +519,16 @@ class CFGGenerator(APIClientGenerator):
         for i in range(utils.random.integer(0, max_assignments)):
             local_var = utils.random.choice(var_pool)
             var_pool.remove(local_var)
+
+            same_type_vars = [var for var in var_pool
+                              if (var != local_var and
+                                  var.get_type() == local_var.get_type())]
+            if same_type_vars and utils.random.bool():
+                selected_var = utils.random.choice(same_type_vars)
+                assignments.append(ast.Assignment(
+                    local_var.name, ast.Variable(selected_var.name)))
+                continue
+
             out_type = local_var.get_type()
             kwargs = {
                 "name": local_var.name,

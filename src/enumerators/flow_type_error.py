@@ -136,6 +136,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         super().__init__(program, program_gen, bt_factory)
         self.enumerate_all_types = False
         self.cache = set()
+        options = options or {}
         self.use_nullable_types = options.get("use-nullable-types", False)
 
     def reset_state(self):
@@ -184,11 +185,12 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                     bad_locations.add(self.location_map[n])
             source, remove_prefix = _get_source_and_prefix(
                 n, target, colored_cfg)
+            var_decl = self.analysis.variables[self.flow_variable]
             for path in nx.all_simple_paths(colored_cfg, source, target):
                 pp = path
                 if remove_prefix:
                     pp = path[1:] if path != [target] else path
-                if all(not colored_cfg.nodes[p].get("green", False)
+                if all(p not in self.analysis.green_blocks.get(var_decl, set())
                        for p in pp):
                     is_bad = False
                     break
@@ -245,24 +247,26 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         return start_index, end_index
 
     def color_cfg(self, cfg: nx.DiGraph, flow_variable: str) -> nx.DiGraph:
-        colored_cfg = cfg.copy()
-        acyclic_graph = cfg.copy()
-        to_remove = [(a, b)
-                     for a, b, data in acyclic_graph.edges(data=True)
-                     if data.get("cycle", False)]
-        acyclic_graph.remove_edges_from(to_remove)
-        for block_id in nx.topological_sort(acyclic_graph):
-            block = self.analysis.block_map.get(block_id)
-            if block is None:
-                continue
-            start_index, end_index = self.get_block_indices(block_id, cfg)
-            for stmt in block.body[start_index:end_index]:
-                if isinstance(stmt, ast.Assignment) and \
-                        stmt.name == flow_variable:
-                    nx.set_node_attributes(colored_cfg, {block_id: True},
-                                           name="green")
+        return cfg
 
-        return colored_cfg
+        #  colored_cfg = cfg.copy()
+        #  acyclic_graph = cfg.copy()
+        #  to_remove = [(a, b)
+        #               for a, b, data in acyclic_graph.edges(data=True)
+        #               if data.get("cycle", False)]
+        #  acyclic_graph.remove_edges_from(to_remove)
+        #  for block_id in nx.topological_sort(acyclic_graph):
+        #      block = self.analysis.block_map.get(block_id)
+        #      if block is None:
+        #          continue
+        #      start_index, end_index = self.get_block_indices(block_id, cfg)
+        #      for stmt in block.body[start_index:end_index]:
+        #          if isinstance(stmt, ast.Assignment) and \
+        #                  stmt.name == flow_variable:
+        #              nx.set_node_attributes(colored_cfg, {block_id: True},
+        #                                     name="green")
+
+        #  return colored_cfg
 
     def get_programs_with_error(self, location):
         var_type = self.var_type
@@ -326,7 +330,6 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
             n for n in self.program_gen.api_graph.api_graph.nodes()
             if isinstance(n, Variable)
         ]
-        original_program = self.program
         self.analysis.visit(self.program)
         cfg = self.analysis.cfgs["test"]
         block_map = self.analysis.block_map.copy()
@@ -335,6 +338,14 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
             n for n in cfg.nodes()
             if cfg.in_degree(n) != 0 and n in block_map
         ]
+        for flow_variable in flow_vars:
+            VariableEraseType(
+                flow_variable.name,
+                self.bt_factory,
+                self.use_nullable_types
+            ).visit(self.program)
+
+        original_program = self.program
         for flow_variable, merge_location in itertools.product(
             flow_vars, merge_locations
         ):
@@ -353,11 +364,6 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
             # erase the type of the variable make it flow-sensitive.
             original_var_type = self.api_graph.get_concrete_output_type(
                 flow_variable)
-            VariableEraseType(
-                flow_variable.name,
-                self.bt_factory,
-                self.use_nullable_types
-            ).visit(self.program)
             var_type = _select_type_for_merge_var(original_var_type,
                                                   self.bt_factory)
             self.var_type = var_type
