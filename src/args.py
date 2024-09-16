@@ -250,6 +250,11 @@ parser.add_argument(
     type=int,
     help="Maximum nodes in CFG graph (only applicable when --generator cfg)"
 )
+parser.add_argument(
+    "--use-nullable-types",
+    action="store_true",
+    help="Use nullable types in the generated programs and enumerators"
+)
 
 
 args = parser.parse_args()
@@ -277,6 +282,7 @@ args.options = {
             "library-path": args.library_path,
             "path-search-strategy": args.path_search_strategy,
             "erase-types": args.erase_types,
+            "use-nullable-types": args.use_nullable_types,
         },
         "cfg": {
             "api-rules": args.api_rules,
@@ -285,6 +291,7 @@ args.options = {
             "path-search-strategy": args.path_search_strategy,
             "erase-types": args.erase_types,
             "max-cfg-nodes": args.max_cfg_nodes,
+            "use-nullable-types": args.use_nullable_types,
         }
     },
     'Translator': {

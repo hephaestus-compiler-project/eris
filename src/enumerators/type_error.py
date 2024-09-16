@@ -16,7 +16,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
     OUT_POS = -1
 
     def __init__(self, program: ast.Program, program_gen: ProgramGenerator,
-                 bt_factory: BuiltinFactory):
+                 bt_factory: BuiltinFactory, options: dict = None):
         self.locations = []
         self.api_graph = program_gen.api_graph
         self.error_loc = None

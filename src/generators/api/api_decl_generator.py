@@ -884,7 +884,8 @@ class APIDeclarationGenerator(APIClientGenerator):
             yield program
             return
         error_enum = self.ErrorEnumerator(program, self,
-                                          self.bt_factory)
+                                          self.bt_factory,
+                                          options=self.options)
         flag = False
         try:
             cfg.substitute_wildcards = False

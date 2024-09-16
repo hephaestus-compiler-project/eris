@@ -25,15 +25,15 @@ class Loc(NamedTuple):
 
 class VariableEraseType(DefaultVisitor):
     def __init__(self, variable_name: str, bt_factory,
-                 nullable_option: bool):
+                 use_nullable_types: bool):
         self.bt_factory = bt_factory
         self.variable_name = variable_name
-        self.nullable_option = nullable_option
+        self.use_nullable_types = use_nullable_types
 
     def visit_var_decl(self, node):
         if node.name == self.variable_name:
             node.inferred_type = node.var_type
-            if self.nullable_option:
+            if self.use_nullable_types:
                 node.var_type = tp.NullableType().new([node.inferred_type])
             else:
                 node.var_type = self.bt_factory.get_any_type()
@@ -126,7 +126,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
     ROOT_NODE = 0
 
     def __init__(self, program: ast.Program, program_gen: Generator,
-                 bt_factory: BuiltinFactory):
+                 bt_factory: BuiltinFactory, options: dict = None):
         self.api_graph = getattr(program_gen, "api_graph", None)
         self.error_loc = None
         self.new_node = None
@@ -136,7 +136,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         super().__init__(program, program_gen, bt_factory)
         self.enumerate_all_types = False
         self.cache = set()
-        self.nullable_option = True
+        self.use_nullable_types = options.get("use-nullable-types", False)
 
     def reset_state(self):
         self.error_loc = None
@@ -267,7 +267,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
     def get_programs_with_error(self, location):
         var_type = self.var_type
         typer = IncompatibleTyping(self.api_graph, self.bt_factory)
-        if self.nullable_option:
+        if self.use_nullable_types:
             type_gen = [tp.NullableType().new([self.var_type])]
         else:
             type_gen = typer.enumerate_incompatible_typings(var_type, location)
@@ -275,7 +275,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                 type_gen = [next(type_gen)]
         inverse_map = {v: k for k, v in self.location_map.items()}
         for incmp_t in type_gen:
-            if self.nullable_option:
+            if self.use_nullable_types:
                 expr = ast.NullConstant(incmp_t)
             else:
                 expr = self.program_gen._generate_expr_from_node(incmp_t).expr
@@ -356,7 +356,7 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
             VariableEraseType(
                 flow_variable.name,
                 self.bt_factory,
-                self.nullable_option
+                self.use_nullable_types
             ).visit(self.program)
             var_type = _select_type_for_merge_var(original_var_type,
                                                   self.bt_factory)
