@@ -1041,7 +1041,7 @@ class ScalaTranslator(BaseTranslator):
             c.accept(self)
         children_res = self.pop_children_res(children)
         loop_prefix = (
-            "while (true)"
+            "while (bottom[Boolean]())"
             if node.loop_type == ast.Loop.WHILE_LOOP
             else "for (n <- Seq())"
         )
