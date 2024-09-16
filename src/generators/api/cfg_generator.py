@@ -57,15 +57,15 @@ CATCH_EXCEPTIONS = {
         "java.lang.ArithmeticException"
     ],
     "java": [
-        "java.lang.Exception",
-        "java.io.IOException",
-        "java.lang.NumberFormatException",
         "java.lang.IllegalStateException",
+        "java.lang.IllegalArgumentException",
+        "java.lang.ArithmeticException",
         "java.lang.AssertionError",
         "java.lang.ClassCastException",
         "java.lang.ArrayStoreException",
-        "java.lang.IllegalArgumentException",
-        "java.lang.ArithmeticException"
+        "java.nio.BufferOverflowException",
+        "java.lang.StackOverflowError",
+        "java.lang.IndexOutOfBoundsException"
     ],
 }
 
