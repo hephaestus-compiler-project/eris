@@ -206,8 +206,6 @@ class JavaTranslator(BaseTranslator):
     @strip_fqn
     def get_type_name(self, t, get_boxed_void=False, box=False,
                       for_array=False):
-        if t is None:
-            import pdb; pdb.set_trace()
         if t.is_wildcard():
             t = t.get_bound_rec()
             if t is None:
@@ -226,6 +224,15 @@ class JavaTranslator(BaseTranslator):
                                                       False, box,
                                                       for_array),
                                    "0" if for_array else "")
+        if isinstance(t_constructor, tp.NullableType):
+            type_str = self.get_type_name(t.type_args[0], False, box,
+                                          for_array)
+            type_prefix = type_str.split("<", 1)[0]
+            segs = type_prefix.rsplit(".", 1)
+            if len(segs) == 1:
+                return f"@Nullable {segs[0]}"
+            else:
+                return f"{segs[0]}.@Nullable {segs[1]}"
         if t.is_instance_type():
             return self.instance_type2str(t)
 
@@ -593,7 +600,7 @@ class JavaTranslator(BaseTranslator):
         if isinstance(node.expr, (ast.Lambda, ast.FunctionReference)):
             can_infer = False
 
-        var_type = self.get_type_name(node.inferred_type)
+        var_type = self.get_type_name(node.var_type)
         main_prefix = self._get_main_prefix('vars', node.name) \
             if self._namespace != ast.GLOBAL_NAMESPACE else ""
         expr = children_res[0].lstrip()

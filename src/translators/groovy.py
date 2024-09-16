@@ -154,6 +154,9 @@ class GroovyTranslator(BaseTranslator):
             return "{}[{}]".format(self.get_type_name(t.type_args[0],
                                                       for_array=for_array),
                                    "0" if for_array else "")
+        if isinstance(t_constructor, tp.NullableType):
+            return "@Nullable {t}".format(
+                t=self.get_type_name(t.type_args[0], for_array=for_array))
         if t.is_instance_type():
             return self.instance_type2str(t)
         return "{}<{}>".format(t.name, ", ".join([self.type_arg2str(ta)
@@ -431,7 +434,7 @@ class GroovyTranslator(BaseTranslator):
         var_type = ""
         if (node.var_type is not None or
                 self._namespace == ast.GLOBAL_NAMESPACE):
-            var_type = self.get_type_name(node.inferred_type) + " "
+            var_type = self.get_type_name(node.var_type) + " "
         main_prefix = self._get_main_prefix('vars', node.name) \
             if self._namespace != ast.GLOBAL_NAMESPACE else ""
         expr = children_res[0].lstrip()
