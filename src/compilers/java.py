@@ -24,7 +24,19 @@ class JavaCompiler(BaseCompiler):
         extra_options = []
         if self.library_path:
             extra_options = ["-cp", self.library_path]
-        return ['javac', '-nowarn'] + extra_options + [self.input_name]
+        return [
+            'javac',
+            '-nowarn',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
+            '-J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED',
+            '-J--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED',
+        ] + extra_options + [self.input_name]
 
     def get_filename(self, match):
         return match[0]
