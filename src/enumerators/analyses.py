@@ -104,8 +104,7 @@ class BlockAnalysis(LocationAnalysis):
         self.id_gen = iter(range(10000))
         # Track the parents of blocks in the AST
         self.block_parents = {}
-        self.green_blocks: Dict[ast.VariableDeclaration, List[ast.Block]] = {}
-        self.variables: Dict[str, ast.VariableDeclaration] = {}
+        self.green_blocks: Dict[str, List[ast.Block]] = {}
 
     def get_parent_of_block(self, block_id: int):
         block = self.block_map.get(block_id)
@@ -156,7 +155,7 @@ class BlockAnalysis(LocationAnalysis):
             self.add_block_to_stack(merge_node)
 
     def visit_var_decl(self, node):
-        self.variables[node.name] = node
+        self.green_blocks[node.name] = set()
 
     def visit_assign(self, node):
         parent_id = self.get_parent_block()
@@ -165,23 +164,24 @@ class BlockAnalysis(LocationAnalysis):
             cfg = self.get_current_cfg()
             source = 0  # This is the root node
             target = parent_id
-            var_decl = self.variables[node.expr.name]
             if source == target:
-                is_green = target in self.green_blocks.get(var_decl, set())
+                is_green = target in self.green_blocks.get(
+                    node.expr.name, set())
             else:
                 is_green = True
                 for path in nx.all_simple_paths(cfg, source, target):
                     pp = path
-                    if all(p not in self.green_blocks.get(var_decl, set())
+                    if all(p not in self.green_blocks.get(node.expr.name,
+                                                          set())
                            for p in pp):
                         is_green = False
                         break
-                if is_green:
-                    self.green_blocks.setdefault(
-                        self.variables[node.name], set().add(target))
+            if is_green:
+                self.green_blocks.setdefault(
+                    node.name, set()).add(target)
         else:
             self.green_blocks.setdefault(
-                self.variables[node.name], set()).add(parent_id)
+                node.name, set()).add(parent_id)
 
     def visit_func_decl(self, node):
         prev_func_name = self.func_name

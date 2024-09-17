@@ -185,12 +185,12 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
                     bad_locations.add(self.location_map[n])
             source, remove_prefix = _get_source_and_prefix(
                 n, target, colored_cfg)
-            var_decl = self.analysis.variables[self.flow_variable]
+            var_name = self.flow_variable
             for path in nx.all_simple_paths(colored_cfg, source, target):
                 pp = path
                 if remove_prefix:
                     pp = path[1:] if path != [target] else path
-                if all(p not in self.analysis.green_blocks.get(var_decl, set())
+                if all(p not in self.analysis.green_blocks.get(var_name, set())
                        for p in pp):
                     is_bad = False
                     break
