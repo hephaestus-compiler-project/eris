@@ -39,13 +39,6 @@ parser.add_argument(
           " program enumeration (used only with API-based program generation)")
 )
 parser.add_argument(
-    "--library-path",
-    type=str,
-    default=None,
-    help=("Path where the compiled library resides. "
-          "(Used only with API-based program generation)")
-)
-parser.add_argument(
     "--max-conditional-depth",
     type=int,
     default=3,
@@ -255,6 +248,13 @@ parser.add_argument(
     action="store_true",
     help="Use nullable types in the generated programs and enumerators"
 )
+parser.add_argument(
+    "--extra-compiler-option",
+    action="append",
+    nargs=2,
+    metavar=("flag", "value"),
+    help="Extra compiler options for invoking the compiler"
+)
 
 
 args = parser.parse_args()
@@ -273,13 +273,13 @@ args.options = {
             "erase-types": args.erase_types,
             "enable-expression-cache": args.enable_expression_cache,
             "path-search-strategy": args.path_search_strategy,
-            "library-path": args.library_path,
+            "extra-options": args.extra_compiler_option,
             "error-enumerator": args.error_enumerator,
         },
         "api-decl": {
             "api-rules": args.api_rules,
             "error-enumerator": args.error_enumerator,
-            "library-path": args.library_path,
+            "extra-options": args.extra_compiler_option,
             "path-search-strategy": args.path_search_strategy,
             "erase-types": args.erase_types,
             "use-nullable-types": args.use_nullable_types,
@@ -287,7 +287,7 @@ args.options = {
         "cfg": {
             "api-rules": args.api_rules,
             "error-enumerator": args.error_enumerator,
-            "library-path": args.library_path,
+            "extra-options": args.extra_compiler_option,
             "path-search-strategy": args.path_search_strategy,
             "erase-types": args.erase_types,
             "max-cfg-nodes": args.max_cfg_nodes,
@@ -374,9 +374,6 @@ def validate_args(args):
     if not is_api_driven(args) and args.api_rules is not None:
         sys.exit(("The --api-rules option is only combined with "
                  "--generator 'api'"))
-    if not is_api_driven(args) and args.library_path is not None:
-        sys.exit("The --library_path option is only combined with "
-                 "--generator 'api'")
     if args.max_conditional_depth <= 0:
         sys.exit("The --max-conditional-depth option should be >= 1")
 

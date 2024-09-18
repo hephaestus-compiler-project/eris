@@ -35,7 +35,7 @@ STATS = {
         "name": cli_args.name,
         "language": cli_args.language,
         "generator": cli_args.generator,
-        "library_path": cli_args.library_path,
+        "extra_options": cli_args.extra_compiler_option,
         "erase_types": cli_args.erase_types,
         "inject_type_error": cli_args.inject_type_error,
     },
@@ -349,7 +349,7 @@ def check_oracle(dirname, oracles):
     filename = os.path.join(dirname, 'src')
     filter_patterns = utils.path2set(cli_args.error_filter_patterns)
     compiler = COMPILERS[cli_args.language](filename, filter_patterns,
-                                            cli_args.library_path)
+                                            cli_args.extra_compiler_option)
     command_args = compiler.get_compiler_cmd()
     # At this point, we run the compiler
     start_time = time.time()

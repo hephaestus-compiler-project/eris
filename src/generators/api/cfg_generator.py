@@ -590,7 +590,7 @@ class CFGGenerator(APIClientGenerator):
             children_blocks[0],
             loop_type=utils.random.choice([
                 ast.Loop.WHILE_LOOP,
-                ast.Loop.WHILE_LOOP,
+                ast.Loop.FOR_LOOP,
             ])
         )
 
@@ -691,7 +691,7 @@ class CFGGenerator(APIClientGenerator):
         (succeeded, err), compiler = compile_program(
             self.bt_factory.get_language(), program,
             self.package_name,
-            library_path=self.options.get("library-path"))
+            extra_options=self.options.get("extra-options"))
 
         compiler.analyze_compiler_output(err)
         if not succeeded and not compiler.crash_msg:

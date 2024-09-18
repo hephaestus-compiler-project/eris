@@ -9,20 +9,20 @@ class ScalaCompiler(BaseCompiler):
         r"-- .*Error: (.*\.scala):\d+:\d+ .*\n((?:[^-]+))", re.MULTILINE)
     CRASH_REGEX = re.compile(r".*at dotty(.*)")
 
-    def __init__(self, input_name, filter_patterns=None, library_path=None):
+    def __init__(self, input_name, filter_patterns=None, extra_options=None):
         input_name = os.path.join(input_name, '*', '*.scala')
-        super().__init__(input_name, filter_patterns, library_path)
+        super().__init__(input_name, filter_patterns, extra_options)
 
     @classmethod
     def get_compiler_version(cls):
         return ['scalac', '-version']
 
     def get_compiler_cmd(self):
-        extra_options = []
-        if self.library_path:
-            extra_options = ["-cp", self.library_path]
-        return ['scalac', '-color', 'never', '-nowarn'] + extra_options + \
-            [self.input_name]
+        return [
+            'scalac',
+            '-color', 'never',
+            '-nowarn',
+        ] + self.extra_options + [self.input_name]
 
     def get_filename(self, match):
         return match[0]

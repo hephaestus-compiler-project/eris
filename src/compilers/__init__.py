@@ -1,5 +1,6 @@
 import os
 import tempfile
+from typing import List
 
 from src import utils
 from src.compilers.kotlin import KotlinCompiler
@@ -19,7 +20,7 @@ COMPILERS = {
 
 
 def compile_program(language: str, program: ast.Program,
-                    package_name: str, library_path: str):
+                    package_name: str, extra_options: List[str]):
     """
     Translate and compile the given program in the specified target language.
     """
@@ -38,7 +39,7 @@ def compile_program(language: str, program: ast.Program,
     utils.save_text(dst_file, program_str)
     compiler = COMPILERS[language](os.path.dirname(dst_dir),
                                    filter_patterns=filter_patterns,
-                                   library_path=library_path)
+                                   extra_options=extra_options)
     command_args = compiler.get_compiler_cmd()
     return (utils.run_command(command_args, envs={"JAVA_OPTS": "-Xmx8g"}),
             compiler)

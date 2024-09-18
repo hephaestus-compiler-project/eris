@@ -11,18 +11,18 @@ class KotlinCompiler(BaseCompiler):
         re.MULTILINE
     )
 
-    def __init__(self, input_name, filter_patterns=None, library_path=None):
-        super().__init__(input_name, filter_patterns, library_path)
+    def __init__(self, input_name, filter_patterns=None, extra_options=None):
+        super().__init__(input_name, filter_patterns, extra_options)
 
     @classmethod
     def get_compiler_version(cls):
         return ['kotlinc', '-version']
 
     def get_compiler_cmd(self):
-        extra_options = []
-        if self.library_path:
-            extra_options = ["-cp", self.library_path]
-        return ['kotlinc', self.input_name, '-include-runtime', '-d',
+        return ['kotlinc',
+                self.input_name,
+                '-include-runtime',
+                '-d',
                 'program.jar',
                 '-Xnullability-annotations=@javax.annotation:ignore',
                 '-opt-in',
@@ -31,7 +31,7 @@ class KotlinCompiler(BaseCompiler):
                 'kotlin.contracts.ExperimentalContracts',
                 '-opt-in',
                 'kotlin.ExperimentalStdlibApi'
-                ] + extra_options
+                ] + self.extra_options
 
     def get_filename(self, match):
         return match[0]
