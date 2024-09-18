@@ -155,7 +155,8 @@ class BlockAnalysis(LocationAnalysis):
             self.add_block_to_stack(merge_node)
 
     def visit_var_decl(self, node):
-        self.green_blocks[node.name] = set()
+        parent_id = self.get_parent_block()
+        self.green_blocks[node.name] = {parent_id}
 
     def visit_assign(self, node):
         parent_id = self.get_parent_block()
