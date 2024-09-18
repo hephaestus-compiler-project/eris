@@ -155,8 +155,20 @@ class GroovyTranslator(BaseTranslator):
                                                       for_array=for_array),
                                    "0" if for_array else "")
         if isinstance(t_constructor, tp.NullableType):
-            return "@Nullable {t}".format(
-                t=self.get_type_name(t.type_args[0], for_array=for_array))
+            type_str = self.get_type_name(t.type_args[0], for_array)
+            if isinstance(getattr(t.type_args[0], "t_constructor", None),
+                          gt.ArrayType):
+                segs = type_str.rsplit("[]", 1)
+                return f"{segs[0]} @Nullable []"
+            type_prefix = type_str.split("<", 1)
+            segs = type_prefix[0].rsplit(".", 1)
+            suffix = ""
+            if len(type_prefix) == 2:
+                suffix = f"<{type_prefix[1]}"
+            if len(segs) == 1:
+                return f"@Nullable {segs[0] + suffix}"
+            else:
+                return f"{segs[0]}.@Nullable {segs[1] + suffix}"
         if t.is_instance_type():
             return self.instance_type2str(t)
         return "{}<{}>".format(t.name, ", ".join([self.type_arg2str(ta)
