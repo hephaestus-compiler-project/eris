@@ -36,7 +36,6 @@ class BaseCompiler():
         raise NotImplementedError('get_error_msg() must be implemented')
 
     def analyze_compiler_output(self, output):
-        print(output)
         crash_match = re.search(self.CRASH_REGEX, output)
         if crash_match:
             self.crash_msg = output

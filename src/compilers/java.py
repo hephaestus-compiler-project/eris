@@ -21,7 +21,6 @@ class JavaCompiler(BaseCompiler):
         return ['javac', '-version']
 
     def get_compiler_cmd(self):
-        print(self.extra_options)
         return [
             'javac',
             '-nowarn',
