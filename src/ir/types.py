@@ -436,7 +436,7 @@ def substitute_type_args(etype, type_map,
     type_con = etype.t_constructor
     t = type_map.get(type_con)
     if t is None or cond(t) or not type_con.is_type_var():
-        return ParameterizedType(etype.t_constructor, type_args)
+        return etype.t_constructor.new(type_args)
 
     assert t.is_type_constructor()
     assert len(t.type_parameters) == len(type_args)
