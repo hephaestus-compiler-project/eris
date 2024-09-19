@@ -4,7 +4,6 @@ from copy import deepcopy, copy
 import re
 from typing import List, Dict, Set
 
-
 import networkx as nx
 
 from src.config import cfg
@@ -192,7 +191,15 @@ class APIGraphBuilder(ABC):
             if field_node is None:
                 # Unsupported field
                 continue
-            field_type = self.parse_type(field_api["type"])
+            is_special = field_api.get("other_metadata", {}).get("is_special",
+                                                                 False)
+            is_library = self.class_name and not self.class_name.startswith(
+                cfg.package_prefix)
+            disable_nullable_conversion = is_special or is_library
+            field_type = self.parse_type(
+                field_api["type"],
+                disable_nullable_conversion=disable_nullable_conversion
+            )
             if field_type is None:
                 # Field type is unsupported
                 continue
@@ -235,9 +242,13 @@ class APIGraphBuilder(ABC):
             ret_type = method_api["return_type"]
             is_special = method_api.get("other_metadata", {}).get(
                 "is_special", False)
+            # Let's not change the signature of library functions.
+            is_library = self.class_name and \
+                not self.class_name.startswith(cfg.package_prefix)
+            disable_nullable = is_special or is_library
             if not is_constructor:
                 output_type = self.parse_type(
-                    ret_type, disable_nullable_conversion=is_special)
+                    ret_type, disable_nullable_conversion=disable_nullable)
                 if output_type is None:
                     self.graph.remove_node(method_node)
                     # Unable to parse output type
@@ -421,9 +432,13 @@ class APIGraphBuilder(ABC):
             return None
         is_special = method_api.get("other_metadata", {}).get("is_special",
                                                               False)
+        is_library = self.class_name and not self.class_name.startswith(
+            cfg.package_prefix)
+        # Let's not change the signature of library functions.
+        disable_nullable = is_special or is_library
         parameters = [
-            Parameter(self.parse_type(p,
-                                      disable_nullable_conversion=is_special),
+            Parameter(self.parse_type(
+                p, disable_nullable_conversion=disable_nullable),
                       self.get_type_parser().is_variable_argument(p))
             for p in method_api["parameters"]
         ]
@@ -474,7 +489,7 @@ class APIGraphBuilder(ABC):
                 len(func_params)).new(func_params + [ret_type])
             class_node = self.class_nodes.get(self.class_name)
             assert class_node, ("A functional interface detected. "
-                                "This can be None")
+                                "This cannot be None")
             self.functional_types[class_node] = func_type
 
     def build_tentative_type(self, class_api):
@@ -642,7 +657,7 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
         return parsers[self.api_language](*args)
 
     def parse_type(self, str_t: str, build_class_node=False,
-                   type_var_mappings=None) -> tp.Type:
+                   type_var_mappings=None, **kwargs) -> tp.Type:
         parsed_t = self.get_type_parser(
             type_var_mappings=type_var_mappings,
             build_class_node=build_class_node

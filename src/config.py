@@ -75,6 +75,7 @@ class Disabled:
 
 class GenConfig(metaclass=Singleton):
     def __init__(self):
+        self.package_prefix = "src"
         self.limits = GenLimits(
             cls=ClassLimits(
                 max_fields=2,
