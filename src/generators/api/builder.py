@@ -8,7 +8,7 @@ from typing import List, Dict, Set
 import networkx as nx
 
 from src.config import cfg
-from src.ir import BUILTIN_FACTORIES, types as tp, ast
+from src.ir import BUILTIN_FACTORIES, types as tp, ast, type_utils as tu
 from src.ir.builtins import BuiltinFactory
 from src.generators.api.api_graph import (APIGraph, IN, OUT, APINode, Method,
                                           Constructor, Field, Parameter)
@@ -233,8 +233,11 @@ class APIGraphBuilder(ABC):
             is_static = method_api["is_static"]
             output_type = None
             ret_type = method_api["return_type"]
+            is_special = method_api.get("other_metadata", {}).get(
+                "is_special", False)
             if not is_constructor:
-                output_type = self.parse_type(ret_type)
+                output_type = self.parse_type(
+                    ret_type, disable_nullable_conversion=is_special)
                 if output_type is None:
                     self.graph.remove_node(method_node)
                     # Unable to parse output type
@@ -328,8 +331,14 @@ class APIGraphBuilder(ABC):
                     type_param.bound.t_constructor.type_parameters = list(
                         type_name_map.values())
 
-    def parse_type(self, str_t: str, **kwargs) -> tp.Type:
-        return self.get_type_parser().parse_type(str_t)
+    def parse_type(self, str_t: str, build_class_node=False,
+                   **kwargs) -> tp.Type:
+        parsed_t = self.get_type_parser().parse_type(str_t)
+        use_nullables = self.options.get("use-nullable-types", False)
+        if use_nullables and not build_class_node and not kwargs.get(
+                "disable_nullable_conversion", False):
+            return tu.annotate_type_with_nullable(parsed_t, prob=0.5)
+        return parsed_t
 
     def get_api_outgoing_node(self, output_type: tp.Type):
         kwargs = {}
@@ -410,8 +419,11 @@ class APIGraphBuilder(ABC):
         if any(t is None for t in type_parameters):
             # Unable to parse type parameters
             return None
+        is_special = method_api.get("other_metadata", {}).get("is_special",
+                                                              False)
         parameters = [
-            Parameter(self.parse_type(p),
+            Parameter(self.parse_type(p,
+                                      disable_nullable_conversion=is_special),
                       self.get_type_parser().is_variable_argument(p))
             for p in method_api["parameters"]
         ]
@@ -507,7 +519,8 @@ class APIGraphBuilder(ABC):
         }
         self.parsed_types[class_node.name] = class_node
         if not super_types:
-            super_types.add(self.parse_type(ROOT_CLASSES[self.api_language]))
+            super_types.add(self.parse_type(ROOT_CLASSES[self.api_language],
+                                            disable_nullable_conversion=True))
         super_types = list(super_types)
         if class_node != self.bt_factory.get_any_type():
             class_node.supertypes = super_types
