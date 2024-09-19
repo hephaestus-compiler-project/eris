@@ -1697,3 +1697,40 @@ def get_type_substitution_of_parent(parent: tp.Type, child: tp.Type) -> dict:
             if supertype not in stack:
                 stack.append(supertype)
     return sub if parent_found else {}
+
+
+def annotate_type_with_nullable(t: tp.Type, prob: float) -> tp.Type:
+    """
+    Annotate the given type with nullable types.
+    """
+    cond = utils.random.bool(prob=prob)
+    is_primitive = getattr(t, "primitive", False)
+    match t:
+        case t if is_primitive or t.is_type_constructor():
+            new_t = t
+        case t if t.is_type_var():
+            new_t = tp.NullableType().new([t])
+        case t if t.is_wildcard() and t.is_invariant():
+            new_t = t
+        case t if t.is_wildcard():
+            bound = t.bound
+            t_constructor = getattr(bound, "t_constructor", None)
+            if not isinstance(t_constructor, tp.NullableType):
+                new_t = tp.WildCardType(bound=tp.NullableType().new([bound]),
+                                        variance=t.variance)
+            else:
+                new_t = t
+        case t if not t.is_parameterized() and not is_primitive:
+            new_t = tp.NullableType().new([t])
+        case t if t.is_parameterized():
+            new_type_args = [annotate_type_with_nullable(targ, prob)
+                             for targ in t.type_args]
+            new_t = t.t_constructor.new(new_type_args)
+            if not isinstance(t.t_constructor, tp.NullableType):
+                new_t = tp.NullableType().new([new_t])
+        case _:
+            new_t = t
+
+    if cond:
+        return new_t
+    return t

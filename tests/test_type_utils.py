@@ -1571,3 +1571,42 @@ def test_get_type_substitution_of_parent():
     assert tutils.get_type_substitution_of_parent(t4, t3) == {
         type_param1: kt.Integer, type_param2: type_param3
     }
+
+
+def test_annotate_type_with_nullable():
+    t = tp.SimpleClassifier("A")
+    assert tutils.annotate_type_with_nullable(t, prob=1.0) == tp.NullableType().new([t])
+    assert tutils.annotate_type_with_nullable(t, prob=0) == t
+
+    t = tp.TypeParameter("T")
+    assert tutils.annotate_type_with_nullable(t, prob=1.0) == tp.NullableType().new([t])
+
+    t = tp.TypeParameter("T", bound=kt.String)
+    assert tutils.annotate_type_with_nullable(t, prob=1.0) == tp.NullableType().new([t])
+
+    t = tp.WildCardType(bound=kt.String, variance=tp.Covariant)
+    assert tutils.annotate_type_with_nullable(t, prob=1.0) == tp.WildCardType(
+        bound=tp.NullableType().new([kt.String]), variance=tp.Covariant
+    )
+
+    t = tp.WildCardType(bound=kt.String, variance=tp.Contravariant)
+    assert tutils.annotate_type_with_nullable(t, prob=1.0) == tp.WildCardType(
+        bound=tp.NullableType().new([kt.String]), variance=tp.Contravariant
+    )
+
+    t = tp.WildCardType()
+    assert tutils.annotate_type_with_nullable(t, prob=1.0) == t
+
+    tcon = tp.TypeConstructor("A", [tp.TypeParameter("T")])
+    tcon2 = tp.TypeConstructor("B", [tp.TypeParameter("T")])
+
+    t = tcon2.new([tcon.new([kt.String])])
+    assert tutils.annotate_type_with_nullable(t, prob=1.0) == tp.NullableType().new([
+        tcon2.new([
+            tp.NullableType().new([
+                tcon.new([
+                    tp.NullableType().new([kt.String])
+                ])
+            ])
+        ])
+    ])
