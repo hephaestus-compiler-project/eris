@@ -1052,30 +1052,11 @@ class JavaTranslator(BaseTranslator):
         cond.accept(self)
         true_branch = children[1]
         false_branch = children[2]
-        # Handle Smart Cast and is suffix
         prev_namespace = self._namespace
-        if isinstance(cond, ast.Is):
-            # true branch smart cast
-            if not cond.operator.is_not:
-                self._namespace = prev_namespace + ('true_block',)
-                self.smart_casts.append((cond.lexpr, cond.rexpr))
-                true_branch.accept(self)
-                self.smart_casts.pop()
-                self._visit_is_stack.pop()
-                self._namespace = prev_namespace + ('false_block',)
-                false_branch.accept(self)
-            # false branch smart cast
-            else:
-                self._namespace = prev_namespace + ('true_block',)
-                self._visit_is_stack.pop()
-                true_branch.accept(self)
-                self._namespace = prev_namespace + ('false_block',)
-                self.smart_casts.append((cond.lexpr, cond.rexpr))
-                false_branch.accept(self)
-                self.smart_casts.pop()
-        else:
-            true_branch.accept(self)
-            false_branch.accept(self)
+        self._namespace = prev_namespace + ('true_block',)
+        true_branch.accept(self)
+        self._namespace = prev_namespace + ('false_block',)
+        false_branch.accept(self)
 
         children_res = self.pop_children_res(children)
         if node.is_expression:
