@@ -23,10 +23,20 @@ def type_similarity(t: tp.Type, target: tp.Type,
     return len(a & b) / len(a | b)
 
 
+def _add_base_type_arg(is_base_nullable: bool,
+                       variances: Set[tp.Variance]) -> bool:
+    return not (
+        (tp.Covariant in variances and is_base_nullable) or
+        tp.Contravariant in variances and not is_base_nullable
+    )
+
+
 class IncompatibleTyping():
     NO_EXCLUSION = 0
     EXCLUDE_SUBTYPES = 1
     EXCLUDE_SUPERTYPES = 2
+    ONLY_SUBTYPES = 3
+    ONLY_SUPERTYPES = 4
 
     def __init__(self, api_graph, bt_factory: BuiltinFactory):
         self.api_graph = api_graph
@@ -152,6 +162,13 @@ class IncompatibleTyping():
                 continue
             if not exclude_strategy:
                 types.add(t)
+            if self.ONLY_SUBTYPES in exclude_strategy and t.is_subtype(exp_t):
+                types.add(t)
+                continue
+            if (self.ONLY_SUPERTYPES in exclude_strategy and
+                    t in exp_t.get_supertypes()):
+                types.add(t)
+                continue
             if self.EXCLUDE_SUBTYPES in exclude_strategy:
                 if not t.is_subtype(exp_t):
                     types.add(t)
@@ -254,6 +271,8 @@ class IncompatibleTyping():
         so that all the resulting instantiations are invalid.
         """
         instantiations = []
+        if type_arg.is_wildcard():
+            type_arg = type_arg.bound
         if type_con != self.bt_factory.get_array_type():
             # Wildcards
             instantiations.append(tp.WildCardType())
@@ -330,7 +349,9 @@ class IncompatibleTyping():
         indexes, default = {}, {}
         for i, (type_param, insts) in enumerate(reversed_sub.items()):
             indexes[i] = type_param
-            t = utils.random.choice(insts)
+            t = utils.random.choice([
+                tparam for tparam in insts
+                if tparam in exp_t.t_constructor.type_parameters])
             if not t.is_type_var():
                 instantiations.setdefault(type_param, []).append(t)
                 default[type_param] = t
@@ -340,11 +361,9 @@ class IncompatibleTyping():
                 variances = set()
                 if type_arg.is_wildcard() and type_arg.variance.is_covariant():
                     variances.add(tp.Covariant)
-                    type_arg = type_arg.bound
 
                 if type_arg.is_wildcard() and type_arg.is_contravariant():
                     variances.add(tp.Contravariant)
-                    type_arg = type_arg.bound
                 instantiations.setdefault(type_param, []).extend(
                     self.get_type_parameter_instantiations(
                         type_arg, exp_t, loc, type_con, variances))
@@ -416,3 +435,166 @@ class IncompatibleTyping():
                     )[0]
                 type_args[index] = v
             yield type_con.new(type_args)
+
+
+class NullIncompatibleTyping(IncompatibleTyping):
+    def __init__(self, api_graph, bt_factory: BuiltinFactory):
+        super().__init__(api_graph, bt_factory)
+
+    def get_incompatible_type(self, candidate_t: tp.Type,
+                              exp_t: tp.Type, loc) -> bool:
+        """
+        Given a candidate type t1 and an expected type t2, this method checks
+        whether t1 is incompatible to t2.
+        """
+        is_nullable = (exp_t.is_parameterized() and
+                       isinstance(exp_t.t_constructor, tp.NullableType))
+        base_t = exp_t
+        if is_nullable:
+            base_t = exp_t.type_args[0]
+
+        if is_nullable and not base_t.is_parameterized():
+            return None
+        if not is_nullable:
+            if not candidate_t.is_type_constructor():
+                if candidate_t.is_subtype(exp_t):
+                    yield tp.NullableType().new([candidate_t])
+                return
+
+            t = candidate_t.new([tp.WildCardType()
+                                 for _ in candidate_t.type_parameters])
+            t2 = exp_t.t_constructor.new(
+                [tp.WildCardType()
+                 for _ in exp_t.t_constructor.type_parameters])
+            if t.is_subtype(t2):
+                yield from self.gen_incompatible_type_constructor_instantiations(
+                    exp_t, loc, candidate_t
+                )
+        return None
+
+    def gen_incompatible_type_constructor_instantiations(
+        self,
+        exp_t: tp.Type,
+        loc,
+        type_con: tp.TypeConstructor,
+    ) -> Generator[tp.ParameterizedType, None, None]:
+        """
+        Given an expected type and a type constructor T, this function yields
+        various instantiations of T so that the resulting parameterized type
+        is not compatible with the given expected type.
+        """
+        types = self.api_graph.get_reg_types()
+        param_t = tu.instantiate_type_constructor(
+            type_con, types,
+            only_regular=True,
+            rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
+        )
+        if param_t is None:
+            return
+
+        if not exp_t.is_parameterized():
+            yield tp.NullableType().new([param_t[0]])
+            return
+
+        sub = tu.get_type_substitution_of_parent(exp_t, type_con)
+        if not sub:
+            # They types don't have connected type parameters. So, just return
+            # an instantation of the candidate type constructor.
+            # Example:
+            # exp_t: List<String>, type_con: Map<String, Object>
+            yield tp.NullableType().new([param_t[0]])
+            return
+
+        # Here, the expected type and the type constructor have some sort
+        # of relation. Try to instantiate the connected type parameters with
+        # incompatible types. Example:
+        # exp_t: List<String>, type_con: List<Integer>/LinkedList<Integer>.
+        # In the above example, we make sure that List/LinkedList is not
+        # instantiated with String.
+        param_t = param_t[0]
+        instantiations = \
+            self._gen_incompatible_instantiations_from_related_type(
+                exp_t, type_con, sub, loc)
+
+        for type_var_map in instantiations:
+            # Here, we replace the instantiations of the connected type
+            # parameters with incompatible types.
+            type_args = list(param_t.type_args)
+            for k, v in type_var_map.items():
+                index = type_con.type_parameters.index(k)
+                if v.is_type_constructor():
+                    v = tu.instantiate_type_constructor(
+                        v, types, only_regular=True,
+                        rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
+                    )[0]
+                type_args[index] = v
+            yield type_con.new(type_args)
+
+    def get_type_parameter_instantiations(self, type_arg: tp.Type,
+                                          exp_t: tp.Type,
+                                          loc,
+                                          type_con: tp.TypeConstructor,
+                                          variances: Set[tp.Variance]):
+        """
+        This method produces the list of possible instantiations of a
+        type parameter that has been previously instantiated with
+        `type_arg`. This method considers the variance of the type parameter
+        so that all the resulting instantiations are invalid.
+        """
+        instantiations = []
+        base_type_arg = type_arg
+        if type_arg.is_wildcard() and not type_arg.is_invariant():
+            base_type_arg = type_arg.bound
+
+        is_nullable = (base_type_arg.is_parameterized() and
+                       isinstance(base_type_arg.t_constructor,
+                                  tp.NullableType))
+
+        new_type_arg = (base_type_arg.type_args[0]
+                        if is_nullable
+                        else tp.NullableType().new([base_type_arg]))
+
+        if type_con != self.bt_factory.get_array_type() and \
+                type_arg.is_wildcard():
+            # Wildcards
+            if tp.Covariant in variances and not is_nullable:
+                instantiations.append(
+                    tp.WildCardType(
+                        new_type_arg,
+                        tp.Covariant
+                    )
+                )
+            if tp.Contravariant in variances and is_nullable:
+                instantiations.append(
+                    tp.WildCardType(
+                        new_type_arg,
+                        tp.Contravariant
+                    )
+                )
+
+        if _add_base_type_arg(is_nullable, variances):
+            instantiations.append(new_type_arg)
+        exclusion_strategies = None
+        if tp.Covariant in variances and not is_nullable:
+            exclusion_strategies = {self.ONLY_SUBTYPES}
+            blacklisted_types = {base_type_arg}
+            base_t = base_type_arg
+        if tp.Contravariant in variances and is_nullable:
+            exclusion_strategies = {self.ONLY_SUPERTYPES}
+            blacklisted_types = {base_type_arg.t_constructor}
+            base_t = base_type_arg.type_args[0]
+        if exclusion_strategies is not None:
+            candidate_types = self.get_representative_types(
+                loc, base_t, exclusion_strategies,
+                blacklisted_types=blacklisted_types
+            )
+            candidate_types = sorted(
+                list(candidate_types),
+                key=lambda x: type_similarity(x, exp_t, self.bt_factory),
+                reverse=True
+            )
+            instantiations.extend([
+                t if is_nullable else tp.NullableType().new([t])
+                for t in candidate_types
+            ])
+        return instantiations

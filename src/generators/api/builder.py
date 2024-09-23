@@ -348,6 +348,7 @@ class APIGraphBuilder(ABC):
         use_nullables = self.options.get("use-nullable-types", False)
         if use_nullables and not build_class_node and not kwargs.get(
                 "disable_nullable_conversion", False):
+            # FIXME make this probability configurable
             return tu.annotate_type_with_nullable(parsed_t, prob=0.5)
         return parsed_t
 

@@ -2,7 +2,7 @@ from typing import Set, Dict
 
 from src.enumerators.analyses import Loc, ExprLocationAnalysis
 from src.enumerators.error import ErrorEnumerator
-from src.enumerators.utils import IncompatibleTyping
+from src.enumerators.utils import NullIncompatibleTyping, IncompatibleTyping
 from src.ir import ast, type_utils as tu, types as tp
 from src.ir.builtins import BuiltinFactory
 from src.ir.visitors import ASTExprUpdate
@@ -23,6 +23,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self.new_node = None
         self.depth = 0
         self.analysis = ExprLocationAnalysis()
+        self.options = options
         super().__init__(program, program_gen, bt_factory)
 
     @property
@@ -157,8 +158,12 @@ class TypeErrorEnumerator(ErrorEnumerator):
             yield from self.get_incompatible_type_of_receiver(loc)
             return
         exp_t, _ = loc.expr.get_type_info()
-        typer = IncompatibleTyping(self.api_graph, self.bt_factory)
-        return typer.enumerate_incompatible_typings(exp_t, loc)
+        typer = (
+            NullIncompatibleTyping(self.api_graph, self.bt_factory)
+            if self.options.get("use-nullable-types", False)
+            else IncompatibleTyping(self.api_graph, self.bt_factory)
+        )
+        yield from typer.enumerate_incompatible_typings(exp_t, loc)
 
     def get_type_variables_of_node_signature(self, node: nodes.APINode,
                                              receiver_type: tp.Type):
@@ -250,6 +255,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
         """
         assert loc.parent.receiver is not None, (
             "Assertion failed: parent location does not contain a receiver")
+        if self.options.get("use-nullable-types", False):
+            return None
         decl = self.api_graph.get_declaration_of_access(loc.parent)
         receiver_type = loc.parent.receiver.get_type_info()[1]
         if not receiver_type.is_parameterized():
