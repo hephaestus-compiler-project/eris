@@ -359,10 +359,12 @@ class IncompatibleTyping():
                 type_arg = type_var_assignments[t]
                 default[type_param] = type_arg
                 variances = set()
-                if type_arg.is_wildcard() and type_arg.variance.is_covariant():
+                if (type_param.is_covariant() or
+                        (type_arg.is_wildcard() and type_arg.variance.is_covariant())):
                     variances.add(tp.Covariant)
 
-                if type_arg.is_wildcard() and type_arg.is_contravariant():
+                if (type_param.is_contravariant() or
+                        (type_arg.is_wildcard() and type_arg.is_contravariant())):
                     variances.add(tp.Contravariant)
                 instantiations.setdefault(type_param, []).extend(
                     self.get_type_parameter_instantiations(
@@ -463,9 +465,11 @@ class NullIncompatibleTyping(IncompatibleTyping):
 
             t = candidate_t.new([tp.WildCardType()
                                  for _ in candidate_t.type_parameters])
-            t2 = exp_t.t_constructor.new(
-                [tp.WildCardType()
-                 for _ in exp_t.t_constructor.type_parameters])
+            t2 = exp_t
+            if exp_t.is_parameterized():
+                t2 = exp_t.t_constructor.new(
+                    [tp.WildCardType()
+                     for _ in exp_t.t_constructor.type_parameters])
             if t.is_subtype(t2):
                 yield from self.gen_incompatible_type_constructor_instantiations(
                     exp_t, loc, candidate_t
