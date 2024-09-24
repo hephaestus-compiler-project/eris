@@ -8,7 +8,9 @@ def format_options(options: List[List[str]]) -> List[str]:
     for option_pair in options:
         key, value = option_pair[0], option_pair[1]
         formatted_options.append(key.lstrip())
-        formatted_options.append(value.lstrip())
+        value = value.lstrip()
+        if value:
+            formatted_options.append(value)
     return formatted_options
 
 
