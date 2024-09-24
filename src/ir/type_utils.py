@@ -1674,10 +1674,14 @@ def get_type_substitution_of_parent(parent: tp.Type, child: tp.Type) -> dict:
 
     get_type_substitution_of_parent(B<X>, C<K>) = {X: K}
     get_type_substitution_of_parent(A<T>, C<K>) = {T: K}
+    get_type_substitution_of_parent(A<T>, A<T>) = {T: T}
     """
     if not parent.is_parameterized() and not parent.is_type_constructor():
         return {}
 
+    if child.name == parent.name and child.is_type_constructor():
+        return {tparam: tparam
+                for tparam in child.type_parameters}
     sub = {}
     parent_found = False
     stack = [child]
