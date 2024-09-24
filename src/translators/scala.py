@@ -558,7 +558,10 @@ class ScalaTranslator(BaseTranslator):
 
     @append_to
     def visit_null_constant(self, node):
-        res = f"{self.get_ident()}null"
+        res = "{ident}{t}null".format(
+            ident=self.get_ident(),
+            t=f"({self.get_type_name(node.t)}) " if node.t else ""
+        )
         self._children_res.append(res)
 
     @append_to

@@ -411,7 +411,10 @@ class JavaTranslator(BaseTranslator):
 
     @append_to
     def visit_null_constant(self, node):
-        return f"{self.get_ident()}null"
+        return "{ident}{t}null".format(
+            ident=self.get_ident(),
+            t=f"({self.get_type_name(node.t)}) " if node.t else ""
+        )
 
     @append_to
     def visit_super_instantiation(self, node):
