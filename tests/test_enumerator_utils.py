@@ -83,7 +83,8 @@ def test_null_type_enumeration_polymorphic(api_graph):
         tp.NullableType().new([
             linkedlist_t.new([tp.NullableType().new([jt.Integer])])
 
-        ])
+        ]),
+        tp.NullableType().new([linkedlist_t.new([jt.Integer])])
     ]
 
     exp_t = list_t.new([tp.WildCardType(jt.Integer, tp.Covariant)])
@@ -97,6 +98,9 @@ def test_null_type_enumeration_polymorphic(api_graph):
         linkedlist_t.new([tp.NullableType().new([jt.Integer])]),
         tp.NullableType().new([
             linkedlist_t.new([tp.NullableType().new([jt.Integer])])
+        ]),
+        tp.NullableType().new([
+            linkedlist_t.new([tp.WildCardType(jt.Integer, tp.Covariant)])
         ])
     ]
 
@@ -105,13 +109,14 @@ def test_null_type_enumeration_polymorphic(api_graph):
         linkedlist_t.new([tp.NullableType().new([jt.Number])]),
         tp.NullableType().new([
             linkedlist_t.new([tp.NullableType().new([jt.Number])])
-        ])
+        ]),
+        tp.NullableType().new([linkedlist_t.new([jt.Number])])
     ]
 
     exp_t = list_t.new([tp.WildCardType(jt.Number, tp.Covariant)])
     types = list(typer.get_incompatible_type(linkedlist_t, exp_t, loc))
 
-    assert types[:-2] == [
+    assert types[:-3] == [
         linkedlist_t.new([tp.WildCardType(tp.NullableType().new([jt.Number]),
                                           tp.Covariant)]),
         tp.NullableType().new([
@@ -124,7 +129,7 @@ def test_null_type_enumeration_polymorphic(api_graph):
 
         ])
     ]
-    assert types[-2] in [
+    assert types[-3] in [
         linkedlist_t.new([tp.NullableType().new([jt.Byte])]),
         linkedlist_t.new([tp.NullableType().new([jt.Short])]),
         linkedlist_t.new([tp.NullableType().new([jt.Integer])]),
@@ -138,12 +143,24 @@ def test_null_type_enumeration_polymorphic(api_graph):
         linkedlist_t.new([jt.Integer]),
         tp.NullableType().new([
             linkedlist_t.new([jt.Integer])
+        ]),
+        tp.NullableType().new([
+            linkedlist_t.new([tp.NullableType().new([jt.Integer])])
         ])
     ]
 
     exp_t = list_t.new([tp.WildCardType(tp.NullableType().new([jt.Integer]),
                                         tp.Covariant)])
-    assert list(typer.get_incompatible_type(linkedlist_t, exp_t, loc)) == []
+    assert list(typer.get_incompatible_type(linkedlist_t, exp_t, loc)) == [
+        tp.NullableType().new([
+            linkedlist_t.new([
+                tp.WildCardType(
+                    tp.NullableType().new([jt.Integer]),
+                    tp.Covariant
+                )
+            ])
+        ])
+    ]
 
     exp_t = list_t.new([tp.WildCardType(tp.NullableType().new([jt.Integer]),
                                         tp.Contravariant)])
@@ -157,14 +174,30 @@ def test_null_type_enumeration_polymorphic(api_graph):
         linkedlist_t.new([jt.Object]),
         tp.NullableType().new([
             linkedlist_t.new([jt.Object])
+        ]),
+        tp.NullableType().new([
+            linkedlist_t.new([
+                tp.WildCardType(
+                    tp.NullableType().new([jt.Integer]),
+                    tp.Contravariant
+                )
+            ])
         ])
     ]
 
     exp_t = list_t.new([tp.WildCardType(jt.Integer, tp.Contravariant)])
-    assert list(typer.get_incompatible_type(linkedlist_t, exp_t, loc)) == []
+    assert list(typer.get_incompatible_type(linkedlist_t, exp_t, loc)) == [
+        tp.NullableType().new([
+            linkedlist_t.new([tp.WildCardType(jt.Integer, tp.Contravariant)])
+        ])
+    ]
 
     exp_t = jt.Array.new([tp.NullableType().new([jt.String])])
-    assert list(typer.get_incompatible_type(jt.Array, exp_t, loc)) == []
+    assert list(typer.get_incompatible_type(jt.Array, exp_t, loc)) == [
+        tp.NullableType().new([
+            jt.Array.new([tp.NullableType().new([jt.String])])
+        ])
+    ]
 
     exp_t = jt.Array.new([jt.Number])
     types = list(typer.get_incompatible_type(jt.Array, exp_t, loc))
@@ -193,7 +226,7 @@ def test_null_type_enumeration_nullable_polymorphic(api_graph):
         list_t.new([tp.NullableType().new([jt.Integer])]),
         tp.NullableType().new([
             list_t.new([tp.NullableType().new([jt.Integer])]),
-        ])
+        ]),
     ]
 
     # List<Int?>?

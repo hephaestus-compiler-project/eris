@@ -257,8 +257,11 @@ class IncompatibleTyping():
         if t.is_subtype(exp_t) and t.name != exp_t.name:
             return None
 
-        yield from self.gen_incompatible_type_constructor_instantiations(
-            exp_t, loc, candidate_t
+        yield from (
+            t for t in self.gen_incompatible_type_constructor_instantiations(
+                exp_t, loc, candidate_t)
+            if not t.is_subtype(exp_t)
+
         )
 
     def get_type_parameter_instantiations(self, type_arg: tp.Type,
@@ -371,6 +374,7 @@ class IncompatibleTyping():
                 instantiations.setdefault(type_param, []).extend(
                     self.get_type_parameter_instantiations(
                         type_arg, exp_t, loc, type_con, variances))
+                instantiations[type_param].append(type_arg)
 
         subs = []
         for i, (type_param, inst) in enumerate(instantiations.items()):
@@ -457,6 +461,28 @@ class NullIncompatibleTyping(IncompatibleTyping):
     def __init__(self, api_graph, bt_factory: BuiltinFactory):
         super().__init__(api_graph, bt_factory)
 
+    def _get_incompatible_type_polymorphic(self, base_t: tp.Type,
+                                           exp_t: tp.Type,
+                                           candidate_t: tp.TypeConstructor,
+                                           loc):
+        t = candidate_t.new([tp.WildCardType()
+                             for _ in candidate_t.type_parameters])
+        t2 = base_t
+        if base_t.is_parameterized():
+            t2 = base_t.t_constructor.new(
+                [tp.WildCardType()
+                 for _ in base_t.t_constructor.type_parameters])
+        if not t.is_subtype(t2):
+            return None
+
+        return (
+            t
+            for t in self.gen_incompatible_type_constructor_instantiations(
+                base_t, loc, candidate_t
+            )
+            if not t.is_subtype(exp_t)
+        )
+
     def get_incompatible_type(self, candidate_t: tp.Type,
                               exp_t: tp.Type, loc) -> bool:
         """
@@ -484,30 +510,19 @@ class NullIncompatibleTyping(IncompatibleTyping):
                     yield tp.NullableType().new([candidate_t])
                 return
 
-            # Case: candidate is polymorphic
-            t = candidate_t.new([tp.WildCardType()
-                                 for _ in candidate_t.type_parameters])
-            t2 = exp_t
-            if exp_t.is_parameterized():
-                t2 = exp_t.t_constructor.new(
-                    [tp.WildCardType()
-                     for _ in exp_t.t_constructor.type_parameters])
-            if t.is_subtype(t2):
-                yield from self.gen_incompatible_type_constructor_instantiations(
-                    exp_t, loc, candidate_t
-                )
+            gen = self._get_incompatible_type_polymorphic(
+                exp_t, exp_t, candidate_t, loc)
+            if gen:
+                yield from gen
             return
 
         if not candidate_t.is_type_constructor():
             return None
-        t = candidate_t.new([tp.WildCardType()
-                             for _ in candidate_t.type_parameters])
-        t2 = base_t.t_constructor.new(
-            [tp.WildCardType()
-             for _ in base_t.t_constructor.type_parameters])
-        yield from self.gen_incompatible_type_constructor_instantiations(
-            base_t, loc, candidate_t
-        )
+
+        gen = self._get_incompatible_type_polymorphic(
+            base_t, exp_t, candidate_t, loc)
+        if gen:
+            yield from gen
 
     def instantiate_type_constructor_with_incompatible_subs(
         self,
