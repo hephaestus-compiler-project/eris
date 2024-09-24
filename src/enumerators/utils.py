@@ -1,3 +1,5 @@
+import itertools
+
 from typing import Set, List, Generator
 
 from src import utils
@@ -382,6 +384,39 @@ class IncompatibleTyping():
                 })
         return subs
 
+    def instantiate_type_constructor_with_incompatible_subs(
+        self,
+        exp_t: tp.Type,
+        type_con: tp.TypeConstructor,
+        valid_t: tp.ParameterizedType,
+        sub: dict,
+        loc
+    ) -> Generator[tp.ParameterizedType, None, None]:
+        types = self.api_graph.get_reg_types()
+        # Here, the expected type and the type constructor have some sort
+        # of relation. Try to instantiate the connected type parameters with
+        # incompatible types. Example:
+        # exp_t: List<String>, type_con: List<Integer>/LinkedList<Integer>.
+        # In the above example, we make sure that List/LinkedList is not
+        # instantiated with String.
+        instantiations = \
+            self._gen_incompatible_instantiations_from_related_type(
+                exp_t, type_con, sub, loc)
+
+        for type_var_map in instantiations:
+            # Here, we replace the instantiations of the connected type
+            # parameters with incompatible types.
+            type_args = list(valid_t.type_args)
+            for k, v in type_var_map.items():
+                index = type_con.type_parameters.index(k)
+                if v.is_type_constructor():
+                    v = tu.instantiate_type_constructor(
+                        v, types, only_regular=True,
+                        rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
+                    )[0]
+                type_args[index] = v
+            yield type_con.new(type_args)
+
     def gen_incompatible_type_constructor_instantiations(
         self,
         exp_t: tp.Type,
@@ -413,30 +448,9 @@ class IncompatibleTyping():
             yield param_t[0]
             return
 
-        # Here, the expected type and the type constructor have some sort
-        # of relation. Try to instantiate the connected type parameters with
-        # incompatible types. Example:
-        # exp_t: List<String>, type_con: List<Integer>/LinkedList<Integer>.
-        # In the above example, we make sure that List/LinkedList is not
-        # instantiated with String.
-        param_t = param_t[0]
-        instantiations = \
-            self._gen_incompatible_instantiations_from_related_type(
-                exp_t, type_con, sub, loc)
-
-        for type_var_map in instantiations:
-            # Here, we replace the instantiations of the connected type
-            # parameters with incompatible types.
-            type_args = list(param_t.type_args)
-            for k, v in type_var_map.items():
-                index = type_con.type_parameters.index(k)
-                if v.is_type_constructor():
-                    v = tu.instantiate_type_constructor(
-                        v, types, only_regular=True,
-                        rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
-                    )[0]
-                type_args[index] = v
-            yield type_con.new(type_args)
+        yield from self.gen_incompatible_type_constructor_instantiations(
+            exp_t, type_con, param_t[0], sub, loc
+        )
 
 
 class NullIncompatibleTyping(IncompatibleTyping):
@@ -458,11 +472,19 @@ class NullIncompatibleTyping(IncompatibleTyping):
         if is_nullable and not base_t.is_parameterized():
             return None
         if not is_nullable:
+            primitive = getattr(exp_t, "primitive", False)
+            # Case: exp: int, candidate: Integer
+            if primitive and exp_t.box_type() == candidate_t:
+                yield tp.NullableType().new([candidate_t])
+                return
+
+            # Case: candidate: non-polymorphic
             if not candidate_t.is_type_constructor():
                 if candidate_t.is_subtype(exp_t):
                     yield tp.NullableType().new([candidate_t])
                 return
 
+            # Case: candidate is polymorphic
             t = candidate_t.new([tp.WildCardType()
                                  for _ in candidate_t.type_parameters])
             t2 = exp_t
@@ -474,7 +496,36 @@ class NullIncompatibleTyping(IncompatibleTyping):
                 yield from self.gen_incompatible_type_constructor_instantiations(
                     exp_t, loc, candidate_t
                 )
-        return None
+            return
+
+        if not candidate_t.is_type_constructor():
+            return None
+        t = candidate_t.new([tp.WildCardType()
+                             for _ in candidate_t.type_parameters])
+        t2 = base_t.t_constructor.new(
+            [tp.WildCardType()
+             for _ in base_t.t_constructor.type_parameters])
+        yield from self.gen_incompatible_type_constructor_instantiations(
+            base_t, loc, candidate_t
+        )
+
+    def instantiate_type_constructor_with_incompatible_subs(
+        self,
+        exp_t: tp.Type,
+        type_con: tp.TypeConstructor,
+        valid_t: tp.ParameterizedType,
+        sub: dict,
+        loc
+    ) -> Generator[tp.ParameterizedType, None, None]:
+        def to_nullable(t: tp.Type) -> tp.ParameterizedType:
+            return tp.NullableType().new([t])
+
+        yield from itertools.chain.from_iterable(
+            (t, to_nullable(t))
+            for t in super().instantiate_type_constructor_with_incompatible_subs(
+                exp_t, type_con, valid_t, sub, loc
+            )
+        )
 
     def gen_incompatible_type_constructor_instantiations(
         self,
@@ -509,30 +560,9 @@ class NullIncompatibleTyping(IncompatibleTyping):
             yield tp.NullableType().new([param_t[0]])
             return
 
-        # Here, the expected type and the type constructor have some sort
-        # of relation. Try to instantiate the connected type parameters with
-        # incompatible types. Example:
-        # exp_t: List<String>, type_con: List<Integer>/LinkedList<Integer>.
-        # In the above example, we make sure that List/LinkedList is not
-        # instantiated with String.
-        param_t = param_t[0]
-        instantiations = \
-            self._gen_incompatible_instantiations_from_related_type(
-                exp_t, type_con, sub, loc)
-
-        for type_var_map in instantiations:
-            # Here, we replace the instantiations of the connected type
-            # parameters with incompatible types.
-            type_args = list(param_t.type_args)
-            for k, v in type_var_map.items():
-                index = type_con.type_parameters.index(k)
-                if v.is_type_constructor():
-                    v = tu.instantiate_type_constructor(
-                        v, types, only_regular=True,
-                        rec_bound_handler=self.api_graph.get_instantiations_of_recursive_bound
-                    )[0]
-                type_args[index] = v
-            yield type_con.new(type_args)
+        yield from self.instantiate_type_constructor_with_incompatible_subs(
+            exp_t, type_con, param_t[0], sub, loc
+        )
 
     def get_type_parameter_instantiations(self, type_arg: tp.Type,
                                           exp_t: tp.Type,
