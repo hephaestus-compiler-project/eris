@@ -604,7 +604,8 @@ class APIClientGenerator(Generator):
             self.bt_factory.get_char_type().name: gens.gen_char_constant,
             self.bt_factory.get_string_type().name: gens.gen_string_constant,
             self.bt_factory.get_boolean_type().name: gens.gen_bool_constant,
-            self.bt_factory.get_array_type().name: array_gen
+            self.bt_factory.get_array_type().name: array_gen,
+            tp.NullableType().name: lambda t: ast.NullConstant(t.type_args[0])
         }
         generator = constant_candidates.get(expr_type.name.capitalize())
         if generator is not None:
