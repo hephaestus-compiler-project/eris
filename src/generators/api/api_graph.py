@@ -968,6 +968,22 @@ class APIGraph():
             rec_type = rec_type.new(rec_type.type_parameters)
         return rec_type, out_type
 
+    def get_function_type_of_callable(
+        self,
+        api: Union[Method, Constructor]
+    ) -> tp.ParameterizedType:
+        param_types = [
+            (
+                self.bt_factory.get_array_type().new([param.t.box_type()])
+                if param.variable
+                else param.t.box_type()
+            )
+            for param in api.parameters
+        ]
+        ret_type = self.get_concrete_output_type(api)
+        return self.bt_factory.get_function_type(len(param_types)).new(
+            param_types + [ret_type])
+
     def get_function_refs_of(self, etype: tp.Type,
                              single: bool = False) -> List[Tuple[Method, dict]]:
         func_type = self.get_functional_type_instantiated(etype)
