@@ -97,6 +97,10 @@ class Type(Node):
     def is_function_type(self):
         return False
 
+    def is_nullable(self):
+        return self.is_parameterized() and isinstance(self.t_constructor,
+                                                      NullableType)
+
     def get_supertypes(self):
         """Return self and the transitive closure of the supertypes"""
         stack = [self]
