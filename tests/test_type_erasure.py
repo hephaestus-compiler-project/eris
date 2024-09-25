@@ -835,3 +835,94 @@ def test_erase_types_illtyped_trycatch():
     type_eraser.erase_types_ill_typed(func_call, m, kt.Number, 0,
                                       [(try_block, 0), (try_catch, 0)])
     assert not func_call.can_infer_type_args and var_decl.var_type is not None
+
+
+def test_erase_types_ill_typed_comparing():
+    # Func<X, Y> {
+    #  Y apply(X p)
+    # }
+    #
+    # Comparator<T> {
+    #  static <X, Y> comparing(Function<? super X, ? extends Y> x,
+    #                         Function2<? super Y, ? super Y, Integer> y)
+    # }
+    #
+    # Initial: comparing(Func<String, String>()::apply, (x1, x2) -> 1)
+    # New:     comparing(Func<String, Int>()::apply, (String x1, String x2) -> 1)
+    #
+    # The transformation is sound in terms of making the program invalid.
+    #
+    bt_factory = kt.KotlinBuiltinFactory()
+    type_param1 = tp.TypeParameter("T1")
+    type_param2 = tp.TypeParameter("T2")
+    type_con = tp.TypeConstructor("Comparator", [type_param1])
+    type_con2 = tp.TypeConstructor("Func", [type_param1, type_param2])
+
+    function_type1 = bt_factory.get_function_type(1).new([
+        tp.WildCardType(type_param1, tp.Contravariant),
+        tp.WildCardType(type_param2, tp.Covariant)
+    ])
+    function_type2 = bt_factory.get_function_type(2).new([
+        tp.WildCardType(type_param2, tp.Contravariant),
+        tp.WildCardType(type_param2, tp.Contravariant),
+        bt_factory.get_integer_type()
+    ])
+
+    graph = nx.DiGraph()
+    m1 = mk_method(graph, "comparing", [function_type1, function_type2],
+                   type_con.new([type_param1]), [type_param1, type_param2])
+
+    m2 = mk_method(graph, "apply", [type_param1], type_param2,
+                   [], type_con2)
+    api_graph = ag.APIGraph(graph, nx.DiGraph(), {},
+                            bt_factory=bt_factory)
+    type_eraser = te.TypeEraser(api_graph, bt_factory, False)
+
+    receiver_type = type_con2.new([kt.String, kt.String])
+    receiver = ast.BottomConstant(receiver_type)
+    receiver.mk_typed(ast.TypePair(expected=None, actual=receiver_type))
+    func_ref = ast.FunctionReference(
+        "apply", receiver,
+        bt_factory.get_function_type(1).new([kt.String, kt.String]),
+        bt_factory.get_function_type(1).new([kt.String, kt.String]),
+    )
+    func_ref.mk_typed(ast.TypePair(
+        expected=bt_factory.get_function_type(1).new([
+            tp.WildCardType(kt.String, tp.Contravariant),
+            tp.WildCardType(kt.String, tp.Covariant)
+        ]),
+        actual=bt_factory.get_function_type(1).new([kt.String, kt.String])
+    ))
+    lambda_expr = ast.Lambda("lambda_1",
+                             [
+                                 ast.ParameterDeclaration("x1", kt.String),
+                                 ast.ParameterDeclaration("x2", kt.String)
+                             ], kt.Integer, mk_expr(kt.Integer),
+                             bt_factory.get_function_type(2).new(
+                                 [kt.String, kt.String, kt.Integer]))
+    lambda_expr.mk_typed(ast.TypePair(
+        expected=bt_factory.get_function_type(2).new([
+            tp.WildCardType(kt.String, tp.Contravariant),
+            tp.WildCardType(kt.String, tp.Covariant),
+            kt.Integer
+        ]),
+        actual=bt_factory.get_function_type(2).new([
+            kt.String, kt.String, kt.Integer
+        ])
+    ))
+    lambda_expr.omit_types()
+    func_call = ast.FunctionCall(
+        "comparing", [
+            ast.CallArgument(func_ref),
+            ast.CallArgument(lambda_expr)
+        ],
+        type_args=[kt.String, kt.String]
+    )
+    new_type = type_con2.new([kt.String, kt.Integer])
+
+    assert not func_call.can_infer_type_args
+    assert lambda_expr.can_infer_signature
+    type_eraser.erase_types_ill_typed(func_ref, m2, new_type, -1,
+                                      [(func_call, 0)])
+    assert func_call.can_infer_type_args
+    assert not lambda_expr.can_infer_signature

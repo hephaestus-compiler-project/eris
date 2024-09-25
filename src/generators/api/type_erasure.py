@@ -403,6 +403,13 @@ class TypeEraser():
                                                new_sub)
             if not actual_arg_type.is_subtype(expected_type):
                 ill_typed = True
+                if isinstance(arg.expr, (ast.FunctionCall, ast.New,
+                                         ast.Lambda)):
+                    # We should recover the types, if we have a case like
+                    # the following:
+                    # comparing(ill-typed-receiver::apply, (p1, p2) -> 1);
+                    # We should recover the types for lambda.
+                    arg.expr.recover_types()
                 break
         if ill_typed:
             expr.omit_types()
@@ -437,6 +444,14 @@ class TypeEraser():
         else:
             recover_types(receiver)
             return False
+
+    def _get_type_of_api(self, expr: ast.Expr, api: ag.APINode,
+                         sub: dict) -> tp.Type:
+        if isinstance(expr, ast.FunctionReference):
+            t = self.api_graph.get_function_type_of_callable(api)
+        else:
+            t = self.api_graph.get_concrete_output_type(api)
+        return tp.substitute_type(t, sub)
 
     def check_compatibility_of_target_type(self, expr: ast.Expr,
                                            api: ag.APINode, new_sub: dict,
@@ -478,8 +493,7 @@ class TypeEraser():
                 if isinstance(parent, ast.FunctionCall):
                     decl = self.api_graph.get_declaration_of_access(
                         parent, only_instance=False)
-                    out_type = self.api_graph.get_concrete_output_type(api)
-                    new_t = tp.substitute_type(out_type, new_sub)
+                    new_t = self._get_type_of_api(expr, api, new_sub)
                     res = self.erase_types_ill_typed(parent, decl, new_t,
                                                      parent_index, parents[1:])
                     if not res:
