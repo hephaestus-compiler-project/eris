@@ -668,6 +668,9 @@ class Lambda(Expr):
     def omit_types(self):
         self.can_infer_signature = True
 
+    def recover_types(self):
+        self.can_infer_signature = False
+
 
 class ClassDeclaration(Declaration):
     REGULAR = 0
