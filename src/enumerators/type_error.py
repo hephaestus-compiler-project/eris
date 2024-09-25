@@ -157,6 +157,9 @@ class TypeErrorEnumerator(ErrorEnumerator):
             # the incompatible typings.
             yield from self.get_incompatible_type_of_receiver(loc)
             return
+        use_nullables = self.options.get("use-nullable-types", False)
+        if use_nullables:
+            return
         exp_t, _ = loc.expr.get_type_info()
         typer = (
             NullIncompatibleTyping(self.api_graph, self.bt_factory)
@@ -188,6 +191,27 @@ class TypeErrorEnumerator(ErrorEnumerator):
             type_variables.setdefault(t, set()).add(self.OUT_POS)
         return type_variables
 
+    def is_replacement_valid(self, parents: list) -> bool:
+        def is_assignment_valid(t: tp.Type) -> bool:
+            t = (
+                t.get_bound_rec(self.bt_factory)
+                if t.is_type_var()
+                else t
+            )
+            return not t.is_nullable()
+
+        for parent, index in parents:
+            if isinstance(parent, ast.VariableDeclaration):
+                return is_assignment_valid(parent.inferred_type)
+            if isinstance(parent, ast.FunctionDeclaration):
+                return is_assignment_valid(parent.get_type())
+
+            if isinstance(parent, ast.FunctionCall):
+                if index >= 0:
+                    exp_t = parent.args[index].expr.get_type_info()[0]
+                    return is_assignment_valid(exp_t)
+        return True
+
     def replace_receiver_type(self, loc: Loc, receiver_type: tp.Type,
                               type_variables: Dict[tp.TypeParameter, Set[int]]):
         """
@@ -214,7 +238,12 @@ class TypeErrorEnumerator(ErrorEnumerator):
         for p, _ in parents:
             if isinstance(p, ast.VariableDeclaration):
                 p.recover_type()
-        typer = IncompatibleTyping(self.api_graph, self.bt_factory)
+        typer = (
+            NullIncompatibleTyping(self.api_graph, self.bt_factory)
+            if self.options.get("use-nullable-types", False)
+            else IncompatibleTyping(self.api_graph, self.bt_factory)
+        )
+
         for type_var, positions in type_variables.items():
             type_arg = sub[type_var]
             # Case: val x: Any = List<Any>().get(0)
@@ -227,11 +256,15 @@ class TypeErrorEnumerator(ErrorEnumerator):
             ]:
                 continue
             if self.OUT_POS in positions:
+                if not self.is_replacement_valid(parents):
+                    continue
                 mapped_type_vars.setdefault(type_var, set()).add(tp.Covariant)
             if positions.difference({self.OUT_POS}):
                 mapped_type_vars.setdefault(type_var, set()).add(
                     tp.Contravariant
                 )
+            if type_arg == self.bt_factory.get_void_type(primitive=False):
+                continue
             for new_type_arg in typer.get_type_parameter_instantiations(
                     type_arg, receiver_type, loc, type_con,
                     mapped_type_vars[type_var]):
@@ -243,6 +276,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                     if new_type_arg is None:
                         return
                     new_type_arg = new_type_arg[0]
+
                 type_args = list(rec_t.type_args)
                 index = type_con.type_parameters.index(type_var)
                 type_args[index] = new_type_arg
@@ -255,17 +289,24 @@ class TypeErrorEnumerator(ErrorEnumerator):
         """
         assert loc.parent.receiver is not None, (
             "Assertion failed: parent location does not contain a receiver")
-        if self.options.get("use-nullable-types", False):
-            return None
+        use_nullables = self.options.get("use-nullable-types", False)
         decl = self.api_graph.get_declaration_of_access(loc.parent)
         receiver_type = loc.parent.receiver.get_type_info()[1]
         if not receiver_type.is_parameterized():
-            return None
+            if use_nullables:
+                typer = NullIncompatibleTyping(self.api_graph, self.bt_factory)
+                yield from typer.enumerate_incompatible_typings(receiver_type,
+                                                                loc)
+            return
+
+        # Receiver is polymorphic
         type_variables = self.get_type_variables_of_node_signature(
             decl, receiver_type)
         type_variables = {k: v for k, v in type_variables.items()
                           if k in receiver_type.t_constructor.type_parameters}
+        if use_nullables:
+            yield tp.NullableType().new([receiver_type])
         if not type_variables:
-            return None
+            return
         yield from self.replace_receiver_type(loc, receiver_type,
                                               type_variables)
