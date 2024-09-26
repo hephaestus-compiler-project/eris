@@ -13,7 +13,7 @@ from src.generators import Generator
 from src.generators.api.nodes import Variable
 from src.enumerators.analyses import BlockAnalysis
 from src.enumerators.error import ErrorEnumerator
-from src.enumerators.utils import IncompatibleTyping
+from src.enumerators.utils import IncompatibleTyping, NullIncompatibleTyping
 
 
 class Loc(NamedTuple):
@@ -270,26 +270,27 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
 
     def get_programs_with_error(self, location):
         var_type = self.var_type
-        typer = IncompatibleTyping(self.api_graph, self.bt_factory)
-        if self.use_nullable_types:
-            type_gen = [tp.NullableType().new([self.var_type])]
-        else:
-            type_gen = typer.enumerate_incompatible_typings(var_type, location)
-            if not self.enumerate_all_types:
-                type_gen = [next(type_gen)]
-        inverse_map = {v: k for k, v in self.location_map.items()}
+        typer = (
+            NullIncompatibleTyping(self.api_graph, self.bt_factory)
+            if self.use_nullable_types
+            else IncompatibleTyping(self.api_graph, self.bt_factory)
+        )
+        type_gen = typer.enumerate_incompatible_typings(var_type, location)
+        if not self.enumerate_all_types:
+            type_gen = [next(type_gen)]
         for incmp_t in type_gen:
             if self.use_nullable_types:
-                expr = ast.NullConstant(incmp_t)
+                expr = self.program_gen.generate_expr(incmp_t)
             else:
                 expr = self.program_gen._generate_expr_from_node(incmp_t).expr
             expr.mk_typed(ast.TypePair(expected=self.var_type,
                                        actual=incmp_t))
             assignment = ast.Assignment(self.flow_variable, expr)
             index = location.block_index
+            inverse_map = {v: k for k, v in self.location_map.items()}
             if inverse_map[location] == self.merge_location and \
                     not isinstance(location.parent, ast.Loop):
-                index -= 1
+                index -= 2
                 pass
             new_expr = deepcopy(location.expr)
             new_expr.body.insert(index, assignment)
@@ -367,16 +368,24 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
             var_type = _select_type_for_merge_var(original_var_type,
                                                   self.bt_factory)
             self.var_type = var_type
+            merge_var_name = utils.random.word()
             merge_var_decl = ast.VariableDeclaration(
-                utils.random.word(),
+                merge_var_name,
                 ast.Variable(self.flow_variable),
                 is_final=True,
                 var_type=var_type
+            )
+            access = ast.FunctionCall(
+                "toString",
+                [],
+                ast.Variable(merge_var_name)
             )
             self.merge_location = merge_location
             end_index = self.get_block_end_index(merge_location, cfg)
             self.analysis.block_map[merge_location].body.insert(
                 end_index, merge_var_decl)
+            self.analysis.block_map[merge_location].body.insert(
+                end_index + 1, access)
             if self.bt_factory.get_language() in ["kotlin", "scala"]:
                 assignment = ast.Assignment(
                     self.flow_variable,
