@@ -1610,3 +1610,21 @@ def test_annotate_type_with_nullable():
             ])
         ])
     ])
+
+
+def test_strip_type_from_nullable():
+    t1 = tp.SimpleClassifier("A")
+    assert tutils.strip_type_from_nullable(t1.to_nullabe()) == t1
+
+    t1 = tp.TypeParameter("T")
+    assert tutils.strip_type_from_nullable(t1.to_nullabe()) == t1
+
+    t1.bound = kt.Integer.to_nullabe()
+    assert tutils.strip_type_from_nullable(t1) == tp.TypeParameter(
+        "T", bound=kt.Integer)
+
+    type_con = tp.TypeConstructor("A", [tp.TypeParameter("T")])
+    t1 = type_con.new([kt.Integer.to_nullabe()])
+    assert tutils.strip_type_from_nullable(t1.to_nullabe()) == type_con.new(
+        [kt.Integer])
+    assert tutils.strip_type_from_nullable(kt.Integer.to_nullabe()) == kt.Integer

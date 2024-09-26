@@ -1738,3 +1738,32 @@ def annotate_type_with_nullable(t: tp.Type, prob: float) -> tp.Type:
     if cond:
         return new_t
     return t
+
+
+def strip_type_from_nullable(t: tp.Type) -> tp.Type:
+    if t.is_nullable():
+        return strip_type_from_nullable(t.type_args[0])
+
+    is_primitive = getattr(t, "primitive", False)
+    match t:
+        case t if is_primitive:
+            return t
+        case t if t.is_type_constructor():
+            return t
+        case t if t.is_type_var():
+            if t.bound is None:
+                return t
+            bound = strip_type_from_nullable(t.bound)
+            return tp.TypeParameter(t.name, t.variance, bound)
+        case t if t.is_wildcard():
+            if t.bound is None:
+                return t
+            bound = strip_type_from_nullable(t.bound)
+            return tp.WildCardType(bound, t.variance)
+        case t if not t.is_parameterized():
+            return t
+        case _:
+            # Parameterized type
+            new_type_args = [strip_type_from_nullable(ta)
+                             for ta in t.type_args]
+            return t.t_constructor.new(new_type_args)

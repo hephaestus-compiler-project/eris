@@ -101,6 +101,11 @@ class Type(Node):
         return self.is_parameterized() and isinstance(self.t_constructor,
                                                       NullableType)
 
+    def to_nullabe(self):
+        if self.is_nullable():
+            return self
+        return NullableType().new([self])
+
     def get_supertypes(self):
         """Return self and the transitive closure of the supertypes"""
         stack = [self]
