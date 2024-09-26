@@ -157,9 +157,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
             # the incompatible typings.
             yield from self.get_incompatible_type_of_receiver(loc)
             return
-        use_nullables = self.options.get("use-nullable-types", False)
-        if use_nullables:
-            return
         exp_t, _ = loc.expr.get_type_info()
         typer = (
             NullIncompatibleTyping(self.api_graph, self.bt_factory)
