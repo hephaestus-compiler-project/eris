@@ -552,7 +552,8 @@ def _get_available_types(type_constructor,
         return types
     available_types = []
     for ptype in types:
-        if type_constructor and type_constructor.name == 'Array':
+        is_array = type_constructor and type_constructor.name == "Array"
+        if is_array:
             forbidden_types = (tp.TypeParameter, tp.ParameterizedType,
                                tp.TypeConstructor)
             if isinstance(ptype, forbidden_types):

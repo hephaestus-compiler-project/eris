@@ -503,6 +503,7 @@ class APIGraph():
         targets = [origin
                    if not target.is_parameterized()
                    else origin.t_constructor]
+        is_primitive = False
         if target.is_parameterized():
             is_primitive = (
                 origin.t_constructor == self.bt_factory.get_array_type() and
@@ -513,7 +514,7 @@ class APIGraph():
                 else self.get_type_by_name(target.name) or target.t_constructor
             )
         in_graph = target in self.subtyping_graph
-        if not in_graph:
+        if not in_graph and not is_primitive:
             # Target node is not in the subtyping graph. Check if we can
             # generate an expresion that yields the target node through the
             # use of abstract types.
@@ -601,6 +602,7 @@ class APIGraph():
                                                      self.bt_factory)
                 assignments = au.instantiate_type_variables(self, constraints,
                                                             assignment_graph)
+
                 if not infeasible and assignments is not None:
                     if not au.check_validity_api_parameters(node_path[-2],
                                                             assignments):
