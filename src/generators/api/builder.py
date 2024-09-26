@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict
 from copy import deepcopy, copy
 import re
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Tuple
 
 import networkx as nx
 
@@ -21,6 +21,57 @@ ROOT_CLASSES = {
     "kotlin": "kotlin.Any",
     "scala": "scala.Any"
 }
+
+
+def _rename_type_param_rec(t: tp.Type, match_prefix: str,
+                           new_prefix: str) -> tp.Type:
+    if t is None:
+        return t
+    is_primitive = getattr(t, "primitive", False)
+    match t:
+        case t if is_primitive:
+            return t
+        case t if t.is_type_constructor():
+            return t
+        case t if t.is_type_var():
+            segs = t.name.rsplit(".", 1)
+            if segs[0] == match_prefix:
+                new_t = deepcopy(t)
+                new_t.name = f"{new_prefix}.{segs[1]}"
+                new_t.bound = _rename_type_param_rec(t.bound, match_prefix,
+                                                     new_prefix)
+            else:
+                new_t = t
+            return new_t
+        case t if t.is_wildcard():
+            if t.bound is None:
+                return t
+            bound = _rename_type_param_rec(t.bound, match_prefix, new_prefix)
+            return tp.WildCardType(bound, t.variance)
+        case t if not t.is_parameterized():
+            return t
+        case _:
+            # Parameterized type
+            new_type_args = [_rename_type_param_rec(ta, match_prefix,
+                                                    new_prefix)
+                             for ta in t.type_args]
+            return t.t_constructor.new(new_type_args)
+
+
+def _rename_parent_type_params(type_parameters: List[tp.TypeParameter],
+                               new_prefix: str) -> dict:
+    """
+    Given a list of type parameters, this method returns a substitution
+    that replaces these type parameters with a renamed version of them.
+    Their renamed version starts with the given `new_prefix`
+    """
+    match_prefix = None
+    if type_parameters:
+        match_prefix = type_parameters[0].name.rsplit(".", 1)[0]
+    return {
+        tpa: _rename_type_param_rec(tpa, match_prefix, new_prefix)
+        for tpa in type_parameters
+    }
 
 
 class APIGraphBuilder(ABC):
@@ -120,13 +171,55 @@ class APIGraphBuilder(ABC):
             self._class_type_var_map[cls_name] = OrderedDict()
             try:
                 self.rename_type_parameters(
-                    cls_name, api_doc["type_parameters"],
+                    cls_name, api_doc,
                     self._class_type_var_map[cls_name]
                 )
             except NotImplementedError:
                 excluded_cls.add(cls_name)
                 del self._class_type_var_map[cls_name]
         return excluded_cls
+
+    def get_parent_method(self, receiver: tp.Type,
+                          method_api: dict) -> Tuple[Method, dict]:
+        """
+        This method checks whether the given instance method found in the input
+        receiver type is overriden. To do so, it examines the inheritance chain
+        to identify functions with the same signature.
+        """
+        if receiver is None:
+            return None
+        child_params = [tu.strip_type_from_nullable(
+            self.parse_type(p, disable_nullable_conversion=True))
+            for p in method_api["parameters"]]
+        for supertype in {st for st in receiver.get_supertypes()
+                          if st != receiver}:
+            # Get the substitution of the supertype and its type constructor
+            # (if present).
+            sub = {}
+            if supertype.is_parameterized():
+                sub = supertype.get_type_variable_assignments()
+                supertype = supertype.t_constructor
+            if supertype not in self.graph:
+                continue
+            for m in self.graph.neighbors(supertype):
+                if not isinstance(m, Method):
+                    continue
+                parent_params = [
+                    tu.strip_type_from_nullable(tp.substitute_type(p.t, sub))
+                    for p in m.parameters
+                ]
+                is_overriden = (
+                    m.name == method_api["name"] and
+                    len(parent_params) == len(child_params) and
+                    all(
+                        parent_params[i] == p or tu.unify_types(
+                            p, parent_params[i], self.bt_factory)
+                        for i, p in enumerate(child_params)
+                    )
+                )
+                if is_overriden:
+                    return m, sub
+        return None
 
     def build(self, docs: dict) -> APIGraph:
         self.api_spec = docs
@@ -153,6 +246,14 @@ class APIGraphBuilder(ABC):
         return APIGraph(self.graph, self.subtyping_graph,
                         self.functional_types, self.bt_factory,
                         **self.options)
+
+    def _get_output_type_of_parent_method(self, parent_m: Method,
+                                          sub: dict) -> tp.Type:
+        aux_api_graph = APIGraph(
+            self.graph, self.subtyping_graph, {},
+            self.bt_factory)
+        return tp.substitute_type(
+            aux_api_graph.get_concrete_output_type(parent_m), sub)
 
     def _process_class(self, class_api: dict):
         if class_api.get("access_mod", PUBLIC) == PROTECTED:
@@ -229,27 +330,39 @@ class APIGraphBuilder(ABC):
                 continue
 
             receiver_name = self.get_receiver_name(method_api)
+            receiver = self.get_api_incoming_node(method_api)
+            is_library = self.class_name and \
+                not self.class_name.startswith(cfg.package_prefix)
+            is_constructor = method_api["is_constructor"]
             try:
-                method_node = self.build_method_node(method_api, receiver_name)
-                if method_node is None:
+                method_info = self.build_method_node(method_api, receiver_name)
+                if method_info is None:
                     continue
             except NotImplementedError:
                 self._current_func_type_var_map = {}
                 continue
-            receiver = self.get_api_incoming_node(method_api)
-            is_constructor = method_api["is_constructor"]
+
+            method_node, override_info = method_info
             is_static = method_api["is_static"]
             output_type = None
             ret_type = method_api["return_type"]
             is_special = method_api.get("other_metadata", {}).get(
                 "is_special", False)
             # Let's not change the signature of library functions.
-            is_library = self.class_name and \
-                not self.class_name.startswith(cfg.package_prefix)
-            disable_nullable = is_special or is_library
+            disable_nullable = is_special or is_library or bool(override_info)
             if not is_constructor:
-                output_type = self.parse_type(
-                    ret_type, disable_nullable_conversion=disable_nullable)
+                if override_info is not None:
+                    parent_m, sub = override_info
+                    sub = sub | {
+                        t: method_node.type_parameters[i]
+                        for i, t in enumerate(parent_m.type_parameters)
+                    }
+                    output_type = self._get_output_type_of_parent_method(
+                        parent_m, sub)
+                else:
+                    output_type = self.parse_type(
+                        ret_type, disable_nullable_conversion=disable_nullable)
+
                 if output_type is None:
                     self.graph.remove_node(method_node)
                     # Unable to parse output type
@@ -271,9 +384,11 @@ class APIGraphBuilder(ABC):
                 output_type)
 
     def rename_type_parameters(self, prefix: str,
-                               type_parameters: List[str],
+                               api_spec: dict,
                                type_name_map: OrderedDict,
-                               type_param_name_suffix: str = "T"):
+                               type_param_name_suffix: str = "T",
+                               for_function: bool = False):
+        type_parameters = api_spec["type_parameters"]
         # We use an OrderedDict because we need to store type parameters
         # in the order they appear in the corresponding definitions.
         for i, type_param_str in enumerate(type_parameters):
@@ -320,15 +435,40 @@ class APIGraphBuilder(ABC):
                     if tpa.name == renamed.name:
                         bound.t_constructor.type_parameters[i] = deepcopy(
                             renamed)
-            use_nullables = self.options.get("use-nullable-types", False)
-            if use_nullables and bound:
-                renamed.bound = tu.annotate_type_with_nullable(bound, prob=0.5)
+                self._annotate_type_param_bound(renamed, api_spec,
+                                                for_function)
         # One more pass to handle cases like the following:
         # class Foo<T extends Foo<Y>, Y>
         self._update_recursive_type_parameters(type_name_map.values(),
                                                type_name_map)
 
-    def _update_recursive_type_parameters(self, type_parameters, type_name_map):
+    def _annotate_type_param_bound(self, type_param: tp.TypeParameter,
+                                   api_spec: dict,
+                                   for_function: bool):
+        use_nullables = self.options.get("use-nullable-types", False)
+        bound = type_param.bound
+        prefix, suffix = tuple(type_param.name.rsplit(".", 1))
+        is_library = prefix.startswith(cfg.package_prefix)
+        if use_nullables and bound and not is_library:
+            if not for_function:
+                type_param.bound = tu.annotate_type_with_nullable(bound,
+                                                                  prob=0.0)
+                return
+            receiver = self.get_api_incoming_node(api_spec)
+            override_info = self.get_parent_method(receiver, api_spec)
+            if override_info is not None:
+                parent_m, sub = override_info
+                sub = sub | _rename_parent_type_params(
+                    parent_m.type_parameters, prefix)
+                for tpa in parent_m.type_parameters:
+                    cur_suffix = type_param.name.rsplit(".", 1)[1]
+                    if suffix == cur_suffix:
+                        type_param.bound = tp.substitute_type(tpa.bound, sub)
+
+    def _update_recursive_type_parameters(
+        self, type_parameters: List[tp.TypeParameter],
+        type_name_map: dict
+    ):
         for type_param in type_parameters:
             new_type_param = type_name_map.get(type_param.name)
             if new_type_param is not None:
@@ -410,13 +550,15 @@ class APIGraphBuilder(ABC):
         return field_node
 
     def build_method_type_parameters(
-            self, method_api: dict,
-            method_fqn: str) -> List[tp.TypeParameter]:
+        self, method_api: dict,
+        method_fqn: str
+    ) -> List[tp.TypeParameter]:
         self._current_func_type_var_map = OrderedDict()
         self.rename_type_parameters(
-            method_fqn, method_api["type_parameters"],
+            method_fqn, method_api,
             self._current_func_type_var_map,
-            type_param_name_suffix="F"
+            type_param_name_suffix="F",
+            for_function=True
         )
         type_parameters = list(self._current_func_type_var_map.values())
         return type_parameters
@@ -439,14 +581,24 @@ class APIGraphBuilder(ABC):
                                                               False)
         is_library = self.class_name and not self.class_name.startswith(
             cfg.package_prefix)
+        receiver = self.get_api_incoming_node(method_api)
+        override_info = None
+        if not is_library:
+            override_info = self.get_parent_method(receiver, method_api)
         # Let's not change the signature of library functions.
-        disable_nullable = is_special or is_library
-        parameters = [
-            Parameter(self.parse_type(
-                p, disable_nullable_conversion=disable_nullable),
-                      self.get_type_parser().is_variable_argument(p))
-            for p in method_api["parameters"]
-        ]
+        disable_nullable = is_special or is_library or bool(override_info)
+        parameters = []
+        for i, p in enumerate(method_api["parameters"]):
+            is_variable = self.get_type_parser().is_variable_argument(p)
+            if override_info:
+                parent_m, sub = override_info
+                sub = sub | {t: type_parameters[i]
+                             for i, t in enumerate(parent_m.type_parameters)}
+                param_t = tp.substitute_type(parent_m.parameters[i].t, sub)
+            else:
+                param_t = self.parse_type(
+                    p, disable_nullable_conversion=disable_nullable)
+            parameters.append(Parameter(param_t, is_variable))
         if any(p.t is None for p in parameters):
             # Unable to parse parameter types
             return None
@@ -472,7 +624,7 @@ class APIGraphBuilder(ABC):
             method_node = Method(method_api["name"], receiver_name, parameters,
                                  type_parameters, metadata)
         self.graph.add_node(method_node)
-        return method_node
+        return method_node, override_info
 
     def build_functional_interface(self, method_api: dict,
                                    parameters: List[Parameter],
@@ -726,7 +878,7 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
             "final": not self.has_setter(group),
         })
         self.graph.add_node(field_node)
-        return field_node
+        return field_node, None
 
 
 class ScalaAPIGraphBuilder(APIGraphBuilder):

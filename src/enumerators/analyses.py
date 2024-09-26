@@ -31,7 +31,9 @@ class Loc(NamedTuple):
         return False
 
     def is_parent_call(self):
-        return isinstance(self.parent, (ast.FunctionCall, ast.New))
+        return isinstance(self.parent, (ast.FunctionCall, ast.New,
+                                        ast.FunctionReference,
+                                        ast.Assignment))
 
     def is_parent_var_decl(self):
         return isinstance(self.parent, ast.VariableDeclaration)
