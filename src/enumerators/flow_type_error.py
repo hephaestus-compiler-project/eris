@@ -24,6 +24,13 @@ class Loc(NamedTuple):
 
 
 class VariableEraseType(DefaultVisitor):
+    OMIT_TYPE = {
+        "java": True,
+        "groovy": True,
+        "scala": False,
+        "kotlin": True
+    }
+
     def __init__(self, variable_name: str, bt_factory,
                  use_nullable_types: bool):
         self.bt_factory = bt_factory
@@ -34,7 +41,10 @@ class VariableEraseType(DefaultVisitor):
         if node.name == self.variable_name:
             node.inferred_type = node.var_type
             if self.use_nullable_types:
-                node.var_type = tp.NullableType().new([node.inferred_type])
+                if self.OMIT_TYPE[self.bt_factory.get_language()]:
+                    node.var_type = None
+                else:
+                    node.var_type = node.var_type.to_nullable()
             else:
                 node.var_type = self.bt_factory.get_any_type()
                 if self.bt_factory.get_language() != "kotlin":

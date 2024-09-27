@@ -511,7 +511,8 @@ class CFGGenerator(APIClientGenerator):
         return local_vars
 
     def create_assignments(self, local_vars):
-        if not local_vars:
+        # Make this probability configurable
+        if not local_vars or utils.random.bool(prob=0.0):
             return []
         max_assignments = len(local_vars)
         assignments = []
@@ -577,8 +578,15 @@ class CFGGenerator(APIClientGenerator):
                         nu_edges: int) -> ast.TryCatch:
         catch_exceptions = CATCH_EXCEPTIONS[self.bt_factory.get_language()]
         assert nu_edges > 2
+        try_block = ast.Block([
+            ast.VariableDeclaration(
+                utils.random.word(),
+                ast.BottomConstant(self.bt_factory.get_boolean_type()),
+                var_type=self.bt_factory.get_boolean_type()
+            )
+        ] + children_blocks[0].body)
         return ast.TryCatch(
-            children_blocks[0],
+            try_block,
             {catch_exceptions[i]: children_blocks[i + 1]
              for i in range(nu_edges - 2)}
         )
