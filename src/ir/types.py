@@ -104,6 +104,8 @@ class Type(Node):
     def to_nullabe(self):
         if self.is_nullable():
             return self
+        if self.is_primitive():
+            return NullableType().new([self.box_type()])
         return NullableType().new([self])
 
     def get_supertypes(self):

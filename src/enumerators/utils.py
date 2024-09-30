@@ -39,6 +39,7 @@ class IncompatibleTyping():
     EXCLUDE_SUPERTYPES = 2
     ONLY_SUBTYPES = 3
     ONLY_SUPERTYPES = 4
+    INCLUDE_SELF = 5
 
     def __init__(self, api_graph, bt_factory: BuiltinFactory):
         self.api_graph = api_graph
@@ -151,36 +152,45 @@ class IncompatibleTyping():
         return blacklisted_types
 
     def get_representative_types(self, loc, exp_t: tp.Type,
-                                 exclude_strategy: Set[int] = None,
-                                 blacklisted_types=None):
-        exclude_strategy = exclude_strategy or []
+                                 inclusion_policies: Set[int] = None,
+                                 blacklisted_types=None,
+                                 apply_filters: bool = True):
+        inclusion_policies = inclusion_policies or []
         blacklisted_types = blacklisted_types or set()
         type_pool = {t for t in self.api_graph.get_reg_types()
                      if t not in blacklisted_types}
-        excluded_types = self.get_type_filters(loc, exp_t, type_pool)
+        excluded_types = (
+            self.get_type_filters(loc, exp_t, type_pool)
+            if apply_filters
+            else set()
+        )
         types = set()
         for t in type_pool:
             if t in excluded_types:
                 continue
-            if not exclude_strategy:
+            if not inclusion_policies:
                 types.add(t)
-            if self.ONLY_SUBTYPES in exclude_strategy and t.is_subtype(exp_t):
+            if t == exp_t and self.INCLUDE_SELF not in inclusion_policies:
+                continue
+            if self.ONLY_SUBTYPES in inclusion_policies and t.is_subtype(exp_t):
                 types.add(t)
                 continue
-            if (self.ONLY_SUPERTYPES in exclude_strategy and
+            if (self.ONLY_SUPERTYPES in inclusion_policies and
                     t in exp_t.get_supertypes()):
                 types.add(t)
                 continue
-            if self.EXCLUDE_SUBTYPES in exclude_strategy:
+            if self.EXCLUDE_SUBTYPES in inclusion_policies:
                 if not t.is_subtype(exp_t):
                     types.add(t)
-            if self.EXCLUDE_SUPERTYPES in exclude_strategy:
+            if self.EXCLUDE_SUPERTYPES in inclusion_policies:
                 if t not in exp_t.get_supertypes():
                     types.add(t)
 
         # Abstract every type included in the set.
-        types_map = {t: ta.to_type_abstraction(t, self.bt_factory)
-                     for t in types if t.name != exp_t.name}
+        types_map = {
+            t: ta.to_type_abstraction(t, self.bt_factory)
+            for t in types
+        }
         abstractions = set(types_map.values())
         # Group types based on their abstraction
         type_classes = [[k for k, v in types_map.items()
@@ -292,7 +302,7 @@ class IncompatibleTyping():
         if type_arg.is_parameterized():
             instantiations.append(type_arg.type_args[0])
         candidate_types = self.get_representative_types(
-            loc, type_arg, self._get_exclusion_strategies(variances),
+            loc, type_arg, self._get_inclusion_policies(variances),
             blacklisted_types={type_arg}
         )
         candidate_types = sorted(
@@ -303,18 +313,17 @@ class IncompatibleTyping():
         instantiations.extend(candidate_types)
         return instantiations
 
-    def _get_exclusion_strategies(self,
-                                  variances: Set[tp.Variance]) -> Set[int]:
-        exclusion_strategies = set()
+    def _get_inclusion_policies(self, variances: Set[tp.Variance]) -> Set[int]:
+        inclusion_policies = set()
         for variance in variances:
             if variance.is_invariant():
                 continue
             if variance.is_covariant():
-                exclusion_strategies.add(self.EXCLUDE_SUBTYPES)
+                inclusion_policies.add(self.EXCLUDE_SUBTYPES)
 
             if variance.is_contravariant():
-                exclusion_strategies.add(self.EXCLUDE_SUPERTYPES)
-        return exclusion_strategies
+                inclusion_policies.add(self.EXCLUDE_SUPERTYPES)
+        return inclusion_policies
 
     def _gen_incompatible_parameterized_type_from_non_polymorphic_type(
         self,
@@ -461,6 +470,20 @@ class NullIncompatibleTyping(IncompatibleTyping):
     def __init__(self, api_graph, bt_factory: BuiltinFactory):
         super().__init__(api_graph, bt_factory)
 
+    def enumerate_incompatible_typings(self, exp_t: tp.Type,
+                                       loc):
+        candidate_types = self.get_representative_types(
+            loc, exp_t, {self.ONLY_SUBTYPES, self.INCLUDE_SELF},
+            apply_filters=False
+        )
+        candidate_types = sorted(
+            list(candidate_types),
+            key=lambda x: type_similarity(x, exp_t, self.bt_factory),
+            reverse=True
+        )
+        for i, t in enumerate(candidate_types):
+            yield from self.get_incompatible_type(t, exp_t, loc)
+
     def _get_incompatible_type_polymorphic(self, base_t: tp.Type,
                                            exp_t: tp.Type,
                                            candidate_t: tp.TypeConstructor,
@@ -501,13 +524,13 @@ class NullIncompatibleTyping(IncompatibleTyping):
             primitive = getattr(exp_t, "primitive", False)
             # Case: exp: int, candidate: Integer
             if primitive and exp_t.box_type() == candidate_t:
-                yield tp.NullableType().new([candidate_t])
+                yield candidate_t.to_nullabe()
                 return
 
             # Case: candidate: non-polymorphic
             if not candidate_t.is_type_constructor():
                 if candidate_t.is_subtype(exp_t):
-                    yield tp.NullableType().new([candidate_t])
+                    yield candidate_t.to_nullabe()
                 return
 
             gen = self._get_incompatible_type_polymorphic(
@@ -623,18 +646,18 @@ class NullIncompatibleTyping(IncompatibleTyping):
 
         if _add_base_type_arg(is_nullable, variances):
             instantiations.append(new_type_arg)
-        exclusion_strategies = None
+        inclusion_policies = None
         if tp.Covariant in variances and not is_nullable:
-            exclusion_strategies = {self.ONLY_SUBTYPES}
+            inclusion_policies = {self.ONLY_SUBTYPES}
             blacklisted_types = {base_type_arg}
             base_t = base_type_arg
         if tp.Contravariant in variances and is_nullable:
-            exclusion_strategies = {self.ONLY_SUPERTYPES}
+            inclusion_policies = {self.ONLY_SUPERTYPES}
             blacklisted_types = {base_type_arg.t_constructor}
             base_t = base_type_arg.type_args[0]
-        if exclusion_strategies is not None:
+        if inclusion_policies is not None:
             candidate_types = self.get_representative_types(
-                loc, base_t, exclusion_strategies,
+                loc, base_t, inclusion_policies,
                 blacklisted_types=blacklisted_types
             )
             candidate_types = sorted(

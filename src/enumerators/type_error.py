@@ -92,14 +92,9 @@ class TypeErrorEnumerator(ErrorEnumerator):
             t = exp_t
             if t in [
                     self.bt_factory.get_any_type(),
-                    self.bt_factory.get_boolean_type(),
-                    self.bt_factory.get_boolean_type(primitive=True),
                     self.bt_factory.get_void_type(primitive=True),
                     self.bt_factory.get_void_type(primitive=False)
             ]:
-                continue
-            if (t is not None
-                    and t.name == self.bt_factory.get_string_type().name):
                 continue
             cached_elem = (type(parent), exp_t, depth, index)
             if cached_elem not in cache:
