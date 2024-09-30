@@ -289,10 +289,16 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
         if not self.enumerate_all_types:
             type_gen = [next(type_gen)]
         for incmp_t in type_gen:
+            if self.program_gen.type_eraser:
+                self.program_gen.type_eraser.inject_error_mode = True
+                self.program_gen.type_eraser.with_target(var_type)
             if self.use_nullable_types:
                 expr = self.program_gen.generate_expr(incmp_t)
             else:
                 expr = self.program_gen._generate_expr_from_node(incmp_t).expr
+            if self.program_gen.type_eraser:
+                self.program_gen.type_eraser.inject_error_mode = False
+                self.program_gen.type_eraser.reset_target_type()
             expr.mk_typed(ast.TypePair(expected=self.var_type,
                                        actual=incmp_t))
             assignment = ast.Assignment(self.flow_variable, expr)
