@@ -614,9 +614,9 @@ class KotlinTranslator(BaseTranslator):
 
     @append_to
     def visit_null_constant(self, node):
-        res = "{ident}{t}null".format(
+        res = "{ident}null{t}".format(
             ident=self.get_ident(),
-            t=f"({self.get_type_name(node.t)}) " if node.t else ""
+            t=f" as {self.get_type_name(node.t)}?" if node.t else ""
         )
         self._children_res.append(res)
 
