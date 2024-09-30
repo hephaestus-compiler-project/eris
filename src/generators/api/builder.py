@@ -789,6 +789,14 @@ class KotlinAPIGraphBuilder(APIGraphBuilder):
 
     def __init__(self, target_language="kotlin", **kwargs):
         super().__init__(target_language, **kwargs)
+        self.subtyping_graph.add_node(self.bt_factory.get_boolean_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_char_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_byte_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_short_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_integer_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_long_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_float_type(primitive=True))
+        self.subtyping_graph.add_node(self.bt_factory.get_double_type(primitive=True))
 
     def get_type_parser(self, **kwargs):
         parsers = {
