@@ -324,7 +324,7 @@ class ExprLocationAnalysis(LocationAnalysis):
     def __init__(self):
         super().__init__()
         self.depth = 0
-        self.namespace = tuple()
+        self.namespace = ast.GLOBAL_NAMESPACE
         self.scope = {
             "local_vars": {},
             "local_types": {},
@@ -338,7 +338,8 @@ class ExprLocationAnalysis(LocationAnalysis):
         self.scope["local_types"][t.name] = t
 
     def pop_local_var(self, var_name: str):
-        del self.scope["local_vars"][var_name]
+        if var_name in self.scope["local_vars"]:
+            del self.scope["local_vars"][var_name]
 
     def pop_local_type(self, type_name: str):
         del self.scope["local_types"][type_name]
@@ -371,7 +372,8 @@ class ExprLocationAnalysis(LocationAnalysis):
                                   deepcopy(self.scope)))
 
     def visit_func_decl(self, node):
-        if not node.metadata.get("is_static"):
+        if not node.metadata.get("is_static") and \
+                node.func_type != ast.FunctionDeclaration.FUNCTION:
             self.push_local_var("this", self.namespace[-1])
         for p in node.params:
             self.push_local_var(p.name, p.get_type())
