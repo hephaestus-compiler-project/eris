@@ -1886,7 +1886,7 @@ class Generator():
         new_type = class_decl.get_type()
         if class_decl.is_parameterized():
             new_type = new_type.new(etype.type_args)
-        return ast.New(new_type, args)
+        return ast.New(new_type, [ast.CallArgument(a) for a in args])
 
     # Where
 
