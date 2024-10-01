@@ -1557,6 +1557,7 @@ class New(Expr):
 
 class FieldAccess(Expr):
     def __init__(self, expr: Expr, field: str):
+        super().__init__()
         self.expr = expr
         self.field = field
 
