@@ -462,7 +462,7 @@ class IncompatibleTyping():
             return
 
         yield from self.gen_incompatible_type_constructor_instantiations(
-            exp_t, type_con, param_t[0], sub, loc
+            exp_t, loc, type_con
         )
 
 
