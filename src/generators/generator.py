@@ -262,18 +262,14 @@ class Generator():
         # Check if this function we want to generate is a class method, by
         # checking the name of the outer namespace. If we are in class then
         # the outer namespace begins with capital letter.
-        class_method = self.namespace[-2][0].isupper()
         class_method = (False if len(self.namespace) < 2 else
-                        self.namespace[-2][0].isupper())
+                        "." in self.namespace[-2] or self.namespace[-2][0].isupper())
         can_override = abstract or is_interface or (class_method and not
                                     class_is_final and ut.random.bool())
         # Check if this function we want to generate is a nested functions.
         # To do so, we want to find if the function is directly inside the
         # namespace of another function.
-        nested_function = (len(self.namespace) > 1 and
-                           self.namespace[-2] != 'global' and
-                           self.namespace[-2][0].islower())
-
+        nested_function = self._is_nested_function()
         prev_inside_java_lamdba = self._inside_java_lambda
         self._inside_java_lambda = nested_function and self.language == "java"
         # Type parameters of functions cannot be variant.
@@ -328,6 +324,7 @@ class Generator():
             is_final=not can_override,
             inferred_type=None,
             type_parameters=type_params,
+            metadata={"access_mod": "public"}
         )
         self._add_node_to_parent(self.namespace[:-1], func)
         for p in params:
@@ -431,7 +428,7 @@ class Generator():
         self._blacklisted_classes.add(class_name)
 
         super_cls_info = self._select_superclass(
-            class_type == ast.ClassDeclaration.INTERFACE)
+            class_name, class_type == ast.ClassDeclaration.INTERFACE)
         if super_cls_info:
             cls.superclasses = [super_cls_info.super_inst]
             cls.supertypes = [c.class_type for c in cls.superclasses]
@@ -439,7 +436,8 @@ class Generator():
             self.gen_class_fields(cls, super_cls_info, field_type)
 
         constructor = self.gen_class_constructor(cls, super_cls_info)
-        cls.constructors = [constructor]
+        if constructor:
+            cls.constructors = [constructor]
 
         self.gen_class_functions(cls, super_cls_info,
                                  not_void, fret_type, signature)
@@ -455,7 +453,8 @@ class Generator():
 
     # Where
 
-    def _select_superclass(self, only_interfaces: bool) -> gu.SuperClassInfo:
+    def _select_superclass(self, child_cls,
+                           only_interfaces: bool) -> gu.SuperClassInfo:
         """
         Select a superclass for a class.
 
@@ -502,11 +501,14 @@ class Generator():
         con_args = None if class_decl.is_interface() else []
         prev_super_call = self._in_super_call
         self._in_super_call = True
+        initial_namespace = self.namespace
+        self.namespace += (child_cls,)
         for f in class_decl.fields:
             field_type = tp.substitute_type(f.get_type(), type_var_map)
             con_args.append(self.generate_expr(field_type,
                                                only_leaves=True))
         self._in_super_call = prev_super_call
+        self.namespace = initial_namespace
         return gu.SuperClassInfo(
             class_decl,
             type_var_map,
@@ -567,6 +569,8 @@ class Generator():
 
     def gen_class_constructor(self, cls: ast.ClassDeclaration,
                               super_cls_info) -> ast.Constructor:
+        if cls.class_type == ast.ClassDeclaration.INTERFACE:
+            return None
         params = [
             ast.ParameterDeclaration(f"p{i}", f.get_type())
             for i, f in enumerate(cls.fields)
@@ -639,7 +643,7 @@ class Generator():
             parameters=[Parameter(p.get_type(), p.vararg)
                         for p in node.params],
             type_parameters=node.type_parameters,
-            metadata={}
+            metadata=node.metadata
         )
         self._api_graph.add_node(method)
         self._api_graph.add_edge(parent_node.get_type(), method)
@@ -2249,6 +2253,14 @@ class Generator():
 
     ### Internal helper functions ###
 
+    def _is_nested_function(self):
+        return (
+            self.namespace != ast.GLOBAL_NAMESPACE and
+            self.namespace[-2].islower() and
+            self.namespace[-2] != 'global' and
+            "." not in self.namespace[-2]
+        )
+
     def _get_type_variable_names(self) -> List[str]:
         """Get the name of type variables that are in place in the current
         namespace.
@@ -2425,7 +2437,7 @@ class Generator():
         var_decls = [d for d in decls
                      if not isinstance(d, ast.ParameterDeclaration)]
         expr = (
-            ast.Return(None)
+            expr
             if ret_type == self.bt_factory.get_void_type()
             else ast.Return(expr)
         )
@@ -2632,11 +2644,7 @@ class Generator():
             signature: etype is a signature.
         """
         functions = []
-        is_nested_function = (
-            self.namespace != ast.GLOBAL_NAMESPACE and
-            self.namespace[-2].islower() and
-            self.namespace[-2] != 'global'
-        )
+        is_nested_function = self._is_nested_function()
         # First find all top-level functions or methods included
         # in the current class.
         msg = ("Searching for function declarations that match type {};"
