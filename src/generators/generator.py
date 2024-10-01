@@ -438,6 +438,9 @@ class Generator():
         if not cls.is_interface():
             self.gen_class_fields(cls, super_cls_info, field_type)
 
+        constructor = self.gen_class_constructor(cls, super_cls_info)
+        cls.constructors = [constructor]
+
         self.gen_class_functions(cls, super_cls_info,
                                  not_void, fret_type, signature)
         self._blacklisted_classes.remove(class_name)
@@ -562,6 +565,26 @@ class Generator():
                     self.gen_field_decl(class_is_final=curr_cls.is_final))
         return fields
 
+    def gen_class_constructor(self, cls: ast.ClassDeclaration,
+                              super_cls_info) -> ast.Constructor:
+        params = [
+            ast.ParameterDeclaration(f"p{i}", f.get_type())
+            for i, f in enumerate(cls.fields)
+        ]
+        if super_cls_info and super_cls_info.super_inst:
+            args = super_cls_info.super_inst.args or []
+            body = [ast.FunctionCall(
+                ast.FunctionCall.SUPER,
+                args=[ast.CallArgument(a) for a in args])]
+        else:
+            body = []
+        for i, f in enumerate(cls.fields):
+            body.append(ast.Assignment(f.name, ast.Variable(f"p{i}")))
+        con = ast.Constructor(cls.name, params=params,
+                              body=ast.Block(body))
+        self._add_constructor_to_api_graph(cls)
+        return con
+
     # Where
 
     def _add_out_type_to_api_graph(self, output_type: tp.Type,
@@ -581,8 +604,19 @@ class Generator():
         else:
             target_node = output_type
 
-        self.graph.add_node(target_node)
-        self.graph.add_edge(node, target_node, **kwargs)
+        self._api_graph.add_node(target_node)
+        self._api_graph.add_edge(node, target_node, **kwargs)
+
+    def _add_constructor_to_api_graph(self, node: ast.ClassDeclaration):
+        from src.generators.api.nodes import Parameter, Constructor
+        params = [
+            Parameter(f.get_type(), False)
+            for f in node.fields
+
+        ]
+        constructor = Constructor(node.name, params, {})
+        self._api_graph.add_node(constructor)
+        self._add_out_type_to_api_graph(node.get_type(), constructor)
 
     def _add_variable_to_api_graph(self, node: ast.VariableDeclaration):
         if self.namespace == ast.GLOBAL_NAMESPACE:
@@ -979,6 +1013,7 @@ class Generator():
         """
         if gen_bottom:
             return ast.BottomConstant(expr_type)
+        exp_t = expr_type
         find_subtype = (
             expr_type and
             subtype and expr_type != self.bt_factory.get_void_type() and
@@ -1008,6 +1043,7 @@ class Generator():
             var_decl = self.gen_variable_decl(expr_type, only_leaves,
                                               expr=expr)
             expr = ast.Variable(var_decl.name)
+        expr.mk_typed(ast.TypePair(expected=exp_t, actual=expr_type))
         return expr
 
     # pylint: disable=unused-argument
