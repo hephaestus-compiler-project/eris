@@ -77,6 +77,7 @@ def _rename_parent_type_params(type_parameters: List[tp.TypeParameter],
 class APIGraphBuilder(ABC):
     def __init__(self, target_language, **kwargs):
         self.target_language: str = target_language
+        self.options = kwargs
         self.bt_factory: BuiltinFactory = BUILTIN_FACTORIES[target_language]
         self.api_language: str = None
 
@@ -95,7 +96,8 @@ class APIGraphBuilder(ABC):
         self.subtyping_graph.add_node(self.bt_factory.get_double_type())
         self.subtyping_graph.add_node(self.bt_factory.get_string_type())
         self.subtyping_graph.add_node(self.bt_factory.get_array_type())
-        self.subtyping_graph.add_node(tp.NullableType())
+        if self.options.get("use-nullable-types", False):
+            self.subtyping_graph.add_node(tp.NullableType())
 
         self.functional_types: Dict[tp.Type, tp.ParameterizedType] = {}
         self.class_nodes: dict[str, tp.Type] = {}
@@ -109,7 +111,6 @@ class APIGraphBuilder(ABC):
         self.parent_cls: tp.Type = None
         self.class_api: dict = None
         self.api_spec: dict = None
-        self.options = kwargs
 
     @abstractmethod
     def get_type_parser(self) -> TypeParser:
