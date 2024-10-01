@@ -5,6 +5,7 @@ from collections import OrderedDict
 
 from src import utils
 from src.ir import ast, groovy_types as gt, types as tp, type_utils as tu
+from src.ir.context import get_decl
 from src.transformations.base import change_namespace
 from src.translators.base import BaseTranslator
 from src.translators.utils import (
@@ -185,7 +186,7 @@ class GroovyTranslator(BaseTranslator):
     def _get_main_prefix(self, decl_type, name):
         ns_decls = list(self.context.get_namespaces_decls(
             self._namespace, name, decl_type))
-        if len(ns_decls) == 1 and ns_decls[0][0] == ast.GLOBAL_NAMESPACE:
+        if len(ns_decls) >= 1 and ns_decls[0][0][:-1] == ast.GLOBAL_NAMESPACE:
             return "Main."
         return ""
 
@@ -296,6 +297,8 @@ class GroovyTranslator(BaseTranslator):
                     cls_name, self.context, self._namespace, self.lib_spec)
                 is_interface = (class_type == ast.ClassDeclaration.INTERFACE or
                                 is_parent_interface(node.name, cls_name,
+                                                    self.context,
+                                                    self._namespace,
                                                     self.lib_spec))
                 if is_interface:
                     interfaces.append(cls_inst)
@@ -676,7 +679,7 @@ class GroovyTranslator(BaseTranslator):
 
     @append_to
     def visit_bottom_constant(self, node):
-        if node.t.is_wildcard() and not node.t.bound:
+        if node.t and node.t.is_wildcard() and not node.t.bound:
             return self.get_ident() + "null"
         return self.get_ident() + "{}{}null{}".format(
             '(' if self._parent_is_func_ref() else '',
@@ -1119,7 +1122,7 @@ class GroovyTranslator(BaseTranslator):
         main_prefix = self._get_main_prefix('funcs', node.func)
         if main_prefix == "":
             main_prefix = self._get_main_prefix('vars', node.func)
-        func = main_prefix + node.func
+        func = node.func
         receiver = children_res[0] if node.receiver else None
         args = children_res[1:] if node.receiver else children_res
         segs = node.func.rsplit(".", 1)
@@ -1131,7 +1134,7 @@ class GroovyTranslator(BaseTranslator):
             )
         else:
             receiver_expr, func = (
-                ("this.", func)
+                ("", func)
                 if len(segs) == 1
                 else (segs[0] + ".", segs[1])
             )
@@ -1141,9 +1144,10 @@ class GroovyTranslator(BaseTranslator):
         if node.type_args and not node.can_infer_type_args:
             type_args_str = "<{}>".format(", ".join(
                 self.get_type_name(t) for t in node.type_args))
-        res = "{ident}{receiver}{type_args}{name}{apply}({args})".format(
+        res = "{ident}{receiver}{prefix}{type_args}{name}{apply}({args})".format(
             ident=self.get_ident(),
             receiver=receiver_expr,
+            prefix=main_prefix,
             type_args=type_args_str,
             name=func,
             apply=".apply" if node.is_ref_call else "",

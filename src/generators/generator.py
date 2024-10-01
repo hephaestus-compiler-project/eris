@@ -24,6 +24,8 @@ from collections import defaultdict
 from copy import deepcopy
 from typing import Tuple, List, Callable
 
+import networkx as nx
+
 from src import utils as ut
 from src.config import cfg
 from src.generators import generators as gens
@@ -47,6 +49,7 @@ class Generator():
         self.context: Context = None
         self.bt_factory: BuiltinFactory = BUILTIN_FACTORIES[language]
         self.depth = 1
+        self.options = options
         self._vars_in_context = defaultdict(lambda: 0)
         self._new_from_class = None
         self.namespace = ('global',)
@@ -80,9 +83,16 @@ class Generator():
         # classes or using them as supertypes, because we do not have the
         # complete informations about them.
         self._blacklisted_classes: set = set()
+        self.error_injected = None
+        self.package_name: str = None
+        self._api_graph: nx.DiGraph = nx.DiGraph()
+        self._subtyping_graph: nx.DiGraph = nx.DiGraph()
 
-    def prepare_next_program(self, program_id):
+    def prepare_next_program(self, program_id, package_name):
         self.context = None
+        self.package_name = package_name
+        self._api_graph = nx.DiGraph()
+        self._subtyping_graph = nx.DiGraph()
         self.depth = 1
         self._vars_in_context = defaultdict(lambda: 0)
         self._new_from_class = None
@@ -115,6 +125,10 @@ class Generator():
                                  cfg.limits.max_top_level):
             self.gen_top_level_declaration()
         self.generate_main_func()
+        # FIXME: fix cyclic dependency
+        from src.generators.api import api_graph as ag
+        self.api_graph = ag.APIGraph(self._api_graph, self._subtyping_graph,
+                                     {}, self.bt_factory, **self.options)
         return ast.Program(self.context, self.language)
 
     def gen_top_level_declaration(self):
@@ -320,7 +334,7 @@ class Generator():
             self.context.add_var(self.namespace, p.name, p)
 
         if func.body is not None:
-            body = self._gen_func_body(ret_type)
+            body = self._gen_func_body(ret_type, is_lambda=False)
         func.body = body
 
         self._inside_java_lambda = prev_inside_java_lamdba
@@ -393,6 +407,8 @@ class Generator():
             A class declaration node.
         """
         class_name = class_name or gu.gen_identifier('capitalize')
+        if self.package_name:
+            class_name = f"{self.package_name}.{class_name}"
         initial_namespace = self.namespace
         self.namespace += (class_name,)
         initial_depth = self.depth
@@ -427,6 +443,11 @@ class Generator():
         self._blacklisted_classes.remove(class_name)
         self.namespace = initial_namespace
         self.depth = initial_depth
+        self._add_class_to_api_graph(cls)
+        for f in cls.functions:
+            self._add_method_to_api_graph(f, cls)
+        for f in cls.fields:
+            self._add_field_to_api_graph(f, cls)
         return cls
 
     # Where
@@ -542,6 +563,85 @@ class Generator():
         return fields
 
     # Where
+
+    def _add_out_type_to_api_graph(self, output_type: tp.Type,
+                                   node):
+        kwargs = {}
+        if output_type.is_parameterized():
+            primitive_array = (
+                output_type.t_constructor == self.bt_factory.get_array_type()
+                and output_type.type_args[0].is_primitive()
+            )
+            if primitive_array:
+                target_node = output_type
+            else:
+                target_node = output_type.t_constructor
+                kwargs["constraint"] = \
+                    output_type.get_type_variable_assignments()
+        else:
+            target_node = output_type
+
+        self.graph.add_node(target_node)
+        self.graph.add_edge(node, target_node, **kwargs)
+
+    def _add_variable_to_api_graph(self, node: ast.VariableDeclaration):
+        if self.namespace == ast.GLOBAL_NAMESPACE:
+            from src.generators.api.nodes import Field, Variable
+            if self.language in ["java", "groovy"]:
+                var = Field(node.name, f"{self.package_name}.Main", {})
+            else:
+                var = Variable(node.name)
+            self._api_graph.add_node(var)
+            self._add_out_type_to_api_graph(node.get_type(), var)
+
+    def _add_method_to_api_graph(self, node: ast.FunctionDeclaration,
+                                 parent_node: ast.ClassDeclaration):
+        from src.generators.api.nodes import Method, Parameter
+        if node.func_type == ast.FunctionDeclaration.FUNCTION:
+            return
+        method = Method(
+            name=node.name,
+            cls=parent_node.name,
+            parameters=[Parameter(p.get_type(), p.vararg)
+                        for p in node.params],
+            type_parameters=node.type_parameters,
+            metadata={}
+        )
+        self._api_graph.add_node(method)
+        self._api_graph.add_edge(parent_node.get_type(), method)
+        self._add_out_type_to_api_graph(node.get_type(), method)
+
+    def _add_field_to_api_graph(self, node: ast.FieldDeclaration,
+                                parent_node: ast.ClassDeclaration):
+        from src.generators.api.nodes import Field
+        field = Field(
+            name=node.name,
+            cls=parent_node.name,
+            metadata={}
+        )
+        self._api_graph.add_node(field)
+        self._api_graph.add_edge(parent_node.get_type(), field)
+        self._add_out_type_to_api_graph(node.get_type(), field)
+
+    def _add_class_to_api_graph(self, node: ast.ClassDeclaration):
+        # Add node to the API graph
+        class_node = node.get_type()
+        self._api_graph.add_node(class_node)
+
+        # Build subtyping relations
+        super_types = class_node.get_supertypes()
+        if not super_types:
+            super_types.add(self.bt_factory.get_any_type())
+        for st in super_types:
+            kwargs = {}
+            source = st
+            if st.is_parameterized():
+                source = st.t_constructor
+                kwargs["constraint"] = st.get_type_variable_assignments()
+            self._subtyping_graph.add_node(source)
+            # Do not connect a node with itself.
+            if class_node != source:
+                self._subtyping_graph.add_edge(source, class_node, **kwargs)
 
     def _add_node_to_class(self, cls, node):
         if isinstance(node, ast.FunctionDeclaration):
@@ -667,7 +767,6 @@ class Generator():
                                        abstract=abstract,
                                        is_interface=curr_cls.is_interface()))
         return funcs
-
 
     # And
 
@@ -839,6 +938,7 @@ class Generator():
             is_final=is_final,
             var_type=vtype,
             inferred_type=var_type)
+        self._add_variable_to_api_graph(var_decl)
         self._add_node_to_parent(self.namespace, var_decl)
         return var_decl
 
@@ -878,11 +978,11 @@ class Generator():
             The generated expression.
         """
         if gen_bottom:
-            return ast.BottomConstant(None)
+            return ast.BottomConstant(expr_type)
         find_subtype = (
             expr_type and
-            subtype and expr_type != self.bt_factory.get_void_type()
-            and ut.random.bool()
+            subtype and expr_type != self.bt_factory.get_void_type() and
+            ut.random.bool()
         )
         expr_type = expr_type or self.select_type()
         if find_subtype:
@@ -1464,7 +1564,7 @@ class Generator():
             param_types + [ret_type])
         res = ast.Lambda(shadow_name, params, ret_type, None, signature)
         self.context.add_lambda(initial_namespace, shadow_name, res)
-        body = self._gen_func_body(ret_type)
+        body = self._gen_func_body(ret_type, is_lambda=True)
         res.body = body
 
         self.depth = initial_depth
@@ -2104,6 +2204,7 @@ class Generator():
                 )
                 if bound.is_primitive():
                     bound = bound.box_type()
+            name = f"{self.package_name}.{name}"
             type_param = tp.TypeParameter(name, variance=variance, bound=bound)
             # Add type parameter to context.
             self.context.add_type(self.namespace, type_param.name, type_param)
@@ -2268,7 +2369,7 @@ class Generator():
             # is an array of something.
             return param.get_type().name == 'Array'
 
-    def _gen_func_body(self, ret_type: tp.Type):
+    def _gen_func_body(self, ret_type: tp.Type, is_lambda: bool):
         """Generate the body of a function or a lambda.
 
         Args:
@@ -2287,9 +2388,16 @@ class Generator():
             self.namespace, True).values())
         var_decls = [d for d in decls
                      if not isinstance(d, ast.ParameterDeclaration)]
+        expr = (
+            ast.Return(None)
+            if ret_type == self.bt_factory.get_void_type()
+            else ast.Return(expr)
+        )
         if (not var_decls and ret_type != self.bt_factory.get_void_type()):
             # The function does not contain any declarations and its return
             # type is not Unit. So, we can create an expression-based function.
+            if is_lambda:
+                expr = expr.expr
             body = expr if ut.random.bool(cfg.prob.function_body_expr) else \
                 ast.Block([expr])
         else:
@@ -2903,7 +3011,7 @@ class Generator():
         if not etype.has_type_variables():
             return []
 
-        if isinstance(etype, tp.TypeParameter):
+        if etype.is_type_var():
             type_params = self.gen_type_params(
                 count=1, with_variance=self.language in ['kotlin', 'scala'])
             type_params[0].bound = etype.get_bound_rec(self.bt_factory)

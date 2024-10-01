@@ -124,8 +124,7 @@ class ProgramProcessor():
         if not self.program_generator.has_next():
             return None, None
         kwargs = {}
-        if self.args.generator in ["api-decl", "cfg"]:
-            kwargs["package_name"] = "src." + self.packages[0]
+        kwargs["package_name"] = "src." + self.packages[0]
         self.program_generator.prepare_next_program(self.proc_id, **kwargs)
         self.current_transformation = 0
         program = self.program_generator.generate()
