@@ -2461,8 +2461,13 @@ class Generator():
         Example side-effects: assignment, variable declaration, etc.
         """
         exprs = []
+        expr_type = (
+            self.bt_factory.get_void_type()
+            if self.language == "java"
+            else self.select_type()
+        )
         for _ in range(ut.random.integer(0, cfg.limits.fn.max_side_effects)):
-            expr = self.generate_expr(self.bt_factory.get_void_type())
+            expr = self.generate_expr(expr_type)
             if expr:
                 exprs.append(expr)
         # These are the new declarations that we created as part of the side-
