@@ -2436,7 +2436,7 @@ class Generator():
             self.namespace, True).values())
         var_decls = [d for d in decls
                      if not isinstance(d, ast.ParameterDeclaration)]
-        expr = (
+        ret_expr = (
             expr
             if ret_type == self.bt_factory.get_void_type()
             else ast.Return(expr)
@@ -2444,13 +2444,13 @@ class Generator():
         if (not var_decls and ret_type != self.bt_factory.get_void_type()):
             # The function does not contain any declarations and its return
             # type is not Unit. So, we can create an expression-based function.
-            if is_lambda:
-                expr = expr.expr
-            body = expr if ut.random.bool(cfg.prob.function_body_expr) else \
-                ast.Block([expr])
+            if ut.random.bool(cfg.prob.function_body_expr):
+                body = expr
+            else:
+                body = ast.Block([ret_expr])
         else:
             exprs, decls = self._gen_side_effects()
-            body = ast.Block(decls + exprs + [expr])
+            body = ast.Block(decls + exprs + [ret_expr])
         return body
 
     # Where

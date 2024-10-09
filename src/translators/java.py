@@ -171,6 +171,10 @@ class JavaTranslator(BaseTranslator):
                         ret_value = "'c'"
                     case jt.Boolean.name:
                         ret_value = "false"
+                    case jt.Double.name:
+                        ret_value = "1.0"
+                    case jt.Float.name:
+                        ret_value = "1.0f"
                     case _:
                         ret_value = "1"
             case False:
@@ -256,7 +260,7 @@ class JavaTranslator(BaseTranslator):
     def _get_main_prefix(self, decl_type, name):
         ns_decls = list(self.context.get_namespaces_decls(
             self._namespace, name, decl_type))
-        if len(ns_decls) == 1 and ns_decls[0][0] == ast.GLOBAL_NAMESPACE:
+        if len(ns_decls) == 1 and ns_decls[0][0][:-1] == ast.GLOBAL_NAMESPACE:
             if not self._visit_is_stack.count(name):
                 return "Main."
         return ""
@@ -322,7 +326,7 @@ class JavaTranslator(BaseTranslator):
             main_method="\n\n" + main_method if main_method else ""
         )
         other_classes = "\n\n".join(self.pop_children_res(children))
-        self.program = "{package}import org.checkerframework.checker.nullness.qual.*;\n{main}{f_interfaces}{other_classes}".format(
+        self.program = "{package}\n{main}{f_interfaces}{other_classes}".format(
             package=package_str,
             main=main_cls,
             f_interfaces=self._get_functional_interfaces(),
@@ -360,7 +364,11 @@ class JavaTranslator(BaseTranslator):
                                 ast.TryCatch,
                                 ast.Loop)) and
                 not cond_statement(children[-1])):
-            var_prefix = 'Object'
+            if isinstance(children[-1], (ast.FunctionReference,
+                                         ast.Lambda)):
+                var_prefix = self.get_type_name(children[-1].signature)
+            else:
+                var_prefix = 'Object'
             sugar = "{p} x_{x} = ".format(p=var_prefix, x=self._x_counter)
             children_res[-1] = f"{sugar}{children_res[-1].lstrip()};"
             self._x_counter += 1
@@ -434,6 +442,8 @@ class JavaTranslator(BaseTranslator):
                     cls_name, self.context, self._namespace, self.lib_spec)
                 is_interface = (class_type == ast.ClassDeclaration.INTERFACE or
                                 is_parent_interface(node.name, cls_name,
+                                                    self.context,
+                                                    self._namespace,
                                                     self.lib_spec))
                 if is_interface:
                     interfaces.append(cls_inst)
@@ -678,15 +688,10 @@ class JavaTranslator(BaseTranslator):
     @change_namespace
     def visit_func_decl(self, node):
         def is_nested_func():
-            parent_namespace = self._namespace[:-2]
-            parent_name = self._namespace[-2]
-            parent_decl = self.context.get_decl(parent_namespace, parent_name)
-            if parent_decl is None:
-                parent_decl = self.context.get_lambda(parent_namespace,
-                                                      parent_name)
-            is_func = isinstance(parent_decl, (ast.Lambda,
-                                               ast.FunctionDeclaration))
-            return is_func or (parent_name in ['true_block', 'false_block'])
+            return any(
+                "." not in comp
+                for comp in self._namespace[1:-1]
+            )
 
         if self._inside_is:
             prev_inside_is_function = self._inside_is_function
@@ -719,7 +724,9 @@ class JavaTranslator(BaseTranslator):
             if is_expression:
                 if node.get_type() != jt.Void:
                     body_res = ut.add_string_at(
-                        body_res, "return ", ut.leading_spaces(body_res))
+                        body_res, "return ", ut.leading_spaces(body_res)
+                    )
+                body_res += ";"
                 is_cond_expr = \
                     isinstance(node.body, (ast.UnaryExpr, ast.BinaryExpr)) or (
                         isinstance(node.body,
@@ -732,7 +739,7 @@ class JavaTranslator(BaseTranslator):
                         x=self._x_counter)
                     body_res = f"{sugar}{body_res};"
                     self._x_counter += 1
-                body = "{{\n{body};\n{ident}}}".format(
+                body = "{{\n{body}\n{ident}}}".format(
                     body=body_res,
                     ident=self.get_ident(old_ident=old_ident)
                 )
@@ -741,10 +748,16 @@ class JavaTranslator(BaseTranslator):
         new_ident = self.get_ident(old_ident=self.ident - 2)
         ret_value = self.get_constant(node.get_type())
         return_catch = (
-            "" if node.get_type() == jt.Void
+            "" if node.get_type() == jt.Void and not is_nested_func()
             else f"return {ret_value};"
         )
+        if is_nested_func() and node.get_type() == jt.Void:
+            return_catch = \
+                f"return {self.get_constant(jt.VoidType(primitive=False))};"
         if body:
+            if is_nested_func() and node.get_type() == jt.Void:
+                value = self.get_constant(jt.VoidType(primitive=False))
+                body = f"{body[:-1]}\n{self.get_ident()}return {value};}}"
             body = (f"{{\n{new_ident}try{body}\n"
                     f"{new_ident}catch (java.lang.Exception e) {{ {return_catch} }}}}")
         if is_nested_func():
@@ -1295,11 +1308,11 @@ class JavaTranslator(BaseTranslator):
     @package_consistency
     def visit_func_call(self, node):
         def is_nested_func():
-            # fdecl[0][-1] is the parent.
-            if fdecl and fdecl[0][-1] != 'global':
-                # It might be mypkcg.MyCls; get base name
-                base_name = fdecl[0][-1].rsplit(".", 1)[-1]
-                return base_name.islower()
+            fdecl = get_decl(self.context, self._namespace, node.func)
+            if fdecl and not isinstance(fdecl[1], ast.FunctionDeclaration):
+                fdecl = None
+            if fdecl:
+                return any("." not in comp for comp in fdecl[0][1:])
             return False
         old_ident = self.ident
         self.ident = 0
@@ -1319,7 +1332,8 @@ class JavaTranslator(BaseTranslator):
             fdecl = None
 
         children_res = self.pop_children_res(children)
-        func = self._get_main_prefix('funcs', node.func) + node.func
+        main_prefix = self._get_main_prefix("funcs", node.func)
+        func = node.func
         receiver = children_res[0] if node.receiver else None
         args = children_res[1:] if node.receiver else children_res
         # In case of a nested class with vararg as the last parameter,
@@ -1349,11 +1363,14 @@ class JavaTranslator(BaseTranslator):
                 else children_res[0] + '.'
             )
         else:
-            receiver_expr, func = (
-                ("this.", func)
-                if len(segs) == 1
-                else (segs[0] + ".", segs[1])
-            )
+            if len(segs) != 1:
+                receiver_expr, func = segs[0] + ".", segs[1]
+            else:
+                if is_nested_func() or node.is_ref_call:
+                    receiver_expr = ""
+                else:
+                    receiver_expr = "" if not main_prefix else main_prefix
+
             if func == ast.FunctionCall.SUPER or func == ast.FunctionCall.THIS:
                 receiver_expr = ""
         type_args_str = ""
