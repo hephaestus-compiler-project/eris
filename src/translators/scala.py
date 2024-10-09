@@ -135,10 +135,10 @@ class ScalaTranslator(BaseTranslator):
             c.accept(self)
         children_res = self.pop_children_res(children)
         res = (self.get_ident(old_ident=max(self.ident - 2, 0)) + "{"
-               if not is_lambda else "")
-        res += "\n" + "\n".join(children_res[:-1])
+               if not is_lambda else "{")
+        res += "\n" + ";\n".join(children_res[:-1])
         if children_res[:-1]:
-            res += "\n"
+            res += ";\n"
         body = ""
         if children_res:
             body = children_res[-1]
@@ -147,7 +147,7 @@ class ScalaTranslator(BaseTranslator):
         else:
             res += "\n"
         res += (self.get_ident(old_ident=max(self.ident - 2, 0)) + "}"
-                if not is_lambda else "")
+                if not is_lambda else "}")
         self.is_unit = is_unit
         self.is_lambda = is_lambda
         self._children_res.append(res)
@@ -248,6 +248,8 @@ class ScalaTranslator(BaseTranslator):
                 cls_name, self.context, self._namespace, self.lib_spec)
             is_interface = (class_type == ast.ClassDeclaration.INTERFACE or
                             is_parent_interface(node.name, cls_name,
+                                                self.context,
+                                                self._namespace,
                                                 self.lib_spec))
             if is_interface:
                 interfaces.append(cls_inst)
@@ -427,7 +429,7 @@ class ScalaTranslator(BaseTranslator):
         # the corresponding parameters.
         param_type = (
             node.param_type.type_args[0]
-            if node.vararg and node.param_type.name == sc.Array.name
+            if node.vararg and node.param_type.name == sc.Seq.name
             else node.param_type
         )
         res = node.name + ": " + self.get_type_name(param_type) + vararg_str
@@ -537,7 +539,7 @@ class ScalaTranslator(BaseTranslator):
             ret_type_str = ""
 
         # use the lambda syntax: { params -> stmt }
-        res = "({params}) => {body}{ret}".format(
+        res = "({params}) => {body}".format(
             params=", ".join(param_res),
             body=body_res,
             ret=ret_type_str
@@ -1030,7 +1032,7 @@ class ScalaTranslator(BaseTranslator):
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
-        res = "{ident}return {expr}".format(
+        res = "{ident}{expr}".format(
             ident=self.get_ident(old_ident=self.ident),
             expr=children_res[0].lstrip() if node.expr else ""
         )
