@@ -287,7 +287,27 @@ class KotlinTranslator(BaseTranslator):
         return self._create_children(non_static_functions)
 
     def create_constructors(self, node):
-        return self._create_children(node.constructors)
+        if not node.constructors:
+            return self._create_children(node.constructors)
+        if len(node.constructors) == 1:
+            primary_con = node.constructors[0]
+        else:
+            primary_constructors = [
+                con
+                for con in node.constructors
+                if con.metadata.get("primary", False)
+            ]
+            primary_con = primary_constructors[0]
+        res = ",".join([
+            f"{p.name}: {self.get_type_name(p.get_type())}"
+            for p in primary_con.params
+        ])
+        res = f"({res})"
+        children_res = [res]
+        secondary_cons = [con for con in node.constructors
+                          if con != primary_con]
+        children_res.extend(self._create_children(secondary_cons))
+        return children_res
 
     def create_type_params(self, node):
         return self._create_children(node.type_parameters)
@@ -307,6 +327,8 @@ class KotlinTranslator(BaseTranslator):
                     cls_name, self.context, self._namespace, self.lib_spec)
                 is_interface = (class_type == ast.ClassDeclaration.INTERFACE or
                                 is_parent_interface(node.name, cls_name,
+                                                    self.context,
+                                                    self._namespace,
                                                     self.lib_spec))
                 if is_interface:
                     superclasses.append(cls_inst)
@@ -314,7 +336,30 @@ class KotlinTranslator(BaseTranslator):
                 super_cls_name = cls_inst
                 if not node.constructors:
                     super_cls_name += "()"
-                superclasses.append(super_cls_name)
+                    superclasses.append(super_cls_name)
+                    continue
+                if len(node.constructors) == 1:
+                    primary_con = node.constructors[0]
+                else:
+                    # Find the primary constructor
+                    primary_cons = [
+                        con for con in node.constructors
+                        if con.metadata.get("primary", False)
+                    ]
+                    primary_con = primary_cons[0]
+
+                # Find the super call (if any) inside the primary constructor
+                super_call = None
+                for elem in primary_con.body.body:
+                    if isinstance(elem, ast.FunctionCall) and \
+                            elem.func == ast.FunctionCall.SUPER:
+                        super_call = elem
+                        break
+                res = ""
+                if super_call:
+                    res = self._create_children([elem])[0].replace(
+                        ast.FunctionCall.SUPER, "").replace("`", "").lstrip()
+                superclasses.append(super_cls_name + res)
             return superclasses
 
         old_ident = self.ident
@@ -339,11 +384,17 @@ class KotlinTranslator(BaseTranslator):
             p=class_prefix,
             n=base_cls_name
         )
+        primary_con_res = ""
+        if constr_res:
+            primary_con_res = constr_res[0]
+            constr_res = constr_res[1:]
         start_brace = (field_res or constr_res or function_res or
                        extra_decl_res or companion_obj)
 
         if type_parameters_res:
             res = "{}<{}>".format(res, ", ".join(type_parameters_res))
+        if primary_con_res:
+            res += primary_con_res
         if superclasses:
             res += ": " + ", ".join(superclasses)
 
@@ -518,8 +569,12 @@ class KotlinTranslator(BaseTranslator):
         prefix = " " * old_ident
         prefix += "" if node.is_final else "open "
         prefix += "" if not node.override else "override "
+        excluded_metadata = self.EXCLUDED_METADATA.copy()
+        if node.func_type == ast.FunctionDeclaration.FUNCTION:
+            # Function do not have access modifiers
+            excluded_metadata.add("access_mod")
         modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
-                                       if k not in self.EXCLUDED_METADATA})
+                                       if k not in excluded_metadata})
         if "abstract" not in modifiers and node.body is None:
             if "override" in modifiers:
                 modifiers.remove("override")
@@ -984,7 +1039,7 @@ class KotlinTranslator(BaseTranslator):
             kt.Float: ".toFloat()",
             kt.Double: ".toDouble()",
         }
-        if isinstance(node.receiver, ast.New):
+        if node.func == ast.FunctionReference.NEW_REF:
             func_name = node.receiver.class_type.name.rsplit(".", 1)[-1]
         if isinstance(node.receiver, (ast.IntegerConstant, ast.RealConstant)):
             if float(node.receiver.literal) < 0:
