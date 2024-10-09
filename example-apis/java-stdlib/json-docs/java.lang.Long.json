@@ -673,34 +673,6 @@
         "java.lang.NumberFormatException"
       ],
       "is_default": false
-    },
-    {
-      "name": "Long",
-      "parameters": [
-        "java.lang.String"
-      ],
-      "type_parameters": [],
-      "return_type": null,
-      "is_static": false,
-      "is_constructor": true,
-      "access_mod": "public",
-      "throws": [
-        "java.lang.NumberFormatException"
-      ],
-      "is_default": false
-    },
-    {
-      "name": "Long",
-      "parameters": [
-        "long"
-      ],
-      "type_parameters": [],
-      "return_type": null,
-      "is_static": false,
-      "is_constructor": true,
-      "access_mod": "public",
-      "throws": [],
-      "is_default": false
     }
   ],
   "fields": [
