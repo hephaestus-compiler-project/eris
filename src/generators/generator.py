@@ -585,7 +585,8 @@ class Generator():
         for i, f in enumerate(cls.fields):
             body.append(ast.Assignment(f.name, ast.Variable(f"p{i}")))
         con = ast.Constructor(cls.name, params=params,
-                              body=ast.Block(body))
+                              body=ast.Block(body),
+                              metadata={"primary": True})
         self._add_constructor_to_api_graph(cls)
         return con
 
@@ -618,7 +619,8 @@ class Generator():
             for f in node.fields
 
         ]
-        constructor = Constructor(node.name, params, {})
+        metadata = node.constructors[0] if node.constructors else {}
+        constructor = Constructor(node.name, params, metadata)
         self._api_graph.add_node(constructor)
         self._add_out_type_to_api_graph(node.get_type(), constructor)
 
@@ -2462,9 +2464,9 @@ class Generator():
         """
         exprs = []
         expr_type = (
-            self.bt_factory.get_void_type()
-            if self.language == "java"
-            else self.select_type()
+            self.select_type()
+            if self.language == "groovy"
+            else self.bt_factory.get_void_type()
         )
         for _ in range(ut.random.integer(0, cfg.limits.fn.max_side_effects)):
             expr = self.generate_expr(expr_type)
