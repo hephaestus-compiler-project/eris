@@ -121,7 +121,7 @@ def is_parent_interface(child_name: str, parent_name: str,
                         api_spec: dict) -> bool:
     class_type = api_spec.get(parent_name, {}).get("class_type")
     if class_type is not None:
-        return class_type
+        return class_type == ast.ClassDeclaration.INTERFACE
 
     assert child_name in api_spec, "Child class specification not found"
 
@@ -384,7 +384,8 @@ class APIDeclarationGenerator(APIClientGenerator):
         ]
         if not super_constructors:
             # The parent class does not define any constructor.
-            return None
+            # So, generate a super call for the default constructor.
+            return ast.FunctionCall(ast.FunctionCall.SUPER, [])
         super_constructor = utils.random.choice(super_constructors)
         super_args = self.create_args(super_constructor)
         return ast.FunctionCall(
