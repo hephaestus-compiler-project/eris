@@ -195,7 +195,7 @@ class IncompatibleTyping():
         # Group types based on their abstraction
         type_classes = [[k for k, v in types_map.items()
                         if v == x] for x in abstractions]
-        candidate_types = []
+        candidate_types = list(exp_t.get_supertypes())
         for type_class in type_classes:
             type_class = [t for t in type_class
                           if t not in excluded_types]
@@ -203,7 +203,7 @@ class IncompatibleTyping():
                 candidate_types.append(utils.random.choice(type_class))
         if exp_t.is_parameterized():
             candidate_types.append(exp_t.t_constructor)
-        return candidate_types
+        return list(set(candidate_types))
 
     def enumerate_incompatible_typings(self, exp_t: tp.Type,
                                        loc):

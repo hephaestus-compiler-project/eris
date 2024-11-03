@@ -192,6 +192,7 @@ class APIDeclarationGenerator(APIClientGenerator):
         self.programs_gen = self.compute_programs()
         self.ErrorEnumerator = get_error_enumerator(
             self.options.get("error-enumerator"))
+        self.seeds = options.get("seeds")
 
     def _fork_api_spec(self, specs: Tuple[str, dict],
                        selected_namespaces: List[str]) -> dict:
@@ -911,6 +912,24 @@ class APIDeclarationGenerator(APIClientGenerator):
             cfg.substitute_wildcards = True
 
     def compute_programs(self) -> ast.Program:
+        if self.seeds:
+            import os
+            for i, dirname in enumerate(os.listdir(self.seeds)):
+                program_id = i + 1
+                filename = self.translator.get_filename()
+                program = utils.load_program(
+                    os.path.join(self.seeds, dirname, filename + ".bin"))
+                self.api_graph = utils.load_program(
+                    os.path.join(self.seeds, dirname, filename + ".graph"))
+                if not self.ErrorEnumerator:
+                    yield program
+                else:
+                    # Enumerate all ill-typed programs that stem from the given
+                    # skeleton program.
+                    yield from self.generate_ill_typed_programs(program,
+                                                                program_id,
+                                                                "")
+            return
         for i, api_namespace in enumerate(self.api_namespaces):
             program_id = i + 1
             program = self.generate_well_typed_program(api_namespace,

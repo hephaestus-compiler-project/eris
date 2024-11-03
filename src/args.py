@@ -255,6 +255,11 @@ parser.add_argument(
     metavar=("flag", "value"),
     help="Extra compiler options for invoking the compiler"
 )
+parser.add_argument(
+    "--seeds",
+    type=str,
+    help="Directory of seeds"
+)
 
 
 args = parser.parse_args()
@@ -283,6 +288,7 @@ args.options = {
             "path-search-strategy": args.path_search_strategy,
             "erase-types": args.erase_types,
             "use-nullable-types": args.use_nullable_types,
+            "seeds": args.seeds,
         },
         "cfg": {
             "api-rules": args.api_rules,

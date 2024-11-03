@@ -7,7 +7,6 @@ import multiprocessing as mp
 import os
 import tempfile
 import sys
-import subprocess as sp
 import shutil
 import time
 import traceback
@@ -111,12 +110,14 @@ def get_transformations_dir(pid, tid):
                         "iter_" + str(pid), str(tid))
 
 
-def save_program(program, program_str, program_file):
+def save_program(program, program_str, program_file, api_graph):
     dst_dir = os.path.dirname(program_file)
     utils.mkdir(dst_dir)
     # Save the program
     utils.save_text(program_file, program_str)
     utils.dump_program(program_file + ".bin", program)
+    if api_graph is not None:
+        utils.dump_program(program_file + ".graph", api_graph)
 
 
 def save_stats():
@@ -181,7 +182,8 @@ def process_cp_transformations(pid, dirname, translator, proc,
                 os.path.join(
                     get_transformations_dir(
                         pid, proc.current_transformation - 1),
-                    translator.get_filename())
+                    translator.get_filename()),
+                None
             )
     if program_str is None:
         program_str = utils.translate_program(translator, program)
@@ -189,8 +191,8 @@ def process_cp_transformations(pid, dirname, translator, proc,
                             translator.get_filename())
     dst_file2 = os.path.join(cli_args.test_directory, 'tmp', str(pid),
                              translator.get_filename())
-    save_program(program, program_str, dst_file)
-    save_program(program, program_str, dst_file2)
+    save_program(program, program_str, dst_file, None)
+    save_program(program, program_str, dst_file2, None)
     return dst_file
 
 
@@ -209,15 +211,16 @@ def process_ncp_transformations(pid, dirname, translator, proc,
             program,
             program_str,
             os.path.join(get_generator_dir(pid),
-                         translator.get_incorrect_filename())
+                         translator.get_incorrect_filename()),
+            None
         )
     dst_file = os.path.join(dirname, package_name,
                             translator.get_filename())
     dst_file2 = os.path.join(cli_args.test_directory, 'tmp', str(pid),
                              translator.get_incorrect_filename())
     program_str = utils.translate_program(translator, program)
-    save_program(program, program_str, dst_file)
-    save_program(program, program_str, dst_file2)
+    save_program(program, program_str, dst_file, None)
+    save_program(program, program_str, dst_file2, None)
     return dst_file, injected_err
 
 
@@ -254,7 +257,8 @@ def gen_program(pid, dirname, packages, program_processor=None):
             save_program(
                 program,
                 utils.translate_program(translator, program),
-                os.path.join(get_generator_dir(pid), translator.get_filename())
+                os.path.join(get_generator_dir(pid), translator.get_filename()),
+                getattr(proc.program_generator, 'api_graph', None)
             )
         correct_program = process_cp_transformations(
             pid, dirname, translator, proc, program)
