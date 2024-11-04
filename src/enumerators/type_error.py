@@ -3,6 +3,7 @@ from typing import Set, Dict
 from src.enumerators.analyses import Loc, ExprLocationAnalysis
 from src.enumerators.error import ErrorEnumerator
 from src.enumerators.utils import NullIncompatibleTyping, IncompatibleTyping
+from src.enumerators import type_abstractions as ta
 from src.ir import ast, type_utils as tu, types as tp
 from src.ir.builtins import BuiltinFactory
 from src.ir.visitors import ASTExprUpdate
@@ -24,6 +25,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self.depth = 0
         self.analysis = ExprLocationAnalysis()
         self.options = options
+        self.cache = set()
         super().__init__(program, program_gen, bt_factory)
 
     @property
@@ -84,7 +86,6 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def filter_program_locations(self, locations):
         filtered_locs = []
-        cache = set()
         for elem, parent, index, depth, scope in locations:
             if not elem.is_typed():
                 continue
@@ -96,10 +97,16 @@ class TypeErrorEnumerator(ErrorEnumerator):
                     self.bt_factory.get_void_type(primitive=False)
             ]:
                 continue
-            cached_elem = (type(parent), exp_t, depth, index)
-            if cached_elem not in cache:
+            if exp_t is not None:
+                new_t = ta.to_type_abstraction(exp_t, self.bt_factory)
+            else:
+                new_t = None
+            cached_elem = (type(parent), new_t, depth, index,
+                           tuple(scope["local_types"].values()))
+            if cached_elem not in self.cache:
                 filtered_locs.append(Loc(elem, parent, index, depth, scope))
-                cache.add(cached_elem)
+                self.cache.add(cached_elem)
+
         return filtered_locs
 
     def get_programs_with_error(self, loc):
