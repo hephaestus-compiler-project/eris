@@ -91,7 +91,7 @@ class APIClientGenerator(Generator):
     def log_api_graph_statistics(self, matcher=None):
         if self.logger is None:
             return
-        statistics = self.api_graph.statistics(matcher)
+        statistics = self.api_graph.statistics()
         log(self.logger, "Built API with the following statistics:")
         log(self.logger, f"\tNumber of nodes:{statistics.nodes}")
         log(self.logger, f"\tNumber of edges:{statistics.edges}")
@@ -102,6 +102,7 @@ class APIClientGenerator(Generator):
         log(self.logger,
             f"\tNumber of constructors:{statistics.constructors}")
         log(self.logger, f"\tNumber of types:{statistics.types}")
+        log(self.logger, f"\tReduced size of type pool:{statistics.reduced_type_pool}")
         log(self.logger,
             f"\tNumber of type constructors:{statistics.type_constructors}")
         log(self.logger,
@@ -633,7 +634,7 @@ class APIClientGenerator(Generator):
         # In case of arrays we don't examine abstract output types because
         # we don't want to instantiate type variables with array types.
         is_array = target.name == self.bt_factory.get_array_type().name
-        return "concrete" if is_array else "all"
+        return "concrete" if is_array else "concrete"
 
     def _generate_expr_from_node(self, node, depth=1, constraints=None):
         if depth > cfg.limits.max_depth:

@@ -13,6 +13,7 @@ from src.generators.api import utils as au
 from src.generators.api.matcher import Matcher
 from src.generators.api.nodes import (Field, Method, Constructor, Variable,
                                       Parameter, APINode, APIPath)
+from src.enumerators import type_abstractions as ta
 
 
 IN = 0
@@ -86,6 +87,7 @@ class APIGraphStatistics(NamedTuple):
     type_constructors: int
     inheritance_chain_size: float
     signature_length: float
+    reduced_type_pool: int
 
 
 class APIGraph():
@@ -200,6 +202,13 @@ class APIGraph():
         types = [_Type(n.name, n.name, n)
                  for n in self.subtyping_graph.nodes()]
         types = [t for t in types if not matcher or matcher.match(t)]
+        # Abstract every type included in the set.
+        types_map = {
+            t: ta.to_type_abstraction(t.t, self.bt_factory)
+            for t in types
+        }
+        reduced_type_pool = len(set(types_map.values()))
+
         # Number of types
         types_n = len(types)
         # Number of type constructors
@@ -217,7 +226,7 @@ class APIGraph():
         return APIGraphStatistics(nodes, edges, methods_n, polymorphic_methods,
                                   fields, constructors, types_n,
                                   type_constructors, inheritance_chain_size,
-                                  signature_length)
+                                  signature_length, reduced_type_pool)
 
     def get_reg_types(self):
         return self.types
