@@ -928,7 +928,7 @@ class APIDeclarationGenerator(APIClientGenerator):
                     # skeleton program.
                     yield from self.generate_ill_typed_programs(program,
                                                                 program_id,
-                                                                "")
+                                                                dirname)
             return
         for i, api_namespace in enumerate(self.api_namespaces):
             program_id = i + 1
