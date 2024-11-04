@@ -185,14 +185,15 @@ def process_cp_transformations(pid, dirname, translator, proc,
                     translator.get_filename()),
                 None
             )
-    if program_str is None:
-        program_str = utils.translate_program(translator, program)
     dst_file = os.path.join(dirname, package_name,
                             translator.get_filename())
     dst_file2 = os.path.join(cli_args.test_directory, 'tmp', str(pid),
                              translator.get_filename())
-    save_program(program, program_str, dst_file, None)
-    save_program(program, program_str, dst_file2, None)
+    if not cli_args.dry_run:
+        if program_str is None:
+            program_str = utils.translate_program(translator, program)
+        save_program(program, program_str, dst_file, None)
+        save_program(program, program_str, dst_file2, None)
     return dst_file
 
 
@@ -218,9 +219,10 @@ def process_ncp_transformations(pid, dirname, translator, proc,
                             translator.get_filename())
     dst_file2 = os.path.join(cli_args.test_directory, 'tmp', str(pid),
                              translator.get_incorrect_filename())
-    program_str = utils.translate_program(translator, program)
-    save_program(program, program_str, dst_file, None)
-    save_program(program, program_str, dst_file2, None)
+    if not cli_args.dry_run:
+        program_str = utils.translate_program(translator, program)
+        save_program(program, program_str, dst_file, None)
+        save_program(program, program_str, dst_file2, None)
     return dst_file, injected_err
 
 
@@ -499,7 +501,11 @@ def run():
 
         batch_time = functools.reduce(lambda acc, x: acc + x.stats["time"],
                                       res, 0)
-        res = ({}, 0) if cli_args.dry_run else check_oracle(testdir, oracles)
+        if cli_args.dry_run:
+            res = ({}, 0)
+            shutil.rmtree(testdir)
+        else:
+            res = check_oracle(testdir, oracles)
         update_stats(res, batch, batch_time)
 
     try:
