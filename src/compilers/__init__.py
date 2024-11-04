@@ -40,6 +40,8 @@ def compile_program(language: str, program: ast.Program,
     compiler = COMPILERS[language](os.path.dirname(dst_dir),
                                    filter_patterns=filter_patterns,
                                    extra_options=extra_options)
+    if cli_args.dry_run:
+        return (True, ""), compiler
     command_args = compiler.get_compiler_cmd()
     return (utils.run_command(command_args, envs={"JAVA_OPTS": "-Xmx8g"}),
             compiler)
