@@ -903,6 +903,11 @@ class APIDeclarationGenerator(APIClientGenerator):
                     log(self.logger, f"API namespace: {api_namespace}")
                     log(self.logger, self.error_injected)
                     yield p
+            metadata = error_enum.metadata
+            msg = (f"Metadata for skeleton {program_id}:"
+                   f" locations: {metadata['locations']}"
+                   f" examined locations: {metadata['examined']}")
+            log(self.logger, msg)
             if not flag:
                 msg = f"No error added to skeleton {program_id}"
                 log(self.logger, msg)

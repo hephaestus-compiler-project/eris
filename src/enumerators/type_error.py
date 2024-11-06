@@ -26,6 +26,10 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self.analysis = ExprLocationAnalysis()
         self.options = options
         self.cache = set()
+        self.metadata = {
+            "locations": 0,
+            "examined": 0,
+        }
         super().__init__(program, program_gen, bt_factory)
 
     @property
@@ -86,6 +90,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def filter_program_locations(self, locations):
         filtered_locs = []
+        self.metadata["locations"] = len(locations)
         for elem, parent, index, depth, scope in locations:
             if not elem.is_typed():
                 continue
@@ -107,6 +112,7 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 filtered_locs.append(Loc(elem, parent, index, depth, scope))
                 self.cache.add(cached_elem)
 
+        self.metadata["examined"] = len(filtered_locs)
         return filtered_locs
 
     def get_programs_with_error(self, loc):
