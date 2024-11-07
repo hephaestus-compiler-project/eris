@@ -58,7 +58,6 @@ class GroovyTranslator(BaseTranslator):
         self.ident = 0
         self.is_unit = False
         self.context = None
-        self._cast_number = False
 
         self._namespace: tuple = ast.GLOBAL_NAMESPACE
         # We have to add all non-class declarations top-level declarations
@@ -75,7 +74,6 @@ class GroovyTranslator(BaseTranslator):
         # immediately `()`.
         self._inside_is = False
         self._inside_is_function = False
-        self.always_cast_numbers = options.get('cast_numbers', False)
 
         # FIXME remove this option when they fix the bugs
         self.always_cast_ftypes = False
@@ -95,7 +93,6 @@ class GroovyTranslator(BaseTranslator):
         self._inside_is = False
         self._inside_is_function = False
         self.context = None
-        self._cast_number = False
         self.ident = 0
         self.is_unit = False
         self._namespace = ast.GLOBAL_NAMESPACE
@@ -254,10 +251,7 @@ class GroovyTranslator(BaseTranslator):
         for i, c in enumerate(children):
             # Cast return statement if it's a number literal
             if node.is_func_block and not self.is_unit and i == children_len - 1:
-                prev_cast_number = self._cast_number
-                self._cast_number = False
                 c.accept(self)
-                self._cast_number = prev_cast_number
             else:
                 c.accept(self)
         children_res = self.pop_children_res(children)
@@ -331,7 +325,6 @@ class GroovyTranslator(BaseTranslator):
                     if supercls.args:
                         translator = GroovyTranslator()
                         translator.context = self.context
-                        translator._cast_number = True
                         translator._namespace = self._namespace
                         for expr in supercls.args:
                             translator.visit(expr)
@@ -438,8 +431,6 @@ class GroovyTranslator(BaseTranslator):
 
     @append_to
     def visit_var_decl(self, node):
-        prev_cast_number = self._cast_number
-        self._cast_number = not bool(node.var_type)
         children = node.children()
         for c in children:
             c.accept(self)
@@ -461,7 +452,6 @@ class GroovyTranslator(BaseTranslator):
             name=node.name,
             expr=expr
         )
-        self._cast_number = prev_cast_number
         return res
 
     @append_to
@@ -556,13 +546,10 @@ class GroovyTranslator(BaseTranslator):
             old_ident += 2
             self.ident += 2
         self.ident += 2
-        prev_cast_number = self._cast_number
         children = node.children()
         prev = self.is_unit
         self.is_unit = node.get_type() == gt.Void
         is_expression = not isinstance(node.body, ast.Block)
-        if is_expression:
-            self._cast_number = False
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
@@ -618,7 +605,6 @@ class GroovyTranslator(BaseTranslator):
             old_ident -= 2
         self.ident = old_ident
         self.is_unit = prev
-        self._cast_number = prev_cast_number
         if self._inside_is:
             self._inside_is_function = prev_inside_is_function
         return res
@@ -639,13 +625,10 @@ class GroovyTranslator(BaseTranslator):
             old_ident += 2
             self.ident += 2
         self.ident += 2
-        prev_cast_number = self._cast_number
         children = node.children()
         prev = self.is_unit
         self.is_unit = node.get_type() == gt.Void
         is_expression = not isinstance(node.body, ast.Block)
-        if is_expression:
-            self._cast_number = False
         for c in children:
             c.accept(self)
         children_res = self.pop_children_res(children)
@@ -673,7 +656,6 @@ class GroovyTranslator(BaseTranslator):
             old_ident -= 2
         self.ident = old_ident
         self.is_unit = prev
-        self._cast_number = prev_cast_number
         self._inside_is = prev_is
         return res
 
@@ -696,13 +678,6 @@ class GroovyTranslator(BaseTranslator):
 
     @append_to
     def visit_integer_constant(self, node):
-        if not self._cast_number and (
-                not self.always_cast_numbers and
-                node.integer_type.is_primitive()):
-            return "{ident}{literal}".format(
-                ident=self.get_ident(),
-                literal=str(node.literal)
-            )
         integer_types = {
             gt.Long: "(Long) ",
             gt.LongPrimitive: "(long)",
@@ -722,13 +697,6 @@ class GroovyTranslator(BaseTranslator):
 
     @append_to
     def visit_real_constant(self, node):
-        if not self._cast_number and (
-                not self.always_cast_numbers and
-                node.real_type.is_primitive()):
-            return "{ident}{literal}".format(
-                ident=self.get_ident(),
-                literal=str(node.literal)
-            )
         real_types = {
             gt.Double: "(Double) ",
             gt.Float: "(Float) ",
@@ -982,8 +950,6 @@ class GroovyTranslator(BaseTranslator):
     def visit_new(self, node):
         old_ident = self.ident
         self.ident = 0
-        prev_cast_number = self._cast_number
-        self._cast_number = True
         children = node.children()
         for c in children:
             c.accept(self)
@@ -1012,7 +978,6 @@ class GroovyTranslator(BaseTranslator):
             cls=cls,
             args=", ".join(children_res[:len(node.args)])
         )
-        self._cast_number = prev_cast_number
         return res
 
     @append_to
@@ -1112,8 +1077,6 @@ class GroovyTranslator(BaseTranslator):
         self._inside_is = False
         old_ident = self.ident
         self.ident = 0
-        prev_cast_number = self._cast_number
-        self._cast_number = True
         children = node.children()
         for c in children:
             c.accept(self)
@@ -1153,7 +1116,6 @@ class GroovyTranslator(BaseTranslator):
             apply=".apply" if node.is_ref_call else "",
             args=", ".join(args)
         )
-        self._cast_number = prev_cast_number
         self._inside_is = prev_is
         return res
 
@@ -1162,8 +1124,6 @@ class GroovyTranslator(BaseTranslator):
     def visit_assign(self, node):
         old_ident = self.ident
         self.ident = 0
-        prev_cast_number = self._cast_number
-        self._cast_number = False
         children = node.children()
         for c in children:
             c.accept(self)
@@ -1187,7 +1147,6 @@ class GroovyTranslator(BaseTranslator):
             expr=expr
         )
         self.ident = old_ident
-        self._cast_number = prev_cast_number
         return res
 
     @append_to
