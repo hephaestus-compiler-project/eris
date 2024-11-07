@@ -388,7 +388,7 @@ class TypeEraser():
                     param.t, self.bt_factory))
         else:
             type_vars.update(tu.get_type_variables_of_type(
-                api.parameters[index].t))
+                api.parameters[index].t, self.bt_factory))
         return type_vars
 
     def check_compatibility_of_args(self, expr: ast.Expr, api: ag.APINode,
