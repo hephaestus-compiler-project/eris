@@ -461,8 +461,8 @@ class IncompatibleTyping():
             yield param_t[0]
             return
 
-        yield from self.gen_incompatible_type_constructor_instantiations(
-            exp_t, loc, type_con
+        yield from self.instantiate_type_constructor_with_incompatible_subs(
+            exp_t, type_con, param_t[0], sub, loc
         )
 
 
