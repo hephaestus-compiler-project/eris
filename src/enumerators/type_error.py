@@ -120,6 +120,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
         try:
             self.reconstruct_scope(loc)
             for incompatible_t in self.enumerate_incompatible_typings(loc):
+                if incompatible_t == exp_t:
+                    continue
                 self.program_gen.block_variables = True
                 if self.program_gen.type_eraser:
                     self.program_gen.type_eraser.inject_error_mode = True
