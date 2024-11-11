@@ -75,7 +75,7 @@ class Generator():
         # namespaces. To use one namespace we must model scope better.
         # Almost always declaration_namespace is set to None to be ignored
         self.declaration_namespace = None
-        self.int_stream = iter(range(1, 10000))
+        self.int_stream = iter(range(1, 100000000))
         self._in_super_call = False
         # We use this data strcuture to store blacklisted classes, i.e.,
         # classes that are incomplete (we do not have the information regarding

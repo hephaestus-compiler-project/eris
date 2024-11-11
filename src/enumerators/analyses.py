@@ -591,5 +591,5 @@ class ExprLocationAnalysis(LocationAnalysis):
         while node in self.parents:
             parent = self.parents[node]
             parents.append(parent)
-            node = parent
+            node, _ = parent
         return parents

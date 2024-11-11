@@ -195,7 +195,11 @@ class IncompatibleTyping():
         # Group types based on their abstraction
         type_classes = [[k for k, v in types_map.items()
                         if v == x] for x in abstractions]
-        candidate_types = list(exp_t.get_supertypes())
+        if self.EXCLUDE_SUPERTYPES:
+            candidate_types = []
+        else:
+            candidate_types = [t for t in exp_t.get_supertypes()
+                               if t != exp_t]
         for type_class in type_classes:
             type_class = [t for t in type_class
                           if t not in excluded_types]
