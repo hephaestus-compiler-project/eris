@@ -918,7 +918,6 @@ class APIDeclarationGenerator(APIClientGenerator):
 
     def compute_programs(self) -> ast.Program:
         if self.seeds:
-            import os
             for i, dirname in enumerate(os.listdir(self.seeds)):
                 program_id = i + 1
                 filename = self.translator.get_filename()

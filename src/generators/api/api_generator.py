@@ -634,7 +634,7 @@ class APIClientGenerator(Generator):
         # In case of arrays we don't examine abstract output types because
         # we don't want to instantiate type variables with array types.
         is_array = target.name == self.bt_factory.get_array_type().name
-        return "concrete" if is_array else "concrete"
+        return "concrete" if is_array else "all"
 
     def _generate_expr_from_node(self, node, depth=1, constraints=None):
         if depth > cfg.limits.max_depth:
