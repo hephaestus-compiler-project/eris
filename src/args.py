@@ -260,6 +260,24 @@ parser.add_argument(
     type=str,
     help="Directory of seeds"
 )
+parser.add_argument(
+    "--ignore-locations-with-unknown-target-type",
+    action="store_true",
+    default=False,
+    help="Disegard locations whose expected type is uknown (omitted)"
+)
+parser.add_argument(
+    "--disable-location-cache",
+    action="store_true",
+    default=False,
+    help="Disable cache for locations. Every location is now considered distinct."
+)
+parser.add_argument(
+    "--disable-enumeration",
+    action="store_true",
+    default=False,
+    help="It disables enumeration and outputs only statistics"
+)
 
 
 args = parser.parse_args()
@@ -280,6 +298,9 @@ args.options = {
             "path-search-strategy": args.path_search_strategy,
             "extra-options": args.extra_compiler_option,
             "error-enumerator": args.error_enumerator,
+            "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
+            "disable-location-cache": args.disable_location_cache,
+            "disable-enumeration": args.disable_enumeration,
         },
         "api-decl": {
             "api-rules": args.api_rules,
@@ -289,6 +310,9 @@ args.options = {
             "erase-types": args.erase_types,
             "use-nullable-types": args.use_nullable_types,
             "seeds": args.seeds,
+            "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
+            "disable-location-cache": args.disable_location_cache,
+            "disable-enumeration": args.disable_enumeration,
         },
         "cfg": {
             "api-rules": args.api_rules,
@@ -298,6 +322,9 @@ args.options = {
             "erase-types": args.erase_types,
             "max-cfg-nodes": args.max_cfg_nodes,
             "use-nullable-types": args.use_nullable_types,
+            "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
+            "disable-location-cache": args.disable_location_cache,
+            "disable-enumeration": args.disable_enumeration,
         }
     },
     'Translator': {

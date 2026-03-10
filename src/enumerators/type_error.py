@@ -88,6 +88,47 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self.analysis.visit_program(self.program)
         return self.analysis.locations
 
+    def is_expected_type_known(self, elem):
+        parents = self.analysis.get_parents(elem)
+        parents = list(parents)
+        while parents:
+            parent, index = parents[0]
+            parents = parents[1:]
+            if isinstance(parent, ast.VariableDeclaration):
+                return not parent.is_type_inferred
+            if isinstance(parent, ast.Assignment):
+                return False
+
+            if isinstance(parent, ast.FunctionDeclaration):
+                return True
+
+            if isinstance(parent, ast.Conditional) and index == 0:
+                return True
+
+            if isinstance(parent, ast.MultiConditional) and index == 0:
+                return True
+
+            if isinstance(parent, ast.FunctionCall):
+                if not parent.can_infer_type_args:
+                    return True
+                decl = self.api_graph.get_declaration_of_access(
+                    parent, only_instance=False)
+                if index == -1:
+                    # This is a receiver.
+                    return False
+                if decl is None:
+                    return True
+                param_type = decl.parameters[index].t
+                if param_type.is_type_var() \
+                        and param_type in decl.type_parameters:
+                    return False
+                if param_type.is_parameterized():
+                    type_vars = param_type.get_type_variables(self.bt_factory)
+                    if any(t in decl.type_parameters for t in type_vars):
+                        return False
+                return True
+        return True
+
     def filter_program_locations(self, locations):
         filtered_locs = []
         self.metadata["locations"] = len(locations)
@@ -108,7 +149,22 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 new_t = None
             cached_elem = (type(parent), new_t, depth, index,
                            tuple(scope["local_types"].values()))
-            if cached_elem not in self.cache:
+
+            ignore_locations_uknown_target = self.options.get(
+                "ignore-locations-with-unknown-target-type", False
+            )
+            disable_location_cache = self.options.get(
+                "disable-location-cache", False
+            )
+            if ignore_locations_uknown_target \
+                    and not self.is_expected_type_known(elem):
+                continue
+            use_loc = (
+                disable_location_cache or
+                (not disable_location_cache and
+                 cached_elem not in self.cache)
+            )
+            if use_loc:
                 filtered_locs.append(Loc(elem, parent, index, depth, scope))
                 self.cache.add(cached_elem)
 
@@ -116,6 +172,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
         return filtered_locs
 
     def get_programs_with_error(self, loc):
+        if self.options.get("disable-enumeration", False):
+            return
         exp_t, actual_t = loc.expr.get_type_info()
         try:
             self.reconstruct_scope(loc)
