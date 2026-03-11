@@ -281,9 +281,17 @@ class FlowBasedTypeErrorEnumerator(ErrorEnumerator):
     def get_programs_with_error(self, location):
         var_type = self.var_type
         typer = (
-            NullIncompatibleTyping(self.api_graph, self.bt_factory)
+            NullIncompatibleTyping(
+                self.api_graph,
+                self.bt_factory,
+                self.options.get("disable-type-isomorphism", False)
+            )
             if self.use_nullable_types
-            else IncompatibleTyping(self.api_graph, self.bt_factory)
+            else IncompatibleTyping(
+                self.api_graph,
+                self.bt_factory,
+                self.options.get("disable-type-isomorphism", False)
+            )
         )
         type_gen = typer.enumerate_incompatible_typings(var_type, location)
         if not self.enumerate_all_types:

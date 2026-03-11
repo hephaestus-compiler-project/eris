@@ -227,9 +227,17 @@ class TypeErrorEnumerator(ErrorEnumerator):
             return
         exp_t, _ = loc.expr.get_type_info()
         typer = (
-            NullIncompatibleTyping(self.api_graph, self.bt_factory)
+            NullIncompatibleTyping(
+                self.api_graph,
+                self.bt_factory,
+                self.options.get("disable-type-isomorphism", False)
+            )
             if self.options.get("use-nullable-types", False)
-            else IncompatibleTyping(self.api_graph, self.bt_factory)
+            else IncompatibleTyping(
+                self.api_graph,
+                self.bt_factory,
+                self.options.get("disable-type-isomorphism", False)
+            )
         )
         yield from typer.enumerate_incompatible_typings(exp_t, loc)
 
@@ -304,9 +312,17 @@ class TypeErrorEnumerator(ErrorEnumerator):
             if isinstance(p, ast.VariableDeclaration):
                 p.recover_type()
         typer = (
-            NullIncompatibleTyping(self.api_graph, self.bt_factory)
+            NullIncompatibleTyping(
+                self.api_graph,
+                self.bt_factory,
+                self.options.get("disable-type-isomorphism", False)
+            )
             if self.options.get("use-nullable-types", False)
-            else IncompatibleTyping(self.api_graph, self.bt_factory)
+            else IncompatibleTyping(
+                self.api_graph,
+                self.bt_factory,
+                self.options.get("disable-type-isomorphism", False)
+            )
         )
 
         for type_var, positions in type_variables.items():
@@ -359,7 +375,10 @@ class TypeErrorEnumerator(ErrorEnumerator):
         receiver_type = loc.parent.receiver.get_type_info()[1]
         if not receiver_type.is_parameterized():
             if use_nullables:
-                typer = NullIncompatibleTyping(self.api_graph, self.bt_factory)
+                typer = NullIncompatibleTyping(
+                    self.api_graph, self.bt_factory,
+                    self.options.get("disable-type-isomorphism", False)
+                )
                 yield from typer.enumerate_incompatible_typings(receiver_type,
                                                                 loc)
             return

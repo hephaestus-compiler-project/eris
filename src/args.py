@@ -278,6 +278,12 @@ parser.add_argument(
     default=False,
     help="It disables enumeration and outputs only statistics"
 )
+parser.add_argument(
+    "--disable-type-isomorphism",
+    action="store_true",
+    default=False,
+    help="It disables type isomorphism and performs full error enumeration"
+)
 
 
 args = parser.parse_args()
@@ -301,6 +307,7 @@ args.options = {
             "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
             "disable-location-cache": args.disable_location_cache,
             "disable-enumeration": args.disable_enumeration,
+            "disable-type-isomorphism": args.disable_type_isomorphism,
         },
         "api-decl": {
             "api-rules": args.api_rules,
@@ -313,6 +320,7 @@ args.options = {
             "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
             "disable-location-cache": args.disable_location_cache,
             "disable-enumeration": args.disable_enumeration,
+            "disable-type-isomorphism": args.disable_type_isomorphism,
         },
         "cfg": {
             "api-rules": args.api_rules,
@@ -325,6 +333,7 @@ args.options = {
             "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
             "disable-location-cache": args.disable_location_cache,
             "disable-enumeration": args.disable_enumeration,
+            "disable-type-isomorphism": args.disable_type_isomorphism,
         }
     },
     'Translator': {

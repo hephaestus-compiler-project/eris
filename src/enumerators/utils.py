@@ -41,9 +41,11 @@ class IncompatibleTyping():
     ONLY_SUPERTYPES = 4
     INCLUDE_SELF = 5
 
-    def __init__(self, api_graph, bt_factory: BuiltinFactory):
+    def __init__(self, api_graph, bt_factory: BuiltinFactory,
+                 disable_type_isomorphism: bool):
         self.api_graph = api_graph
         self.bt_factory = bt_factory
+        self.disable_type_isomorphism = disable_type_isomorphism
 
     def get_builtin_types(self):
         byte = self.bt_factory.get_byte_type()
@@ -186,25 +188,28 @@ class IncompatibleTyping():
                 if t not in exp_t.get_supertypes():
                     types.add(t)
 
-        # Abstract every type included in the set.
-        types_map = {
-            t: ta.to_type_abstraction(t, self.bt_factory)
-            for t in types
-        }
-        abstractions = set(types_map.values())
-        # Group types based on their abstraction
-        type_classes = [[k for k, v in types_map.items()
-                        if v == x] for x in abstractions]
-        if self.EXCLUDE_SUPERTYPES:
-            candidate_types = []
+        if not self.disable_type_isomorphism:
+            # Abstract every type included in the set.
+            types_map = {
+                t: ta.to_type_abstraction(t, self.bt_factory)
+                for t in types
+            }
+            abstractions = set(types_map.values())
+            # Group types based on their abstraction
+            type_classes = [[k for k, v in types_map.items()
+                            if v == x] for x in abstractions]
+            if self.EXCLUDE_SUPERTYPES:
+                candidate_types = []
+            else:
+                candidate_types = [t for t in exp_t.get_supertypes()
+                                   if t != exp_t]
+            for type_class in type_classes:
+                type_class = [t for t in type_class
+                              if t not in excluded_types]
+                if type_class:
+                    candidate_types.append(utils.random.choice(type_class))
         else:
-            candidate_types = [t for t in exp_t.get_supertypes()
-                               if t != exp_t]
-        for type_class in type_classes:
-            type_class = [t for t in type_class
-                          if t not in excluded_types]
-            if type_class:
-                candidate_types.append(utils.random.choice(type_class))
+            candidate_types = [t for t in types if t not in excluded_types]
         if exp_t.is_parameterized():
             candidate_types.append(exp_t.t_constructor)
         return list(set(candidate_types))
@@ -471,8 +476,9 @@ class IncompatibleTyping():
 
 
 class NullIncompatibleTyping(IncompatibleTyping):
-    def __init__(self, api_graph, bt_factory: BuiltinFactory):
-        super().__init__(api_graph, bt_factory)
+    def __init__(self, api_graph, bt_factory: BuiltinFactory,
+                 disable_type_isomorphism: bool):
+        super().__init__(api_graph, bt_factory, disable_type_isomorphism)
 
     def enumerate_incompatible_typings(self, exp_t: tp.Type,
                                        loc):
