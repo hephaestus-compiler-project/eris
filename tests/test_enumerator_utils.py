@@ -5,7 +5,7 @@ import pytest
 
 from src.ir import types as tp, java_types as jt, ast
 from src.generators.api.builder import JavaAPIGraphBuilder
-from src.enumerators.utils import IncompatibleTyping, NullIncompatibleTyping
+from src.enumerators.utils import NullIncompatibleTyping
 from src.enumerators.analyses import Loc
 
 
@@ -35,7 +35,7 @@ def test_null_type_enumeration_regular(api_graph):
     exp_t = api_graph.get_type_by_name("java.lang.CharSequence")
     cand_t = api_graph.get_type_by_name("java.util.Calendar")
 
-    typer = NullIncompatibleTyping(api_graph, jt.JavaBuiltinFactory())
+    typer = NullIncompatibleTyping(api_graph, jt.JavaBuiltinFactory(), False)
     expr = to_expr(exp_t)
     loc = Loc(expr, expr, 0, 0, {})
 
@@ -61,7 +61,7 @@ def test_null_type_enumeration_regular(api_graph):
 def test_null_type_enumeration_primitive(api_graph):
     exp_t = jt.IntegerType(primitive=True)
     cand_t = jt.IntegerType(primitive=False)
-    typer = NullIncompatibleTyping(api_graph, jt.JavaBuiltinFactory())
+    typer = NullIncompatibleTyping(api_graph, jt.JavaBuiltinFactory(), False)
     expr = to_expr(exp_t)
     loc = Loc(expr, expr, 0, 0, {})
 
@@ -77,7 +77,7 @@ def test_null_type_enumeration_polymorphic(api_graph):
     expr = to_expr(list_int)
     loc = Loc(expr, expr, 0, 0, {})
 
-    typer = NullIncompatibleTyping(api_graph, jt.JavaBuiltinFactory())
+    typer = NullIncompatibleTyping(api_graph, jt.JavaBuiltinFactory(), False)
     assert list(typer.get_incompatible_type(linkedlist_t, list_int, loc)) == [
         linkedlist_t.new([tp.NullableType().new([jt.Integer])]),
         tp.NullableType().new([
@@ -221,7 +221,7 @@ def test_null_type_enumeration_nullable_polymorphic(api_graph):
     expr = to_expr(exp_t)
     loc = Loc(expr, expr, 0, 0, {})
 
-    typer = NullIncompatibleTyping(api_graph, jt.JavaBuiltinFactory())
+    typer = NullIncompatibleTyping(api_graph, jt.JavaBuiltinFactory(), False)
     assert list(typer.get_incompatible_type(list_t, exp_t, loc)) == [
         list_t.new([tp.NullableType().new([jt.Integer])]),
         tp.NullableType().new([

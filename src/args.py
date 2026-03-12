@@ -234,7 +234,7 @@ parser.add_argument(
 parser.add_argument(
     "--error-enumerator",
     default=None,
-    choices=["type", "flow-type"],
+    choices=["accessibility", "type", "flow-type", "final-var"],
     help="Select a strategy for enumerating errors in a given program"
 )
 parser.add_argument(
@@ -242,6 +242,12 @@ parser.add_argument(
     default=50,
     type=int,
     help="Maximum nodes in CFG graph (only applicable when --generator cfg)"
+)
+parser.add_argument(
+    "--max-cfg-local-vars",
+    default=5,
+    type=int,
+    help="Maximum local variables per CFG block (only applicable when --generator cfg)"
 )
 parser.add_argument(
     "--use-nullable-types",
@@ -284,8 +290,19 @@ parser.add_argument(
     default=False,
     help="It disables type isomorphism and performs full error enumeration"
 )
+parser.add_argument(
+    "--conservative-type-recovery",
+    action="store_true",
+    default=False,
+    help=("Use the legacy conservative type recovery that re-annotates "
+          "erased types when injecting type errors, instead of the "
+          "constraint-based type recovery")
+)
 
 
+if len(sys.argv) == 1:
+    parser.print_help()
+    sys.exit(0)
 args = parser.parse_args()
 
 
@@ -294,7 +311,11 @@ args.stop_cond = "timeout" if args.seconds else "iterations"
 args.temp_directory = os.path.join(cwd, "temp")
 args.options = {
     "Generator": {
-        "base": {},
+        "base": {
+            "error-enumerator": args.error_enumerator,
+            "seeds": args.seeds,
+            "extra-options": args.extra_compiler_option,
+        },
         "api": {
             "api-rules": args.api_rules,
             "max-conditional-depth": args.max_conditional_depth,
@@ -302,12 +323,10 @@ args.options = {
             "erase-types": args.erase_types,
             "enable-expression-cache": args.enable_expression_cache,
             "path-search-strategy": args.path_search_strategy,
-            "extra-options": args.extra_compiler_option,
             "error-enumerator": args.error_enumerator,
-            "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
-            "disable-location-cache": args.disable_location_cache,
-            "disable-enumeration": args.disable_enumeration,
-            "disable-type-isomorphism": args.disable_type_isomorphism,
+            "use-nullable-types": args.use_nullable_types,
+            "seeds": args.seeds,
+            "extra-options": args.extra_compiler_option,
         },
         "api-decl": {
             "api-rules": args.api_rules,
@@ -317,10 +336,6 @@ args.options = {
             "erase-types": args.erase_types,
             "use-nullable-types": args.use_nullable_types,
             "seeds": args.seeds,
-            "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
-            "disable-location-cache": args.disable_location_cache,
-            "disable-enumeration": args.disable_enumeration,
-            "disable-type-isomorphism": args.disable_type_isomorphism,
         },
         "cfg": {
             "api-rules": args.api_rules,
@@ -329,15 +344,22 @@ args.options = {
             "path-search-strategy": args.path_search_strategy,
             "erase-types": args.erase_types,
             "max-cfg-nodes": args.max_cfg_nodes,
+            "max-local-vars": args.max_cfg_local_vars,
             "use-nullable-types": args.use_nullable_types,
-            "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
-            "disable-location-cache": args.disable_location_cache,
-            "disable-enumeration": args.disable_enumeration,
-            "disable-type-isomorphism": args.disable_type_isomorphism,
+            "seeds": args.seeds,
         }
+    },
+    "Enumerator": {
+        "use-nullable-types": args.use_nullable_types,
+        "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
+        "disable-location-cache": args.disable_location_cache,
+        "disable-enumeration": args.disable_enumeration,
+        "disable-type-isomorphism": args.disable_type_isomorphism,
+        "conservative-type-recovery": args.conservative_type_recovery,
     },
     'Translator': {
         'cast_numbers': args.cast_numbers,
+        'use_nullable_types': args.use_nullable_types,
     },
     "TypeErasure": {
         "timeout": args.timeout
@@ -409,6 +431,11 @@ def validate_args(args):
                   " --generator 'api'"))
     if args.generator == "api" and args.workers is not None:
         sys.exit("The 'api' generator cannot be used in parallel mode")
+
+    if (args.generator == "base" and args.error_enumerator is not None
+            and args.workers is not None):
+        sys.exit("Error enumeration cannot be used with the 'base' generator "
+                 "in parallel mode")
 
     if args.api_rules and not os.path.isfile(args.api_rules):
         sys.exit("You have to provide a valid file in --api-rules")

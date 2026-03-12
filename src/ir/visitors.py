@@ -401,7 +401,8 @@ class ASTExprUpdate(DefaultVisitor):
         node.args[self.index] = ast.CallArgument(self.new_node)
 
     def visit_field_access(self, node):
-        node.receiver = self.new_node
+        # The receiver of a field access is stored in `expr`.
+        node.expr = self.new_node
 
     def visit_func_call(self, node):
         assert self.index in range(-1, len(node.args))

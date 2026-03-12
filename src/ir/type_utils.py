@@ -234,6 +234,8 @@ def _construct_related_types(etype: tp.ParameterizedType, types, get_subtypes,
             # Type argument should not be primitives.
             if etype.t_constructor.name != "Array":
                 t_args = [t for t in t_args if not t.is_primitive()]
+            if not t_args:
+                return etype
             t_arg = select_random_type(t_args, uniform=True)
             type_var_map[t_param] = t_arg
     return etype.t_constructor.new(list(type_var_map.values()))

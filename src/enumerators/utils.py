@@ -92,59 +92,93 @@ class IncompatibleTyping():
                     builtins["boolean"]}
         chars = {self.bt_factory.get_char_type(primitive=True),
                  builtins["char"]}
-        byte_ = tuple(bytes_)[0]
-        short_ = tuple(shorts)[0]
-        int_ = tuple(ints)[0]
-        long_ = tuple(longs)[0]
-        float_ = tuple(floats)[0]
-        double_ = tuple(doubles)[0]
-        char_ = tuple(chars)[0]
-        bool_ = tuple(booleans)[0]
         string = self.bt_factory.get_string_type()
         void = self.bt_factory.get_void_type()
 
+        def expand(groups):
+            # Index the exclusions under the names of BOTH the primitive and
+            # the boxed representation of each type; the expected type at a
+            # location may carry either.
+            table = {}
+            for type_group, excluded in groups:
+                for t in type_group:
+                    table[t.name] = excluded
+            return table
+
+        bigs, big_decimals, big_integers = set(), set(), set()
+        try:
+            big_decimals = {self.bt_factory.get_big_decimal_type()}
+            big_integers = {self.bt_factory.get_big_integer_type()}
+            bigs = big_decimals | big_integers
+        except (AttributeError, NotImplementedError):
+            pass
+
+        numeric_groups = [
+            (bytes_, bytes_),
+            (shorts, bytes_ | shorts),
+            (ints, bytes_ | shorts | ints),
+            (longs, bytes_ | shorts | ints | longs),
+            (floats, bytes_ | shorts | ints | longs | floats),
+            (doubles, bytes_ | shorts | ints | longs | floats | doubles),
+            (booleans, types),
+            ({string}, types),
+            ({void}, types),
+        ]
+        # Groovy's implicit numeric conversions on assignment also cover
+        # BigDecimal/BigInteger: when a big number is expected the other
+        # numerics convert into it (integrals only for BigInteger; chars do
+        # not), and big numbers are inadmissible where a numeric is expected.
+        groovy_numeric_groups = [
+            (group, excluded | bigs)
+            if group in (bytes_, shorts, ints, longs, floats, doubles)
+            else (group, excluded)
+            for group, excluded in numeric_groups
+        ] + [
+            (big_integers, bytes_ | shorts | ints | longs | bigs),
+            (big_decimals,
+             bytes_ | shorts | ints | longs | floats | doubles | bigs),
+        ]
+        # Scala narrows constant Int expressions to Byte/Short/Char and
+        # constant Double literals to Float, so those candidates (synthesized
+        # as literals) are inadmissible at the narrowed types. Number-typed
+        # inhabitants collapse to concrete numerics under scalac, so Number is
+        # inadmissible at any numeric position.
+        numbers = {self.bt_factory.get_number_type()}
+        scala_extra = {
+            frozenset(bytes_): ints | numbers,
+            frozenset(shorts): ints | numbers,
+            frozenset(ints): numbers,
+            frozenset(longs): numbers,
+            frozenset(floats): doubles | numbers,
+            frozenset(doubles): numbers,
+        }
+        scala_numeric_groups = [
+            (group, excluded | scala_extra.get(frozenset(group), set()))
+            for group, excluded in numeric_groups
+        ] + [
+            # Scala autoboxes numeric AnyVals into java.lang.Number
+            # (val n: Number = 92L compiles), so no numeric is an
+            # admissible candidate where Number is expected.
+            (numbers,
+             bytes_ | shorts | ints | longs | floats | doubles | numbers),
+        ]
         excluded_types = {
-            "groovy": {
-                byte_.name: bytes_,
-                short_.name: bytes_ | shorts,
-                int_.name: bytes_ | shorts | ints,
-                long_.name: bytes_ | shorts | ints | longs,
-                float_.name: bytes_ | shorts | ints | longs | floats,
-                double_.name: bytes_ | shorts | ints | longs | floats | doubles,
-                char_.name: chars,
-                bool_.name: types,
-                string.name: types,
-                void.name: types,
-            },
-            "java": {
-                byte_.name: bytes_,
-                short_.name: bytes_ | shorts,
-                int_.name: bytes_ | shorts | ints,
-                long_.name: bytes_ | shorts | ints | longs,
-                float_.name: bytes_ | shorts | ints | longs | floats,
-                double_.name: bytes_ | shorts | ints | longs | floats | doubles,
-                char_.name: chars,
-                bool_.name: types,
-                string.name: types,
-                void.name: types,
-            },
-            "scala": {
-                byte_.name: bytes_,
-                short_.name: bytes_ | shorts,
-                int_.name: bytes_ | shorts | ints,
-                long_.name: bytes_ | shorts | ints | longs,
-                float_.name: bytes_ | shorts | ints | longs | floats,
-                double_.name: bytes_ | shorts | ints | longs | floats | doubles,
-                char_.name: chars | ints | longs | floats | doubles,
-                bool_.name: types,
-                string.name: types,
-                void.name: types,
-            }
+            "groovy": expand(groovy_numeric_groups + [(chars, chars)]),
+            "java": expand(numeric_groups + [(chars, chars)]),
+            "scala": expand(scala_numeric_groups + [
+                (chars, chars | ints | longs | floats | doubles)
+            ]),
         }
         blacklisted_types = excluded_types.get(self.bt_factory.get_language())
         if blacklisted_types is None:
             return set()
-        blacklisted_types = blacklisted_types.get(t.name, set())
+        # The expected type may be an API-graph classifier carrying the
+        # fully qualified name (java.lang.Double): fall back to the simple
+        # name.
+        blacklisted_types = (
+            blacklisted_types.get(t.name)
+            or blacklisted_types.get(t.name.rsplit(".", 1)[-1], set())
+        )
         if isinstance(loc.parent, (ast.ComparisonExpr, ast.ArithExpr)):
             # If the parent is a comparison expression, extend the list of
             # the blacklisted types
@@ -159,16 +193,33 @@ class IncompatibleTyping():
                                  apply_filters: bool = True):
         inclusion_policies = inclusion_policies or []
         blacklisted_types = blacklisted_types or set()
+        # Exclude type variables that are not in scope at the injection
+        # location. The generator would produce BottomConstant(t=None) for
+        # out-of-scope type variables, which the translator emits as plain
+        # `null` — a value accepted by every reference type, making the
+        # injected error unsound.
+        in_scope_type_vars = set(loc.scope.get("local_types", {}).keys())
         type_pool = {t for t in self.api_graph.get_reg_types()
-                     if t not in blacklisted_types}
+                     if t not in blacklisted_types
+                     and not (t.is_type_var()
+                              and t.name not in in_scope_type_vars)}
         excluded_types = (
             self.get_type_filters(loc, exp_t, type_pool)
             if apply_filters
             else set()
         )
+        # The same builtin may be registered under several instances
+        # (primitive vs boxed, factory vs graph): exclusion must be
+        # name-based, not instance-based.
+        excluded_names = {x.name.rsplit(".", 1)[-1] for x in excluded_types}
+
+        def is_excluded(t):
+            return (t in excluded_types
+                    or t.name.rsplit(".", 1)[-1] in excluded_names)
+
         types = set()
         for t in type_pool:
-            if t in excluded_types:
+            if is_excluded(t):
                 continue
             if not inclusion_policies:
                 types.add(t)
@@ -205,11 +256,11 @@ class IncompatibleTyping():
                                    if t != exp_t]
             for type_class in type_classes:
                 type_class = [t for t in type_class
-                              if t not in excluded_types]
+                              if not is_excluded(t)]
                 if type_class:
                     candidate_types.append(utils.random.choice(type_class))
         else:
-            candidate_types = [t for t in types if t not in excluded_types]
+            candidate_types = [t for t in types if not is_excluded(t)]
         if exp_t.is_parameterized():
             candidate_types.append(exp_t.t_constructor)
         return list(set(candidate_types))
@@ -256,7 +307,7 @@ class IncompatibleTyping():
         return any(m for m in overloaded_methods
                    if len(m.parameters) > param_index
                    and candidate_t.is_subtype(m.parameters[param_index].t)
-                   and len(m.paremeters) == len(func_call.args))
+                   and len(m.parameters) == len(func_call.args))
 
     def get_incompatible_type(self, candidate_t: tp.Type,
                               exp_t: tp.Type, loc) -> bool:
@@ -467,6 +518,17 @@ class IncompatibleTyping():
             # an instantation of the candidate type constructor.
             # Example:
             # exp_t: List<String>, type_con: Map<String, Object>
+            yield param_t[0]
+            return
+
+        type_con_params = set(type_con.type_parameters)
+        if not any(v.is_type_var() and v in type_con_params
+                   for v in sub.values()):
+            # sub maps exp_t's type params to concrete types (e.g., type_con
+            # extends a generic supertype with a hardcoded type argument like
+            # class Bar extends List<Float>). There are no free type parameters
+            # of type_con connected to exp_t, so the related-type path cannot
+            # generate incompatible instantiations. Fall back to a simple one.
             yield param_t[0]
             return
 

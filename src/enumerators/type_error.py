@@ -2,6 +2,7 @@ from typing import Set, Dict
 
 from src.enumerators.analyses import Loc, ExprLocationAnalysis
 from src.enumerators.error import ErrorEnumerator
+from src.enumerators.type_recovery import TypeHintRecovery
 from src.enumerators.utils import NullIncompatibleTyping, IncompatibleTyping
 from src.enumerators import type_abstractions as ta
 from src.ir import ast, type_utils as tu, types as tp
@@ -29,8 +30,21 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self.metadata = {
             "locations": 0,
             "examined": 0,
+            "unconstrained": 0,
         }
+        self._type_recovery = None
         super().__init__(program, program_gen, bt_factory)
+
+    @property
+    def type_recovery(self) -> TypeHintRecovery:
+        if self._type_recovery is None:
+            self._type_recovery = TypeHintRecovery(
+                self.program, self.api_graph, self.bt_factory)
+        return self._type_recovery
+
+    @property
+    def conservative_recovery(self) -> bool:
+        return self.options.get("conservative-type-recovery", False)
 
     @property
     def error_explanation(self):
@@ -74,13 +88,23 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def reconstruct_scope(self, loc: Loc):
         self.api_graph.add_types(list(loc.scope["local_types"].values()))
+        ns = self.program_gen.namespace
+        for name, t in loc.scope["local_types"].items():
+            self.program_gen.context.add_type(ns, name, t)
         for var_name, var_type in loc.scope["local_vars"].items():
             if isinstance(var_type, str):
                 var_type = self.api_graph.get_type_by_name(var_type)
+            if var_type is None:
+                # The variable's type (e.g., the enclosing class of `this`)
+                # is not part of the API graph; skip it instead of crashing.
+                continue
             self.api_graph.add_variable_node(var_name, var_type)
 
     def delete_scope(self, loc: Loc):
         self.api_graph.remove_types(list(loc.scope["local_types"].values()))
+        ns = self.program_gen.namespace
+        for name in loc.scope["local_types"]:
+            self.program_gen.context.remove_type(ns, name)
         for var_name in loc.scope["local_vars"].keys():
             self.api_graph.remove_variable_node(var_name)
 
@@ -137,11 +161,10 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 continue
             exp_t, actual_t = elem.get_type_info()
             t = exp_t
-            if t in [
-                    self.bt_factory.get_any_type(),
-                    self.bt_factory.get_void_type(primitive=True),
-                    self.bt_factory.get_void_type(primitive=False)
-            ]:
+            if t is not None and (self._is_top_type(t)
+                                  or self._is_void_type(t)):
+                # Top types accept any value: no replacement can introduce a
+                # type mismatch there.
                 continue
             if exp_t is not None:
                 new_t = ta.to_type_abstraction(exp_t, self.bt_factory)
@@ -171,32 +194,89 @@ class TypeErrorEnumerator(ErrorEnumerator):
         self.metadata["examined"] = len(filtered_locs)
         return filtered_locs
 
+    def _is_top_type(self, t: tp.Type) -> bool:
+        # Top types may be represented by distinct instances (builtin Object
+        # vs. an API-graph classifier), so compare by name as well.
+        any_type = self.bt_factory.get_any_type()
+        return t == any_type or t.name in (any_type.name, "java.lang.Object",
+                                           "Object", "Any")
+
+    def _is_void_type(self, t: tp.Type) -> bool:
+        return t in (self.bt_factory.get_void_type(primitive=True),
+                     self.bt_factory.get_void_type(primitive=False))
+
+    def is_usable_hint(self, t: tp.Type) -> bool:
+        """
+        Whether a recovered hint can produce a type mismatch. Top types (and
+        their nullable forms) and an absent hint accept any value.
+        """
+        if t is None:
+            return False
+        if self._is_top_type(t):
+            return False
+        if t.is_nullable() and self._is_top_type(t.type_args[0]):
+            return False
+        if self._is_void_type(t):
+            return False
+        return True
+
+    def requires_type_recovery(self, loc: Loc) -> bool:
+        """
+        Whether the expected type at loc is governed by an element with an
+        omitted type, and so must be recovered from usages. Receiver locations
+        have their own enumeration logic.
+        """
+        if loc.is_receiver_loc():
+            return False
+        return not self.is_expected_type_known(loc.expr)
+
     def get_programs_with_error(self, loc):
         if self.options.get("disable-enumeration", False):
             return
         exp_t, actual_t = loc.expr.get_type_info()
+        target_t = exp_t
+        demand = None
+        if not self.conservative_recovery and self.requires_type_recovery(loc):
+            # Infer the expected type from the usages of the element with the
+            # omitted type, without re-annotating the program.
+            demand = self.type_recovery.recover_expected_type(loc.expr)
+            if demand is None or not self.is_usable_hint(demand.type):
+                # Unconstrained (or pinned only by a top type): no replacement
+                # can introduce a type mismatch here.
+                self.metadata["unconstrained"] += 1
+                return
+            target_t = demand.type
         try:
             self.reconstruct_scope(loc)
-            for incompatible_t in self.enumerate_incompatible_typings(loc):
-                if incompatible_t == exp_t:
+            for incompatible_t in self.enumerate_incompatible_typings(
+                    loc, target_t):
+                if incompatible_t == target_t:
+                    continue
+                if demand is not None and not demand.allows(incompatible_t):
+                    # The candidate cannot be guaranteed to break the usage
+                    # (it still provides the member, suits the operator, or
+                    # can satisfy the call's re-inferred type arguments).
                     continue
                 self.program_gen.block_variables = True
                 if self.program_gen.type_eraser:
                     self.program_gen.type_eraser.inject_error_mode = True
                     self.program_gen.type_eraser.with_target(
-                        loc.get_parent_expected_type(self.api_graph))
+                        loc.get_parent_expected_type(self.api_graph)
+                        or target_t)
                 expr = self.program_gen._generate_expr_from_node(
                     incompatible_t, depth=1)
                 if self.program_gen.type_eraser:
                     self.program_gen.type_eraser.inject_error_mode = False
                     self.program_gen.type_eraser.reset_target_type()
-                expr.expr.mk_typed(ast.TypePair(expected=exp_t,
+                expr.expr.mk_typed(ast.TypePair(expected=target_t,
                                                 actual=incompatible_t))
                 if isinstance(expr.expr, (ast.FunctionCall, ast.New)):
                     decl = self.api_graph.get_declaration_of_access(
                             expr.expr, only_instance=False)
                 self.program_gen.block_variables = False
-                if self.program_gen.type_eraser:
+                if self.conservative_recovery and self.program_gen.type_eraser:
+                    # Legacy behavior: re-annotate erased types so that the
+                    # injected mismatch is preserved.
                     if loc.is_parent_call():
                         decl = self.api_graph.get_declaration_of_access(
                                 loc.parent, only_instance=False)
@@ -219,13 +299,51 @@ class TypeErrorEnumerator(ErrorEnumerator):
             raise e
         return None
 
-    def enumerate_incompatible_typings(self, loc):
+    def _conditional_branch_in_non_type_param_receiver(self, loc) -> bool:
+        """
+        Returns True if loc is a branch of a Conditional that is itself a
+        receiver for a field/method whose return type does not depend on any
+        of the receiver's type parameters.
+        """
+        if not isinstance(loc.parent, ast.Conditional):
+            return False
+        cond_parents = self.analysis.get_parents(loc.parent)
+        if not cond_parents:
+            return False
+        cond_parent, cond_idx = cond_parents[0]
+        cond_loc = Loc(loc.parent, cond_parent, cond_idx, loc.depth, loc.scope)
+        if not cond_loc.is_receiver_loc():
+            return False
+        type_pair = loc.parent.get_type_info()
+        if type_pair is None:
+            return False
+        receiver_type = type_pair[1]
+        if not (receiver_type and receiver_type.is_parameterized()):
+            return False
+        decl = self.api_graph.get_declaration_of_access(cond_parent)
+        if decl is None:
+            return False
+        type_variables = self.get_type_variables_of_node_signature(
+            decl, receiver_type)
+        type_variables = {k: v for k, v in type_variables.items()
+                          if k in receiver_type.t_constructor.type_parameters}
+        return not type_variables
+
+    def enumerate_incompatible_typings(self, loc, exp_t: tp.Type = None):
         if loc.is_receiver_loc():
             # For receiver expression, we have a different logic to enumerate
             # the incompatible typings.
             yield from self.get_incompatible_type_of_receiver(loc)
             return
-        exp_t, _ = loc.expr.get_type_info()
+        if self._conditional_branch_in_non_type_param_receiver(loc):
+            # The branch's parent Conditional is a receiver for a member
+            # whose type doesn't depend on the receiver's type parameters.
+            # Any replacement here only widens the ternary's LUB without
+            # creating a real type error — mirror the empty-type_variables
+            # early-return in get_incompatible_type_of_receiver.
+            return
+        if exp_t is None:
+            exp_t, _ = loc.expr.get_type_info()
         typer = (
             NullIncompatibleTyping(
                 self.api_graph,
@@ -286,7 +404,8 @@ class TypeErrorEnumerator(ErrorEnumerator):
         return True
 
     def replace_receiver_type(self, loc: Loc, receiver_type: tp.Type,
-                              type_variables: Dict[tp.TypeParameter, Set[int]]):
+                              type_variables: Dict[tp.TypeParameter, Set[int]],
+                              decl: nodes.APINode = None):
         """
         Given a receiver type, this method replaces the type parameters
         of the receiver type with various incompatible type arguments.
@@ -301,16 +420,27 @@ class TypeErrorEnumerator(ErrorEnumerator):
             if v in type_variables.keys():
                 mapped_type_vars.setdefault(v, set()).add(k.variance)
         parents = self.analysis.get_parents(loc.parent)
-        # We follow a conservative approach and we recover the types of
-        # the parents corresponding to variable declaration. We avoid
-        # situations like the following:
-        #
-        # val x: List<Int>().get()
-        # val x: List<Any>().get() -> this makes the programm well-typed
-        # val x: Int = List<Any>().get() -> this is the correct one
-        for p, _ in parents:
-            if isinstance(p, ast.VariableDeclaration):
-                p.recover_type()
+        result_demand = None
+        if self.conservative_recovery:
+            # Legacy approach: recover the types of the parents corresponding
+            # to variable declarations. This avoids situations like the
+            # following:
+            #
+            # val x: List<Int>().get()
+            # val x: List<Any>().get() -> this makes the programm well-typed
+            # val x: Int = List<Any>().get() -> this is the correct one
+            for p, _ in parents:
+                if isinstance(p, ast.VariableDeclaration):
+                    p.recover_type()
+        else:
+            # Instead of re-annotating the parents, recover the type demanded
+            # of the member-access result from its usages. Type arguments in
+            # out positions only are replaced only when the new result type
+            # violates this demand.
+            result_demand = self.type_recovery.recover_demand_of(loc.parent)
+            if result_demand is not None and \
+                    not self.is_usable_hint(result_demand.type):
+                result_demand = None
         typer = (
             NullIncompatibleTyping(
                 self.api_graph,
@@ -335,6 +465,14 @@ class TypeErrorEnumerator(ErrorEnumerator):
                     self.bt_factory.get_string_type().name,
                     self.bt_factory.get_boolean_type().name
             ]:
+                continue
+            out_only = positions == {self.OUT_POS}
+            if out_only and not self.conservative_recovery and \
+                    not self._result_demand_applies(decl, result_demand):
+                # The replacement affects only the member's result type, and
+                # no usage pins that result: the type analyzer can re-infer a
+                # valid type for the enclosing (unannotated) elements, so no
+                # type mismatch is guaranteed.
                 continue
             if self.OUT_POS in positions:
                 if not self.is_replacement_valid(parents):
@@ -361,18 +499,71 @@ class TypeErrorEnumerator(ErrorEnumerator):
                 type_args = list(rec_t.type_args)
                 index = type_con.type_parameters.index(type_var)
                 type_args[index] = new_type_arg
-                yield type_con.new(type_args)
+                new_rec_t = type_con.new(type_args)
+                if out_only and not self.conservative_recovery and \
+                        not self._breaks_result_demand(decl, new_rec_t,
+                                                       result_demand):
+                    continue
+                yield new_rec_t
+
+    def _result_demand_applies(self, decl: nodes.APINode,
+                               result_demand) -> bool:
+        # The result demand can judge out-position replacements only if the
+        # member's output type has no member-level type variables (which the
+        # analyzer could re-infer to rescue the replacement).
+        if result_demand is None or decl is None:
+            return False
+        try:
+            out_type = self.api_graph.get_concrete_output_type(decl)
+        except Exception:
+            return False
+        if out_type is None:
+            return False
+        member_tvars = set(getattr(decl, "type_parameters", []) or [])
+        if member_tvars & set(tu.get_type_variables_of_type(
+                out_type, self.bt_factory)):
+            return False
+        return True
+
+    def _breaks_result_demand(self, decl: nodes.APINode,
+                              new_receiver_type: tp.Type,
+                              result_demand) -> bool:
+        # Whether accessing the member on the new receiver type yields a
+        # result type that violates the recovered demand.
+        if result_demand is None or decl is None:
+            return False
+        try:
+            out_type = self.api_graph.get_concrete_output_type(decl)
+            parent_cls = self.api_graph.get_type_by_name(decl.cls)
+            type_sub = tu.get_type_substitution_of_parent(parent_cls,
+                                                          new_receiver_type)
+        except Exception:
+            return False
+        if not type_sub and new_receiver_type.is_parameterized():
+            type_sub = new_receiver_type.get_type_variable_assignments()
+        new_out = tp.substitute_type(out_type, type_sub or {})
+        if new_out.is_wildcard() or new_out.has_type_variables() or (
+                new_out.is_parameterized() and new_out.has_wildcards()):
+            # The result becomes an existential (projected) type, which
+            # cannot satisfy a non-top demand (top demands are filtered by
+            # is_usable_hint).
+            return result_demand.is_plain
+        return not result_demand.satisfied_by(new_out)
 
     def get_incompatible_type_of_receiver(self, loc: Loc):
         """
         Based on a given location that corresponds to a receiver expression,
         this method produces a type that is an forms an incompatible receiver.
         """
-        assert loc.parent.receiver is not None, (
-            "Assertion failed: parent location does not contain a receiver")
+        if isinstance(loc.parent, ast.FieldAccess):
+            receiver_expr = loc.parent.expr
+        else:
+            assert loc.parent.receiver is not None, (
+                "Assertion failed: parent location does not contain a receiver")
+            receiver_expr = loc.parent.receiver
         use_nullables = self.options.get("use-nullable-types", False)
         decl = self.api_graph.get_declaration_of_access(loc.parent)
-        receiver_type = loc.parent.receiver.get_type_info()[1]
+        receiver_type = receiver_expr.get_type_info()[1]
         if not receiver_type.is_parameterized():
             if use_nullables:
                 typer = NullIncompatibleTyping(
@@ -393,4 +584,4 @@ class TypeErrorEnumerator(ErrorEnumerator):
         if not type_variables:
             return
         yield from self.replace_receiver_type(loc, receiver_type,
-                                              type_variables)
+                                              type_variables, decl)
