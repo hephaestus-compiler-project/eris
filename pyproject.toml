@@ -3,13 +3,12 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "thalia"
+name = "eris"
 version = "1.0"
 authors = [
-    {name = "Thodoris Sotiropoulos", email = "theosotr@windowslive.com"},
-    {name = "Stefanos Chaliasos", email = "stefanoschaliassos@gmail.com"},
+    {name = "Thodoris Sotiropoulos", email = "theosotr@windowslive.com"}
 ]
-description = "API-driven program synthesis for testing type checkers"
+description = "Enumerating Ill-Typed Programs for Testing Type Analyzers"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
@@ -31,6 +30,7 @@ packages = [
   "src",
   "src.analysis",
   "src.compilers",
+  "src.enumerators",
   "src.generators",
   "src.generators.api",
   "src.ir",
@@ -38,14 +38,14 @@ packages = [
   "src.transformations",
   "src.translators",
 ]
-py-modules = ["thalia"]
+py-modules = ["eris"]
 include-package-data = true
 
 [tool.setuptools.package-data]
 src = ["resources/*"]
 
 [project.scripts]
-thalia = "thalia:main"
+eris = "eris:main"
 
 [tool.pytest.ini_options]
 addopts = "-vv"
