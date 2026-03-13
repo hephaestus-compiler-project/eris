@@ -358,6 +358,14 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
         self._error_class_decl: Optional[ast.ClassDeclaration] = None
         self.original_access_mod: Optional[str] = None
         self.injected_access_mod: Optional[str] = None
+        # Target method/constructor body that received the synthesised call.
+        self._injection_target: Optional[Union[ast.FunctionDeclaration,
+                                               ast.Constructor]] = None
+        self._injection_target_class: Optional[ast.ClassDeclaration] = None
+        # Human-readable label for the synthesised expression type.
+        self._injection_expr_type: Optional[str] = None
+        # Counter for generating unique variable names for func-ref assignments.
+        self._var_counter: int = 0
         self.metadata: Dict[str, int] = {
             "locations": 0,
             "examined": 0,
@@ -376,18 +384,30 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
             member = f"{self._error_class_decl.name}.<init>"
         else:
             member = f"{self._error_class_decl.name}.{self._error_decl.name}"
+        if self._injection_target is not None and self._injection_target_class is not None:
+            if isinstance(self._injection_target, ast.Constructor):
+                target_site = f"{self._injection_target_class.name}.<init>"
+            else:
+                target_site = (f"{self._injection_target_class.name}"
+                               f".{self._injection_target.name}")
+        else:
+            target_site = "unknown"
         return (
             f"Added accessibility error using {self.name}:\n"
             f" - Member: {member}\n"
             f" - Original access modifier: {self.original_access_mod}\n"
             f" - Injected access modifier: {self.injected_access_mod}\n"
+            f" - Injection site: {target_site}\n"
+            f" - Injection expression: {self._injection_expr_type}\n"
         )
 
     # ------------------------------------------------------------------
     # ErrorEnumerator interface
     # ------------------------------------------------------------------
 
-    def add_err_message(self, loc: Loc, new_access_mod, *args):
+    def add_err_message(self, loc: Loc, new_access_mod,
+                        target=None, target_class=None,
+                        expr_type: Optional[str] = None, *args):
         """Record which declaration was mutated and how."""
         if isinstance(loc, CtorLoc):
             self._error_decl = loc.ctor
@@ -395,6 +415,9 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
             self._error_decl = loc.func_decl
         self._error_class_decl = loc.class_decl
         self.injected_access_mod = new_access_mod
+        self._injection_target = target
+        self._injection_target_class = target_class
+        self._injection_expr_type = expr_type
 
     def get_candidate_program_locations(self) -> List[Loc]:
         """Return every class method and constructor as a candidate location."""
@@ -520,14 +543,207 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
 
     def enumerate_programs(self):
         """
-        Override the base-class implementation because our locations are
-        function/constructor declarations (not expressions) and do not need
-        the ASTExprUpdate restoration mechanism used by ErrorEnumerator.
+        For each method/constructor M defined in class A and each other class
+        B (not a nest member of A), synthesize a call/reference to M inside
+        every method and constructor body of B, and yield variants where M's
+        access modifier has been tightened.
+
+        Every yielded variant contains exactly one injected call/reference and
+        one tightened access modifier.
+
+        Rules:
+        - Methods: inject a direct call AND (if not overloaded) a function
+          reference.
+        - Constructors: inject only a ``new`` call.
+        - Skip ``protected`` injection when B is a subclass of A (subclasses
+          can always access protected members).
+        - Nest members of A are skipped entirely.
         """
-        locations = self.get_candidate_program_locations()
-        locations = self.filter_program_locations(locations)
-        for loc in locations:
-            yield from self.get_programs_with_error(loc)
+        self.analysis.visit_program(self.program)
+        class_decls = list(self.analysis.class_decls.values())
+
+        for class_a_decl in class_decls:
+            class_a_type = class_a_decl.get_type()
+
+            # Collect all class methods and constructors of A as candidates.
+            members: List[Loc] = []
+            for func in class_a_decl.functions:
+                if func.func_type == ast.FunctionDeclaration.CLASS_METHOD:
+                    members.append(FuncLoc(func_decl=func,
+                                           class_decl=class_a_decl))
+            for ctor in class_a_decl.constructors:
+                members.append(CtorLoc(ctor=ctor, class_decl=class_a_decl))
+
+            for loc in members:
+                decl = loc.ctor if isinstance(loc, CtorLoc) else loc.func_decl
+
+                original_mod = decl.metadata.get("access_mod", "public")
+                if original_mod not in ACCESS_MODIFIERS:
+                    continue
+                if original_mod == "private":
+                    continue  # Already at the most restrictive level.
+
+                current_idx = ACCESS_MODIFIERS.index(original_mod)
+
+                for class_b_decl in class_decls:
+                    if class_b_decl.name == class_a_decl.name:
+                        continue
+                    if self._are_nest_members(class_b_decl.name,
+                                              class_a_decl.name):
+                        continue
+
+                    # Bodies to inject into: methods and constructors of B.
+                    # Only Block bodies are supported; expression bodies
+                    # (e.g. a FunctionCall used as a single-expression function)
+                    # do not have a mutable body list.
+                    targets = [
+                        m for m in class_b_decl.functions
+                        if isinstance(m.body, ast.Block)
+                    ] + [
+                        c for c in class_b_decl.constructors
+                        if isinstance(c.body, ast.Block)
+                    ]
+
+                    for target in targets:
+                        # Build the list of (expr, label) pairs to inject.
+                        if isinstance(loc, FuncLoc):
+                            func_decl = loc.func_decl
+                            call_expr = self._synthesize_call(func_decl,
+                                                              class_a_type)
+                            if call_expr is None:
+                                continue
+                            is_overloaded = sum(
+                                1 for f in class_a_decl.functions
+                                if f.name == func_decl.name
+                            ) > 1
+                            injects = [(call_expr, "method call")]
+                            if not is_overloaded:
+                                func_ref = self._synthesize_func_ref(
+                                    func_decl, class_a_type)
+                                if func_ref is not None:
+                                    injects.append(
+                                        (func_ref, "function reference"))
+                        else:
+                            ctor_expr = self._synthesize_ctor_call(
+                                loc.ctor, class_a_type)
+                            if ctor_expr is None:
+                                continue
+                            injects = [(ctor_expr, "constructor call")]
+
+                        for inject_expr, expr_label in injects:
+                            for new_mod in ACCESS_MODIFIERS[current_idx + 1:]:
+                                if new_mod == "protected" \
+                                        and (self._is_subclass_of(
+                                                 class_b_decl.name,
+                                                 class_a_decl.name)
+                                             or self.bt_factory.get_language()
+                                             == "groovy"):
+                                    continue
+
+                                target.body.body.append(inject_expr)
+                                decl.metadata["access_mod"] = new_mod
+                                self.original_access_mod = original_mod
+                                self.add_err_message(
+                                    loc, new_mod,
+                                    target=target,
+                                    target_class=class_b_decl,
+                                    expr_type=expr_label,
+                                )
+                                yield self.program
+                                target.body.body.pop()
+                                decl.metadata["access_mod"] = original_mod
+
+    # ------------------------------------------------------------------
+    # Expression synthesis helpers
+    # ------------------------------------------------------------------
+
+    def _synthesize_expr(self, expr_type) -> Optional[ast.Expr]:
+        """
+        Ask the program generator to produce a shallow expression of
+        *expr_type*.  Falls back to a ``BottomConstant`` when the generator
+        does not support on-demand synthesis or when synthesis fails.
+        Returns None only when *expr_type* is None.
+        """
+        if expr_type is None:
+            return None
+        gen = self.program_gen
+        if gen is not None and hasattr(gen, 'generate_expr_from_node'):
+            saved = gen.block_variables
+            gen.block_variables = True
+            try:
+                result = gen.generate_expr_from_node(expr_type,
+                                                      func_ref=False,
+                                                      depth=1)
+                if result.expr is not None:
+                    return result.expr
+            except Exception:
+                pass
+            finally:
+                gen.block_variables = saved
+        # Fallback: use a bottom constant typed as expr_type.
+        expr = ast.BottomConstant(expr_type)
+        expr.mk_typed(ast.TypePair(expected=expr_type, actual=expr_type))
+        return expr
+
+    def _synthesize_call(self, func_decl: ast.FunctionDeclaration,
+                         class_type) -> Optional[ast.FunctionCall]:
+        """Synthesize a receiver-qualified call to *func_decl*."""
+        receiver = self._synthesize_expr(class_type)
+        if receiver is None:
+            return None
+        args = []
+        for param in func_decl.params:
+            arg_expr = self._synthesize_expr(param.param_type)
+            if arg_expr is None:
+                return None
+            args.append(ast.CallArgument(arg_expr))
+        return ast.FunctionCall(func=func_decl.name, args=args,
+                                receiver=receiver)
+
+    def _synthesize_func_ref(self, func_decl: ast.FunctionDeclaration,
+                              class_type) -> Optional[ast.VariableDeclaration]:
+        """Synthesize a variable declaration that holds a method reference to
+        *func_decl*.
+
+        The variable type is the corresponding function type, e.g.
+        ``Function2<P1, P2, R>`` for a method with two parameters.
+        """
+        ret_type = func_decl.ret_type
+        if ret_type is None:
+            return None
+        receiver = self._synthesize_expr(class_type)
+        if receiver is None:
+            return None
+        param_types = [p.param_type for p in func_decl.params]
+        func_type = self.bt_factory.get_function_type(
+            len(param_types)).new(param_types + [ret_type])
+        func_ref = ast.FunctionReference(
+            func=func_decl.name,
+            receiver=receiver,
+            signature=ret_type,
+            function_type=func_type,
+        )
+        func_ref.mk_typed(ast.TypePair(expected=func_type, actual=func_type))
+        var_name = f"_fref_{self._var_counter}"
+        self._var_counter += 1
+        return ast.VariableDeclaration(
+            name=var_name,
+            expr=func_ref,
+            is_final=True,
+            var_type=func_type,
+            inferred_type=func_type,
+        )
+
+    def _synthesize_ctor_call(self, ctor: ast.Constructor,
+                               class_type) -> Optional[ast.New]:
+        """Synthesize a ``new`` call for *ctor*."""
+        args = []
+        for param in ctor.params:
+            arg_expr = self._synthesize_expr(param.param_type)
+            if arg_expr is None:
+                return None
+            args.append(ast.CallArgument(arg_expr))
+        return ast.New(class_type=class_type, args=args)
 
     # ------------------------------------------------------------------
     # Private helpers

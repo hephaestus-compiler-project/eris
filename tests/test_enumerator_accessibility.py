@@ -10,6 +10,12 @@ import pytest
 
 from src.ir import ast, types as tp, java_types as jt
 from src.ir.context import Context
+# This import must come before any src.enumerators import to avoid a circular
+# import: src.enumerators.__init__ → type_error → src.generators.api →
+# api_decl_generator → src.enumerators (partially initialised).
+# Importing from src.generators.api first ensures the generators package is
+# fully loaded before the enumerators package is initialised.
+from src.generators.api.builder import JavaAPIGraphBuilder  # noqa: F401
 from src.enumerators.accessibility_error import (
     AccessibilityAnalysis,
     AccessibilityErrorEnumerator,
@@ -167,9 +173,12 @@ class TestAccessibilityAnalysis:
 
     def test_protected_method_with_subclass_caller_gets_private_injected(self):
         """
-        A protected method called from a subclass should get a private variant:
-        subclasses can access protected members but not private ones.
-        No protected variant is produced (the method is already protected).
+        A protected method in A called from a subclass B:
+        - A.foo (protected) injected into B.bar: only 'private' (B is subclass,
+          so 'protected' is skipped), 2 variants (call + func_ref).
+        - B.bar (public) injected into A.foo's body: both 'protected' and
+          'private', 2 injects each → 4 variants.
+        Total: 6 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
         type_b = tp.SimpleClassifier("B", [type_a])
@@ -188,7 +197,12 @@ class TestAccessibilityAnalysis:
         for _ in enum.enumerate_programs():
             injected_mods.append(enum.injected_access_mod)
 
-        assert injected_mods == ["private"]
+        # A.foo → B (subclass): only "private" (×2 for call+ref)
+        # B.bar → A: "protected" and "private" (×2 for call+ref)
+        assert injected_mods == [
+            "private", "private",
+            "protected", "private", "protected", "private",
+        ]
 
     def test_protected_method_only_called_internally_not_injected(self):
         """
@@ -393,11 +407,12 @@ class TestEnumerationLogic:
 
     # -- get_programs_with_error / full enumeration -------------------------
 
-    def test_public_method_called_from_unrelated_class_yields_two_variants(self):
+    def test_public_method_called_from_unrelated_class_yields_variants(self):
         """
-        public A.foo() called from unrelated B should generate:
-          1) protected variant  (sound: B is not a subclass)
-          2) private variant    (sound: B is external)
+        public A.foo() and public B.bar() in two unrelated classes:
+        - A.foo injected into B.bar: 'protected' and 'private', call + ref → 4
+        - B.bar injected into A.foo: 'protected' and 'private', call + ref → 4
+        Total: 8 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
         foo = make_method("foo", access_mod="public")
@@ -409,15 +424,12 @@ class TestEnumerationLogic:
         enum = make_enumerator(make_program(class_a, class_b))
         programs = list(enum.enumerate_programs())
 
-        # Collect the access modifiers actually injected
-        injected = [p for p in programs]
-        # We check via the enumerator's error_explanation which records them
-        assert len(programs) == 2
+        assert len(programs) == 8
 
     def test_public_method_injected_access_mods_unrelated_class(self):
         """
-        Verify that the injected modifiers are exactly 'protected' then
-        'private' when the caller is unrelated.
+        Two unrelated public methods: both 'protected' and 'private' are
+        injected for each member (call + func_ref variants each).
         """
         type_a = tp.SimpleClassifier("A", [])
         foo = make_method("foo", access_mod="public")
@@ -431,13 +443,17 @@ class TestEnumerationLogic:
         for _ in enum.enumerate_programs():
             injected_mods.append(enum.injected_access_mod)
 
-        assert injected_mods == ["protected", "private"]
+        assert set(injected_mods) == {"protected", "private"}
+        assert len(injected_mods) == 8
 
     def test_public_method_called_only_from_subclass_yields_only_private(self):
         """
-        public A.foo() called only from subclass B:
-          - protected would still allow B to call foo => NOT sound => skipped
-          - private prevents B from calling foo => sound => generated
+        public A.foo() with subclass B (has bar):
+        - A.foo injected into B.bar: only 'private' (B is subclass), call +
+          ref → 2 variants.
+        - B.bar injected into A.foo's body: 'protected' and 'private', call +
+          ref → 4 variants.
+        Total: 6 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
         type_b = tp.SimpleClassifier("B", [type_a])
@@ -456,13 +472,21 @@ class TestEnumerationLogic:
         for _ in enum.enumerate_programs():
             injected_mods.append(enum.injected_access_mod)
 
-        assert injected_mods == ["private"]
+        # A.foo → B (subclass): only "private" (×2 for call+ref)
+        # B.bar → A: "protected" and "private" (×2 for call+ref)
+        assert injected_mods == [
+            "private", "private",
+            "protected", "private", "protected", "private",
+        ]
 
     def test_protected_method_called_from_unrelated_class_yields_private(self):
         """
-        protected A.foo() called from unrelated C:
-          - cannot go to 'protected' again (already there)
-          - 'private' is sound
+        protected A.foo() and public C.baz() in unrelated classes:
+        - A.foo injected into C.baz: only 'private' (already protected), call
+          + ref → 2 variants.
+        - C.baz injected into A.foo's body: 'protected' and 'private', call +
+          ref → 4 variants.
+        Total: 6 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
         foo = make_method("foo", access_mod="protected")
@@ -476,7 +500,12 @@ class TestEnumerationLogic:
         for _ in enum.enumerate_programs():
             injected_mods.append(enum.injected_access_mod)
 
-        assert injected_mods == ["private"]
+        # A.foo → C: only "private" (×2 for call+ref)
+        # C.baz → A: "protected" and "private" (×2 for call+ref)
+        assert injected_mods == [
+            "private", "private",
+            "protected", "private", "protected", "private",
+        ]
 
     def test_access_modifier_is_restored_after_enumeration(self):
         """
@@ -641,8 +670,11 @@ class TestNestMembers:
 
     def test_function_reference_enables_error_injection(self):
         """
-        When the only use of a method is via a method reference from an
-        external class, the enumerator should still produce variants.
+        Two unrelated public methods (A.foo and B.bar): synthesised call sites
+        are injected in both directions.
+        - A.foo → B.bar: 'protected' and 'private', call + ref → 4 variants.
+        - B.bar → A.foo: 'protected' and 'private', call + ref → 4 variants.
+        Total: 8 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
         foo = make_method("foo", access_mod="public")
@@ -656,7 +688,8 @@ class TestNestMembers:
         for _ in enum.enumerate_programs():
             injected_mods.append(enum.injected_access_mod)
 
-        assert injected_mods == ["protected", "private"]
+        assert set(injected_mods) == {"protected", "private"}
+        assert len(injected_mods) == 8
 
 
 # ---------------------------------------------------------------------------
@@ -797,8 +830,12 @@ class TestConstructors:
 
     def test_constructor_injection_yields_correct_variants(self):
         """
-        public A() called from unrelated B should generate protected and
-        private variants.
+        public A() constructor and public B.bar() method in unrelated classes:
+        - A() injected into B.bar: 'protected' and 'private' → 2 variants
+          (constructors only get a 'new' call, no func_ref).
+        - B.bar injected into A()'s body: 'protected' and 'private', call +
+          ref → 4 variants.
+        Total: 6 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
         ctor_a = make_constructor("A", access_mod="public")
@@ -813,7 +850,10 @@ class TestConstructors:
         for _ in enum.enumerate_programs():
             injected_mods.append(enum.injected_access_mod)
 
-        assert injected_mods == ["protected", "private"]
+        # A() → B.bar: "protected", "private" (1 inject = New call)
+        # B.bar → A()'s body: "protected", "private" × call + ref
+        assert set(injected_mods) == {"protected", "private"}
+        assert len(injected_mods) == 6
 
     def test_constructor_access_mod_restored_after_enumeration(self):
         """After enumeration the constructor's original access mod is restored."""
