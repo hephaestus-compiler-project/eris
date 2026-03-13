@@ -234,7 +234,7 @@ parser.add_argument(
 parser.add_argument(
     "--error-enumerator",
     default=None,
-    choices=["type", "flow-type"],
+    choices=["accessibility", "type", "flow-type"],
     help="Select a strategy for enumerating errors in a given program"
 )
 parser.add_argument(
