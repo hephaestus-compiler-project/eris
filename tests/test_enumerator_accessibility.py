@@ -14,6 +14,7 @@ from src.enumerators.accessibility_error import (
     AccessibilityAnalysis,
     AccessibilityErrorEnumerator,
     FuncLoc,
+    CtorLoc,
 )
 
 
@@ -163,6 +164,46 @@ class TestAccessibilityAnalysis:
 
         callers = analysis.call_sites.get(id(foo), [])
         assert callers == ["B"]
+
+    def test_protected_method_with_subclass_caller_gets_private_injected(self):
+        """
+        A protected method called from a subclass should get a private variant:
+        subclasses can access protected members but not private ones.
+        No protected variant is produced (the method is already protected).
+        """
+        type_a = tp.SimpleClassifier("A", [])
+        type_b = tp.SimpleClassifier("B", [type_a])
+
+        foo = make_method("foo", access_mod="protected")
+        class_a = make_class("A", methods=[foo])
+
+        sc = ast.SuperClassInstantiation(class_type=type_a)
+        call = make_call("foo", type_b)
+        class_b = make_class("B",
+                              methods=[make_method("bar", body=ast.Block([call]))],
+                              superclasses=[sc])
+
+        enum = make_enumerator(make_program(class_a, class_b))
+        injected_mods = []
+        for _ in enum.enumerate_programs():
+            injected_mods.append(enum.injected_access_mod)
+
+        assert injected_mods == ["private"]
+
+    def test_protected_method_only_called_internally_not_injected(self):
+        """
+        A protected method that is only called from within its own class
+        cannot be given a tighter modifier that would break anything:
+        private is still accessible within the class, so no error is injected.
+        """
+        type_a = tp.SimpleClassifier("A", [])
+        foo = make_method("foo", access_mod="protected")
+        call = make_call("foo", type_a)
+        class_a = make_class("A", methods=[foo, make_method("bar",
+                                                             body=ast.Block([call]))])
+
+        enum = make_enumerator(make_program(class_a))
+        assert list(enum.enumerate_programs()) == []
 
     def test_calls_without_receiver_are_ignored(self):
         """FunctionCall nodes with no receiver (e.g. free functions) do not
@@ -616,3 +657,406 @@ class TestNestMembers:
             injected_mods.append(enum.injected_access_mod)
 
         assert injected_mods == ["protected", "private"]
+
+
+# ---------------------------------------------------------------------------
+# 5. Constructor tests
+# ---------------------------------------------------------------------------
+
+def make_constructor(class_name: str, num_params: int = 0,
+                     access_mod: str = "public") -> ast.Constructor:
+    """Create a Constructor with the given parameter count and access modifier."""
+    params = [
+        ast.ParameterDeclaration(name=f"p{i}", param_type=jt.Integer)
+        for i in range(num_params)
+    ]
+    return ast.Constructor(
+        class_name=class_name,
+        params=params,
+        body=ast.Block([]),
+        metadata={"access_mod": access_mod},
+    )
+
+
+def make_new(class_type: tp.Type, num_args: int = 0) -> ast.New:
+    """Create a New node with the given number of arguments."""
+    args = [
+        ast.CallArgument(ast.IntegerConstant(0, jt.Integer))
+        for _ in range(num_args)
+    ]
+    return ast.New(class_type=class_type, args=args)
+
+
+class TestConstructors:
+
+    def test_constructor_call_recorded_in_ctor_call_sites(self):
+        """new A() from inside B records a call site for A's constructor."""
+        type_a = tp.SimpleClassifier("A", [])
+        ctor_a = make_constructor("A")
+        class_a = make_class("A")
+        class_a.constructors = [ctor_a]
+
+        new_a = make_new(type_a, num_args=0)
+        class_b = make_class("B", methods=[make_method("bar", body=ast.Block([new_a]))])
+
+        analysis = AccessibilityAnalysis()
+        analysis.visit_program(make_program(class_a, class_b))
+
+        callers = analysis.ctor_call_sites.get(id(ctor_a), [])
+        assert callers == ["B"]
+
+    def test_constructor_call_same_class_recorded(self):
+        """new A() from inside A itself records a same-class call site."""
+        type_a = tp.SimpleClassifier("A", [])
+        ctor_a = make_constructor("A")
+        new_a = make_new(type_a, num_args=0)
+        class_a = make_class("A", methods=[make_method("bar", body=ast.Block([new_a]))])
+        class_a.constructors = [ctor_a]
+
+        analysis = AccessibilityAnalysis()
+        analysis.visit_program(make_program(class_a))
+
+        callers = analysis.ctor_call_sites.get(id(ctor_a), [])
+        assert callers == ["A"]
+
+    def test_constructor_matched_by_arity(self):
+        """Only the constructor whose param count matches the arg count is recorded."""
+        type_a = tp.SimpleClassifier("A", [])
+        ctor0 = make_constructor("A", num_params=0)
+        ctor1 = make_constructor("A", num_params=1)
+
+        # Call with 1 arg — should match only ctor1
+        new_a = make_new(type_a, num_args=1)
+        class_a = make_class("A")
+        class_a.constructors = [ctor0, ctor1]
+        class_b = make_class("B", methods=[make_method("bar", body=ast.Block([new_a]))])
+
+        analysis = AccessibilityAnalysis()
+        analysis.visit_program(make_program(class_a, class_b))
+
+        assert analysis.ctor_call_sites.get(id(ctor0), []) == []
+        assert analysis.ctor_call_sites.get(id(ctor1), []) == ["B"]
+
+    def test_constructor_reference_recorded(self):
+        """A constructor reference A::new records a call site for A's constructor."""
+        type_a = tp.SimpleClassifier("A", [])
+        ctor_a = make_constructor("A")
+        class_a = make_class("A")
+        class_a.constructors = [ctor_a]
+
+        receiver = ast.Variable("A_class")
+        receiver.mk_typed(ast.TypePair(expected=type_a, actual=type_a))
+        ctor_ref = ast.FunctionReference(
+            func=ast.FunctionReference.NEW_REF,
+            receiver=receiver,
+            signature=jt.Void,
+            function_type=None,
+        )
+        class_b = make_class("B", methods=[make_method("bar",
+                                                        body=ast.Block([ctor_ref]))])
+
+        analysis = AccessibilityAnalysis()
+        analysis.visit_program(make_program(class_a, class_b))
+
+        callers = analysis.ctor_call_sites.get(id(ctor_a), [])
+        assert callers == ["B"]
+
+    def test_filter_includes_constructor_with_external_caller(self):
+        """A constructor called from an unrelated class passes the filter."""
+        type_a = tp.SimpleClassifier("A", [])
+        ctor_a = make_constructor("A", access_mod="public")
+        class_a = make_class("A")
+        class_a.constructors = [ctor_a]
+
+        new_a = make_new(type_a, num_args=0)
+        class_b = make_class("B", methods=[make_method("bar", body=ast.Block([new_a]))])
+
+        enum = make_enumerator(make_program(class_a, class_b))
+        locs = enum.get_candidate_program_locations()
+        filtered = enum.filter_program_locations(locs)
+
+        assert any(isinstance(loc, CtorLoc) and loc.class_decl.name == "A"
+                   for loc in filtered)
+
+    def test_filter_excludes_private_constructor(self):
+        """A constructor already marked private is excluded from candidates."""
+        type_a = tp.SimpleClassifier("A", [])
+        ctor_a = make_constructor("A", access_mod="private")
+        class_a = make_class("A")
+        class_a.constructors = [ctor_a]
+
+        new_a = make_new(type_a, num_args=0)
+        class_b = make_class("B", methods=[make_method("bar", body=ast.Block([new_a]))])
+
+        enum = make_enumerator(make_program(class_a, class_b))
+        locs = enum.get_candidate_program_locations()
+        filtered = enum.filter_program_locations(locs)
+
+        assert not any(isinstance(loc, CtorLoc) and loc.class_decl.name == "A"
+                       for loc in filtered)
+
+    def test_constructor_injection_yields_correct_variants(self):
+        """
+        public A() called from unrelated B should generate protected and
+        private variants.
+        """
+        type_a = tp.SimpleClassifier("A", [])
+        ctor_a = make_constructor("A", access_mod="public")
+        class_a = make_class("A")
+        class_a.constructors = [ctor_a]
+
+        new_a = make_new(type_a, num_args=0)
+        class_b = make_class("B", methods=[make_method("bar", body=ast.Block([new_a]))])
+
+        enum = make_enumerator(make_program(class_a, class_b))
+        injected_mods = []
+        for _ in enum.enumerate_programs():
+            injected_mods.append(enum.injected_access_mod)
+
+        assert injected_mods == ["protected", "private"]
+
+    def test_constructor_access_mod_restored_after_enumeration(self):
+        """After enumeration the constructor's original access mod is restored."""
+        type_a = tp.SimpleClassifier("A", [])
+        ctor_a = make_constructor("A", access_mod="public")
+        class_a = make_class("A")
+        class_a.constructors = [ctor_a]
+
+        new_a = make_new(type_a, num_args=0)
+        class_b = make_class("B", methods=[make_method("bar", body=ast.Block([new_a]))])
+
+        enum = make_enumerator(make_program(class_a, class_b))
+        list(enum.enumerate_programs())
+
+        cls_a_decl = next(
+            d for d in enum.program.declarations
+            if isinstance(d, ast.ClassDeclaration) and d.name == "A"
+        )
+        assert cls_a_decl.constructors[0].metadata["access_mod"] == "public"
+
+    def test_nested_class_constructor_call_not_external(self):
+        """
+        new Outer() from inside Outer.Inner is a nest-member call and must
+        not produce an injection.
+        """
+        type_outer = tp.SimpleClassifier("Outer", [])
+        ctor_outer = make_constructor("Outer", access_mod="public")
+        class_outer = make_class("Outer")
+        class_outer.constructors = [ctor_outer]
+
+        new_outer = make_new(type_outer, num_args=0)
+        class_inner = make_class("Outer.Inner",
+                                 methods=[make_method("bar",
+                                                      body=ast.Block([new_outer]))])
+
+        enum = make_enumerator(make_program(class_outer, class_inner))
+        assert list(enum.enumerate_programs()) == []
+
+
+# ---------------------------------------------------------------------------
+# 6. Overload-resolution tests
+# ---------------------------------------------------------------------------
+
+def make_method_with_params(name: str, param_types,
+                             access_mod: str = "public") -> ast.FunctionDeclaration:
+    """Create a class method with typed parameters."""
+    params = [
+        ast.ParameterDeclaration(name=f"p{i}", param_type=t)
+        for i, t in enumerate(param_types)
+    ]
+    return ast.FunctionDeclaration(
+        name=name,
+        params=params,
+        ret_type=jt.Void,
+        body=ast.Block([]),
+        func_type=ast.FunctionDeclaration.CLASS_METHOD,
+        metadata={"access_mod": access_mod},
+    )
+
+
+def make_constructor_with_params(class_name: str, param_types,
+                                  access_mod: str = "public") -> ast.Constructor:
+    """Create a Constructor with explicitly typed parameters."""
+    params = [
+        ast.ParameterDeclaration(name=f"p{i}", param_type=t)
+        for i, t in enumerate(param_types)
+    ]
+    return ast.Constructor(
+        class_name=class_name,
+        params=params,
+        body=ast.Block([]),
+        metadata={"access_mod": access_mod},
+    )
+
+
+def make_new_typed(class_type: tp.Type, arg_types) -> ast.New:
+    """Create a New node whose arguments have explicit types."""
+    args = []
+    for t in arg_types:
+        expr = ast.IntegerConstant(0, jt.Integer)
+        expr.mk_typed(ast.TypePair(expected=t, actual=t))
+        args.append(ast.CallArgument(expr))
+    return ast.New(class_type=class_type, args=args)
+
+
+def make_call_typed(method_name: str, receiver_type: tp.Type,
+                    arg_types) -> ast.FunctionCall:
+    """Create a FunctionCall whose arguments have explicit types."""
+    receiver = ast.Variable("obj")
+    receiver.mk_typed(ast.TypePair(expected=receiver_type, actual=receiver_type))
+    args = []
+    for t in arg_types:
+        expr = ast.IntegerConstant(0, jt.Integer)
+        expr.mk_typed(ast.TypePair(expected=t, actual=t))
+        args.append(ast.CallArgument(expr))
+    return ast.FunctionCall(func=method_name, args=args, receiver=receiver)
+
+
+class TestOverloadResolution:
+    """
+    Tests that type-aware overload resolution correctly identifies which
+    method/constructor overload a call site targets, avoiding false positives
+    where an uncalled overload would be (incorrectly) marked as having callers.
+    """
+
+    # -- Constructors -------------------------------------------------------
+
+    def test_overloaded_ctor_only_matching_overload_recorded(self):
+        """
+        When two constructors have the same arity but different parameter
+        types, only the constructor whose parameter types are compatible with
+        the argument types at the call site should be recorded.
+
+        Reproduces the PrintWriter(File, String) vs PrintWriter(String, String)
+        scenario from bugs/groovy-session/9.
+        """
+        type_a = tp.SimpleClassifier("A", [])
+        # Mimic File and String as unrelated simple types.
+        file_t = tp.SimpleClassifier("File", [])
+        str_t = tp.SimpleClassifier("String", [])
+
+        ctor_file_str = make_constructor_with_params("A", [file_t, str_t])
+        ctor_str_str = make_constructor_with_params("A", [str_t, str_t])
+
+        class_a = make_class("A")
+        class_a.constructors = [ctor_file_str, ctor_str_str]
+
+        # Call site uses (String, String) arguments → must match ctor_str_str only.
+        new_a = make_new_typed(type_a, [str_t, str_t])
+        class_b = make_class("B", methods=[make_method("bar",
+                                                       body=ast.Block([new_a]))])
+
+        analysis = AccessibilityAnalysis()
+        analysis.visit_program(make_program(class_a, class_b))
+
+        # ctor_str_str is called from B.
+        assert analysis.ctor_call_sites.get(id(ctor_str_str), []) == ["B"]
+        # ctor_file_str is NOT called at all.
+        assert analysis.ctor_call_sites.get(id(ctor_file_str), []) == []
+
+    def test_overloaded_ctor_uncalled_overload_not_injected(self):
+        """
+        The uncalled overload must not be selected as an injection target
+        (filter_program_locations should exclude it).
+        """
+        type_a = tp.SimpleClassifier("A", [])
+        file_t = tp.SimpleClassifier("File", [])
+        str_t = tp.SimpleClassifier("String", [])
+
+        ctor_file_str = make_constructor_with_params("A", [file_t, str_t])
+        ctor_str_str = make_constructor_with_params("A", [str_t, str_t])
+
+        class_a = make_class("A")
+        class_a.constructors = [ctor_file_str, ctor_str_str]
+
+        new_a = make_new_typed(type_a, [str_t, str_t])
+        class_b = make_class("B", methods=[make_method("bar",
+                                                       body=ast.Block([new_a]))])
+
+        enum = make_enumerator(make_program(class_a, class_b))
+        locs = enum.get_candidate_program_locations()
+        filtered = enum.filter_program_locations(locs)
+
+        ctor_locs = [loc for loc in filtered if isinstance(loc, CtorLoc)
+                     and loc.class_decl.name == "A"]
+        # Only ctor_str_str (the called overload) should pass the filter.
+        assert len(ctor_locs) == 1
+        assert ctor_locs[0].ctor.params[0].param_type == str_t
+
+    def test_overloaded_ctor_subtype_argument(self):
+        """
+        An argument whose type is a subtype of a parameter type should match
+        the constructor with the more general parameter.
+
+        E.g. new A(child_instance) where ctor_a takes a parent type.
+        """
+        type_a = tp.SimpleClassifier("A", [])
+        parent_t = tp.SimpleClassifier("Parent", [])
+        child_t = tp.SimpleClassifier("Child", [parent_t])  # Child <: Parent
+
+        ctor_parent = make_constructor_with_params("A", [parent_t])
+        class_a = make_class("A")
+        class_a.constructors = [ctor_parent]
+
+        # Call site passes a Child argument.
+        new_a = make_new_typed(type_a, [child_t])
+        class_b = make_class("B", methods=[make_method("bar",
+                                                       body=ast.Block([new_a]))])
+
+        analysis = AccessibilityAnalysis()
+        analysis.visit_program(make_program(class_a, class_b))
+
+        assert analysis.ctor_call_sites.get(id(ctor_parent), []) == ["B"]
+
+    # -- Methods ------------------------------------------------------------
+
+    def test_overloaded_method_only_matching_overload_recorded(self):
+        """
+        Two overloads of the same method: only the one whose parameter types
+        match the argument types at the call site should be recorded.
+        """
+        type_a = tp.SimpleClassifier("A", [])
+        int_t = jt.Integer
+        str_t = tp.SimpleClassifier("String", [])
+
+        foo_int = make_method_with_params("foo", [int_t])
+        foo_str = make_method_with_params("foo", [str_t])
+        class_a = make_class("A", methods=[foo_int, foo_str])
+
+        # Call site uses a String argument → must match foo_str only.
+        call = make_call_typed("foo", type_a, [str_t])
+        class_b = make_class("B", methods=[make_method("bar",
+                                                       body=ast.Block([call]))])
+
+        analysis = AccessibilityAnalysis()
+        analysis.visit_program(make_program(class_a, class_b))
+
+        assert analysis.call_sites.get(id(foo_str), []) == ["B"]
+        assert analysis.call_sites.get(id(foo_int), []) == []
+
+    def test_overloaded_method_uncalled_overload_not_injected(self):
+        """
+        The uncalled method overload must not be selected as an injection
+        target by filter_program_locations.
+        """
+        type_a = tp.SimpleClassifier("A", [])
+        int_t = jt.Integer
+        str_t = tp.SimpleClassifier("String", [])
+
+        foo_int = make_method_with_params("foo", [int_t])
+        foo_str = make_method_with_params("foo", [str_t])
+        class_a = make_class("A", methods=[foo_int, foo_str])
+
+        call = make_call_typed("foo", type_a, [str_t])
+        class_b = make_class("B", methods=[make_method("bar",
+                                                       body=ast.Block([call]))])
+
+        enum = make_enumerator(make_program(class_a, class_b))
+        locs = enum.get_candidate_program_locations()
+        filtered = enum.filter_program_locations(locs)
+
+        foo_locs = [loc for loc in filtered
+                    if isinstance(loc, FuncLoc) and loc.func_decl.name == "foo"
+                    and loc.class_decl.name == "A"]
+        assert len(foo_locs) == 1
+        assert foo_locs[0].func_decl.params[0].param_type == str_t

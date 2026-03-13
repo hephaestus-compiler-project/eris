@@ -1,4 +1,4 @@
-from typing import NamedTuple, List, Dict, Optional
+from typing import NamedTuple, List, Dict, Optional, Union
 
 from src.enumerators.error import ErrorEnumerator
 from src.ir import ast
@@ -11,6 +11,9 @@ from src.generators import Generator as ProgramGenerator
 # public <: protected <: private (using Liskov substitution principle:
 # more accessible = subtype of less accessible).
 ACCESS_MODIFIERS = ["public", "protected", "private"]
+
+# Sentinel used by FunctionReference to indicate a constructor reference.
+_NEW_REF = ast.FunctionReference.NEW_REF
 
 
 def _get_class_name(t) -> Optional[str]:
@@ -27,11 +30,21 @@ class FuncLoc(NamedTuple):
     class_decl: ast.ClassDeclaration
 
 
+class CtorLoc(NamedTuple):
+    ctor: ast.Constructor
+    class_decl: ast.ClassDeclaration
+
+
+# A location is either a method or a constructor.
+Loc = Union[FuncLoc, CtorLoc]
+
+
 class AccessibilityAnalysis(DefaultVisitor):
     """
     Visitor that collects:
-    1. All class method definitions and their enclosing class.
-    2. All function call sites and their calling-class context.
+    1. All class method/constructor definitions and their enclosing class.
+    2. All call sites (function calls, function references, constructor calls)
+       and their calling-class context.
     3. The class hierarchy (for subclass relationship checks).
     """
 
@@ -45,6 +58,8 @@ class AccessibilityAnalysis(DefaultVisitor):
         # Map: id(FunctionDeclaration) -> list of calling-class names
         #      (None means the call is at top level, outside any class)
         self.call_sites: Dict[int, List[Optional[str]]] = {}
+        # Map: id(Constructor) -> list of calling-class names
+        self.ctor_call_sites: Dict[int, List[Optional[str]]] = {}
 
     def result(self):
         pass
@@ -107,13 +122,69 @@ class AccessibilityAnalysis(DefaultVisitor):
                 break
         return candidate
 
+    def _get_arg_types(self, args) -> List[Optional[object]]:
+        """
+        Extract the actual (inferred) type from a list of CallArgument nodes.
+        Returns None for any argument whose type cannot be determined.
+        """
+        result = []
+        for arg in args:
+            try:
+                ti = arg.expr.get_type_info()
+                if ti is None:
+                    result.append(None)
+                else:
+                    _, actual_t = ti
+                    result.append(actual_t)
+            except Exception:
+                result.append(None)
+        return result
+
+    def _args_match_params(self, arg_types, params) -> bool:
+        """
+        Return True if every argument type in *arg_types* is a subtype of
+        the corresponding parameter type in *params*, with the following
+        lenient rules:
+        - Arity must match exactly.
+        - An unknown argument type (None) is treated as compatible with any
+          parameter type.
+        - If the parameter type is a type variable or wildcard, any argument
+          type is accepted.
+        - If the subtype check raises an exception, the argument is treated
+          as compatible (conservative / sound choice for our soundness
+          analysis).
+        """
+        if len(arg_types) != len(params):
+            return False
+        for arg_t, param in zip(arg_types, params):
+            if arg_t is None:
+                continue  # Unknown — assume compatible.
+            param_t = param.param_type
+            if param_t is None:
+                continue
+            if param_t.is_type_var() or param_t.is_wildcard():
+                continue  # Generic parameter — accept any type.
+            try:
+                if not arg_t.is_subtype(param_t):
+                    return False
+            except Exception:
+                continue  # Cannot determine — assume compatible.
+        return True
+
     def _find_method_in_hierarchy(
-            self, class_name: str, method_name: str
+            self, class_name: str, method_name: str,
+            arg_types: Optional[List] = None,
     ) -> Optional[ast.FunctionDeclaration]:
         """
         Walk the inheritance chain of *class_name* (breadth-first) looking
-        for a method named *method_name*.  Returns the first match found,
-        or None if no match exists in the seed's known classes.
+        for a method named *method_name*.
+
+        When *arg_types* is provided, only methods whose parameter types are
+        compatible with those argument types (via subtyping) are considered.
+        This handles overloaded methods correctly.
+
+        When *arg_types* is None (e.g. from a function reference where arity
+        is not known), the first method with a matching name is returned.
         """
         visited: set = set()
         queue: List[str] = [class_name]
@@ -125,10 +196,45 @@ class AccessibilityAnalysis(DefaultVisitor):
             class_decl = self.class_decls.get(cname)
             if class_decl is not None:
                 for func in class_decl.functions:
-                    if func.name == method_name:
+                    if func.name != method_name:
+                        continue
+                    if arg_types is None:
+                        return func  # Name-only match (function reference).
+                    if self._args_match_params(arg_types, func.params):
                         return func
             queue.extend(self.superclasses.get(cname, []))
         return None
+
+    def _find_constructors(
+            self, class_name: str, arg_types: Optional[List] = None,
+            num_args: Optional[int] = None,
+    ) -> List[ast.Constructor]:
+        """
+        Return constructors of *class_name* that are compatible with the
+        given call site.
+
+        When *arg_types* is provided (direct ``new`` call), only constructors
+        whose parameter types are all supertypes of the corresponding
+        argument types are returned — handling overloads with the same arity
+        but different parameter types correctly.
+
+        When *arg_types* is None but *num_args* is given (constructor
+        reference where argument types are unknown), fall back to arity-only
+        matching.
+
+        When both are None, all constructors are returned (used when recording
+        all constructors for a constructor reference ``ClassName::new``).
+        """
+        class_decl = self.class_decls.get(class_name)
+        if class_decl is None:
+            return []
+        if arg_types is not None:
+            return [c for c in class_decl.constructors
+                    if self._args_match_params(arg_types, c.params)]
+        if num_args is not None:
+            return [c for c in class_decl.constructors
+                    if len(c.params) == num_args]
+        return list(class_decl.constructors)
 
     # ------------------------------------------------------------------
     # Visitor methods
@@ -143,13 +249,21 @@ class AccessibilityAnalysis(DefaultVisitor):
         super().visit_class_decl(node)
         self.current_class = prev_class
 
-    def _record_call_site(self, receiver, func_name: str):
+    def _record_call_site(self, receiver, func_name: str, args=None):
         """
         Shared logic for visit_func_call and visit_func_ref: given a receiver
         expression and the referenced method name, record a call site entry if
         the method belongs to a known class.
+
+        When *args* (a list of CallArgument nodes) is provided, type-aware
+        overload resolution is used so that only the matching overload is
+        recorded as called.  When *args* is None (e.g. from a function
+        reference), the first method with a matching name is recorded.
+
+        Constructor references (func_name == _NEW_REF) are handled separately
+        in visit_new / visit_func_ref.
         """
-        if receiver is None:
+        if receiver is None or func_name == _NEW_REF:
             return
         type_info = receiver.get_type_info()
         if type_info is None:
@@ -158,35 +272,75 @@ class AccessibilityAnalysis(DefaultVisitor):
         class_name = _get_class_name(actual_t)
         if class_name is None:
             return
-        func_decl = self._find_method_in_hierarchy(class_name, func_name)
+        arg_types = self._get_arg_types(args) if args is not None else None
+        func_decl = self._find_method_in_hierarchy(class_name, func_name,
+                                                   arg_types)
         if func_decl is not None:
             self.call_sites.setdefault(id(func_decl), []).append(
                 self.current_class
             )
 
+    def _record_ctor_call_site(self, class_name: str, args):
+        """
+        Record a constructor call site for the constructor(s) of *class_name*
+        that match the given arguments via type-aware overload resolution.
+
+        *args* is a list of CallArgument nodes from the ``New`` expression.
+        """
+        arg_types = self._get_arg_types(args)
+        for ctor in self._find_constructors(class_name, arg_types=arg_types):
+            self.ctor_call_sites.setdefault(id(ctor), []).append(
+                self.current_class
+            )
+
     def visit_func_call(self, node: ast.FunctionCall):
         super().visit_func_call(node)
-        self._record_call_site(node.receiver, node.func)
+        self._record_call_site(node.receiver, node.func, node.args)
 
     def visit_func_ref(self, node: ast.FunctionReference):
         super().visit_func_ref(node)
-        self._record_call_site(node.receiver, node.func)
+        if node.func == _NEW_REF:
+            # Constructor reference: ClassName::new.
+            # We don't know the arity from the reference alone, so record
+            # for all constructors of the referenced class.
+            if node.receiver is None:
+                return
+            type_info = node.receiver.get_type_info()
+            if type_info is None:
+                return
+            _, actual_t = type_info
+            class_name = _get_class_name(actual_t)
+            if class_name is None:
+                return
+            for ctor in self._find_constructors(class_name):
+                self.ctor_call_sites.setdefault(id(ctor), []).append(
+                    self.current_class
+                )
+        else:
+            self._record_call_site(node.receiver, node.func)
+
+    def visit_new(self, node: ast.New):
+        super().visit_new(node)
+        class_name = _get_class_name(node.class_type)
+        if class_name is None:
+            return
+        self._record_ctor_call_site(class_name, node.args)
 
 
 class AccessibilityErrorEnumerator(ErrorEnumerator):
     """
-    Injects accessibility violations by tightening a method's access modifier
-    to a value that is guaranteed to make at least one existing call site
-    ill-typed.
+    Injects accessibility violations by tightening a method's or constructor's
+    access modifier to a value that is guaranteed to make at least one existing
+    call site ill-typed.
 
     The access modifier hierarchy (most → least permissive):
         public  →  protected  →  private
 
     Soundness conditions for each injected modifier:
     * ``protected``: sound when there is at least one call from a class that
-      is *not* the defining class and *not* a subclass of it.
-    * ``private``: sound when there is at least one call from any class other
-      than the defining class (including subclasses).
+      is *not* the defining class/nest and *not* a subclass of it.
+    * ``private``: sound when there is at least one call from any class
+      outside the defining class's nest.
     """
 
     name = "AccessibilityErrorEnumerator"
@@ -198,8 +352,10 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
                  options: dict = None):
         self.analysis = AccessibilityAnalysis()
         self.options = options or {}
-        self.error_func_decl: Optional[ast.FunctionDeclaration] = None
-        self.error_class_decl: Optional[ast.ClassDeclaration] = None
+        # Populated by add_err_message; may be FunctionDeclaration or Constructor.
+        self._error_decl: Optional[Union[ast.FunctionDeclaration,
+                                         ast.Constructor]] = None
+        self._error_class_decl: Optional[ast.ClassDeclaration] = None
         self.original_access_mod: Optional[str] = None
         self.injected_access_mod: Optional[str] = None
         self.metadata: Dict[str, int] = {
@@ -214,12 +370,15 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
 
     @property
     def error_explanation(self) -> Optional[str]:
-        if self.error_func_decl is None:
+        if self._error_decl is None:
             return None
+        if isinstance(self._error_decl, ast.Constructor):
+            member = f"{self._error_class_decl.name}.<init>"
+        else:
+            member = f"{self._error_class_decl.name}.{self._error_decl.name}"
         return (
             f"Added accessibility error using {self.name}:\n"
-            f" - Method: "
-            f"{self.error_class_decl.name}.{self.error_func_decl.name}\n"
+            f" - Member: {member}\n"
             f" - Original access modifier: {self.original_access_mod}\n"
             f" - Injected access modifier: {self.injected_access_mod}\n"
         )
@@ -228,50 +387,57 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
     # ErrorEnumerator interface
     # ------------------------------------------------------------------
 
-    def add_err_message(self, loc: FuncLoc, new_access_mod, *args):
-        """Record which function was mutated and how."""
-        self.error_func_decl = loc.func_decl
-        self.error_class_decl = loc.class_decl
+    def add_err_message(self, loc: Loc, new_access_mod, *args):
+        """Record which declaration was mutated and how."""
+        if isinstance(loc, CtorLoc):
+            self._error_decl = loc.ctor
+        else:
+            self._error_decl = loc.func_decl
+        self._error_class_decl = loc.class_decl
         self.injected_access_mod = new_access_mod
 
-    def get_candidate_program_locations(self) -> List[FuncLoc]:
-        """Return every class method in the seed as a candidate location."""
+    def get_candidate_program_locations(self) -> List[Loc]:
+        """Return every class method and constructor as a candidate location."""
         self.analysis.visit_program(self.program)
-        locations: List[FuncLoc] = []
+        locations: List[Loc] = []
         for class_decl in self.analysis.class_decls.values():
             for func in class_decl.functions:
                 if func.func_type == ast.FunctionDeclaration.CLASS_METHOD:
                     locations.append(FuncLoc(func_decl=func,
                                              class_decl=class_decl))
+            for ctor in class_decl.constructors:
+                locations.append(CtorLoc(ctor=ctor, class_decl=class_decl))
         return locations
 
-    def filter_program_locations(
-            self, locations: List[FuncLoc]
-    ) -> List[FuncLoc]:
+    def filter_program_locations(self, locations: List[Loc]) -> List[Loc]:
         """
         Keep only locations where it is sound to inject an accessibility error,
-        i.e. the method has at least one call site from outside its defining
-        class.
+        i.e. the method/constructor has at least one call site from outside its
+        defining class's nest.
         """
         self.metadata["locations"] = len(locations)
-        filtered: List[FuncLoc] = []
+        filtered: List[Loc] = []
 
         for loc in locations:
-            func_decl = loc.func_decl
-            class_decl = loc.class_decl
+            if isinstance(loc, CtorLoc):
+                decl = loc.ctor
+                call_sites_map = self.analysis.ctor_call_sites
+            else:
+                decl = loc.func_decl
+                call_sites_map = self.analysis.call_sites
 
-            # Cannot tighten already-private methods.
-            access_mod = func_decl.metadata.get("access_mod", "public")
+            # Cannot tighten already-private declarations.
+            access_mod = decl.metadata.get("access_mod", "public")
             if access_mod == "private":
                 continue
 
             # Abstract methods (no body) cannot be given a tighter modifier
             # in a sound way because they are overridden in subclasses.
-            if func_decl.body is None:
+            # (Constructors always have a body.)
+            if isinstance(loc, FuncLoc) and decl.body is None:
                 continue
 
-            func_id = id(func_decl)
-            all_calls = self.analysis.call_sites.get(func_id, [])
+            all_calls = call_sites_map.get(id(decl), [])
             if not all_calls:
                 continue  # Never called – no error can be guaranteed.
 
@@ -280,7 +446,7 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
             # unrestricted access to private/protected members in Java 11+).
             external_calls = [
                 c for c in all_calls
-                if not self._are_nest_members(c, class_decl.name)
+                if not self._are_nest_members(c, loc.class_decl.name)
             ]
             if not external_calls:
                 continue
@@ -290,22 +456,26 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
         self.metadata["examined"] = len(filtered)
         return filtered
 
-    def get_programs_with_error(self, loc: FuncLoc):
+    def get_programs_with_error(self, loc: Loc):
         """
-        Yield program variants where the method's access modifier has been
-        changed to a more restrictive value, in order of decreasing
-        permissiveness (public → protected → private).
+        Yield program variants where the access modifier of the method or
+        constructor has been changed to a more restrictive value, in order of
+        decreasing permissiveness (public → protected → private).
         """
-        func_decl = loc.func_decl
         class_decl = loc.class_decl
-        original_access_mod = func_decl.metadata.get("access_mod", "public")
+        if isinstance(loc, CtorLoc):
+            decl = loc.ctor
+            call_sites_map = self.analysis.ctor_call_sites
+        else:
+            decl = loc.func_decl
+            call_sites_map = self.analysis.call_sites
+
+        original_access_mod = decl.metadata.get("access_mod", "public")
         self.original_access_mod = original_access_mod
 
-        func_id = id(func_decl)
-        all_calls = self.analysis.call_sites.get(func_id, [])
+        all_calls = call_sites_map.get(id(decl), [])
 
-        # Calls from outside the defining class's nest (nest members have
-        # unrestricted access to private/protected members in Java 11+).
+        # Calls from outside the defining class's nest.
         external_calls = [
             c for c in all_calls
             if not self._are_nest_members(c, class_decl.name)
@@ -329,30 +499,30 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
                 # Soundness check ------------------------------------------------
                 # protected: accessible from the defining class and its subclasses.
                 # An error is guaranteed only if there is a call from a class
-                # that is neither the defining class nor one of its subclasses.
+                # that is neither the defining class/nest nor one of its subclasses.
                 if new_mod == "protected" and not outside_calls:
                     continue
 
-                # private: accessible only from the defining class.
+                # private: accessible only from the defining class's nest.
                 # An error is guaranteed whenever there is any external call.
                 if new_mod == "private" and not external_calls:
                     continue
                 # ----------------------------------------------------------------
 
-                func_decl.metadata["access_mod"] = new_mod
+                decl.metadata["access_mod"] = new_mod
                 self.add_err_message(loc, new_mod)
                 yield self.program
 
         finally:
             # Always restore the original access modifier so subsequent
             # locations see an unmodified program.
-            func_decl.metadata["access_mod"] = original_access_mod
+            decl.metadata["access_mod"] = original_access_mod
 
     def enumerate_programs(self):
         """
         Override the base-class implementation because our locations are
-        function declarations (not expressions) and do not need the
-        ASTExprUpdate restoration mechanism used by ErrorEnumerator.
+        function/constructor declarations (not expressions) and do not need
+        the ASTExprUpdate restoration mechanism used by ErrorEnumerator.
         """
         locations = self.get_candidate_program_locations()
         locations = self.filter_program_locations(locations)
