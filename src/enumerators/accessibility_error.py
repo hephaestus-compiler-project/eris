@@ -333,8 +333,8 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
     access modifier to a value that is guaranteed to make at least one existing
     call site ill-typed.
 
-    The access modifier hierarchy (most → least permissive):
-        public  →  protected  →  private
+    The access modifier hierarchy (most -> least permissive):
+        public  ->  protected  ->  private
 
     Soundness conditions for each injected modifier:
     * ``protected``: sound when there is at least one call from a class that
@@ -483,7 +483,7 @@ class AccessibilityErrorEnumerator(ErrorEnumerator):
         """
         Yield program variants where the access modifier of the method or
         constructor has been changed to a more restrictive value, in order of
-        decreasing permissiveness (public → protected → private).
+        decreasing permissiveness (public -> protected -> private).
         """
         class_decl = loc.class_decl
         if isinstance(loc, CtorLoc):

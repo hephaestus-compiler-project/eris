@@ -11,8 +11,8 @@ import pytest
 from src.ir import ast, types as tp, java_types as jt
 from src.ir.context import Context
 # This import must come before any src.enumerators import to avoid a circular
-# import: src.enumerators.__init__ → type_error → src.generators.api →
-# api_decl_generator → src.enumerators (partially initialised).
+# import: src.enumerators.__init__ -> type_error -> src.generators.api ->
+# api_decl_generator -> src.enumerators (partially initialised).
 # Importing from src.generators.api first ensures the generators package is
 # fully loaded before the enumerators package is initialised.
 from src.generators.api.builder import JavaAPIGraphBuilder  # noqa: F401
@@ -177,7 +177,7 @@ class TestAccessibilityAnalysis:
         - A.foo (protected) injected into B.bar: only 'private' (B is subclass,
           so 'protected' is skipped), 2 variants (call + func_ref).
         - B.bar (public) injected into A.foo's body: both 'protected' and
-          'private', 2 injects each → 4 variants.
+          'private', 2 injects each -> 4 variants.
         Total: 6 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
@@ -197,8 +197,8 @@ class TestAccessibilityAnalysis:
         for _ in enum.enumerate_programs():
             injected_mods.append(enum.injected_access_mod)
 
-        # A.foo → B (subclass): only "private" (×2 for call+ref)
-        # B.bar → A: "protected" and "private" (×2 for call+ref)
+        # A.foo -> B (subclass): only "private" (×2 for call+ref)
+        # B.bar -> A: "protected" and "private" (×2 for call+ref)
         assert injected_mods == [
             "private", "private",
             "protected", "private", "protected", "private",
@@ -410,8 +410,8 @@ class TestEnumerationLogic:
     def test_public_method_called_from_unrelated_class_yields_variants(self):
         """
         public A.foo() and public B.bar() in two unrelated classes:
-        - A.foo injected into B.bar: 'protected' and 'private', call + ref → 4
-        - B.bar injected into A.foo: 'protected' and 'private', call + ref → 4
+        - A.foo injected into B.bar: 'protected' and 'private', call + ref -> 4
+        - B.bar injected into A.foo: 'protected' and 'private', call + ref -> 4
         Total: 8 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
@@ -450,9 +450,9 @@ class TestEnumerationLogic:
         """
         public A.foo() with subclass B (has bar):
         - A.foo injected into B.bar: only 'private' (B is subclass), call +
-          ref → 2 variants.
+          ref -> 2 variants.
         - B.bar injected into A.foo's body: 'protected' and 'private', call +
-          ref → 4 variants.
+          ref -> 4 variants.
         Total: 6 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
@@ -472,8 +472,8 @@ class TestEnumerationLogic:
         for _ in enum.enumerate_programs():
             injected_mods.append(enum.injected_access_mod)
 
-        # A.foo → B (subclass): only "private" (×2 for call+ref)
-        # B.bar → A: "protected" and "private" (×2 for call+ref)
+        # A.foo -> B (subclass): only "private" (×2 for call+ref)
+        # B.bar -> A: "protected" and "private" (×2 for call+ref)
         assert injected_mods == [
             "private", "private",
             "protected", "private", "protected", "private",
@@ -483,9 +483,9 @@ class TestEnumerationLogic:
         """
         protected A.foo() and public C.baz() in unrelated classes:
         - A.foo injected into C.baz: only 'private' (already protected), call
-          + ref → 2 variants.
+          + ref -> 2 variants.
         - C.baz injected into A.foo's body: 'protected' and 'private', call +
-          ref → 4 variants.
+          ref -> 4 variants.
         Total: 6 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
@@ -500,8 +500,8 @@ class TestEnumerationLogic:
         for _ in enum.enumerate_programs():
             injected_mods.append(enum.injected_access_mod)
 
-        # A.foo → C: only "private" (×2 for call+ref)
-        # C.baz → A: "protected" and "private" (×2 for call+ref)
+        # A.foo -> C: only "private" (×2 for call+ref)
+        # C.baz -> A: "protected" and "private" (×2 for call+ref)
         assert injected_mods == [
             "private", "private",
             "protected", "private", "protected", "private",
@@ -672,8 +672,8 @@ class TestNestMembers:
         """
         Two unrelated public methods (A.foo and B.bar): synthesised call sites
         are injected in both directions.
-        - A.foo → B.bar: 'protected' and 'private', call + ref → 4 variants.
-        - B.bar → A.foo: 'protected' and 'private', call + ref → 4 variants.
+        - A.foo -> B.bar: 'protected' and 'private', call + ref -> 4 variants.
+        - B.bar -> A.foo: 'protected' and 'private', call + ref -> 4 variants.
         Total: 8 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
@@ -831,10 +831,10 @@ class TestConstructors:
     def test_constructor_injection_yields_correct_variants(self):
         """
         public A() constructor and public B.bar() method in unrelated classes:
-        - A() injected into B.bar: 'protected' and 'private' → 2 variants
+        - A() injected into B.bar: 'protected' and 'private' -> 2 variants
           (constructors only get a 'new' call, no func_ref).
         - B.bar injected into A()'s body: 'protected' and 'private', call +
-          ref → 4 variants.
+          ref -> 4 variants.
         Total: 6 variants.
         """
         type_a = tp.SimpleClassifier("A", [])
@@ -850,8 +850,8 @@ class TestConstructors:
         for _ in enum.enumerate_programs():
             injected_mods.append(enum.injected_access_mod)
 
-        # A() → B.bar: "protected", "private" (1 inject = New call)
-        # B.bar → A()'s body: "protected", "private" × call + ref
+        # A() -> B.bar: "protected", "private" (1 inject = New call)
+        # B.bar -> A()'s body: "protected", "private" × call + ref
         assert set(injected_mods) == {"protected", "private"}
         assert len(injected_mods) == 6
 
@@ -981,7 +981,7 @@ class TestOverloadResolution:
         class_a = make_class("A")
         class_a.constructors = [ctor_file_str, ctor_str_str]
 
-        # Call site uses (String, String) arguments → must match ctor_str_str only.
+        # Call site uses (String, String) arguments -> must match ctor_str_str only.
         new_a = make_new_typed(type_a, [str_t, str_t])
         class_b = make_class("B", methods=[make_method("bar",
                                                        body=ast.Block([new_a]))])
@@ -1063,7 +1063,7 @@ class TestOverloadResolution:
         foo_str = make_method_with_params("foo", [str_t])
         class_a = make_class("A", methods=[foo_int, foo_str])
 
-        # Call site uses a String argument → must match foo_str only.
+        # Call site uses a String argument -> must match foo_str only.
         call = make_call_typed("foo", type_a, [str_t])
         class_b = make_class("B", methods=[make_method("bar",
                                                        body=ast.Block([call]))])

@@ -91,8 +91,8 @@ class Generator(ErrorEnumerationMixin):
         self._init_enumerator(options)
         self.type_eraser = None
         self.block_variables: bool = False
-        # Deferred import to break the cycle: translators → generators.api →
-        # generators → translators.
+        # Deferred import to break the cycle: translators -> generators.api ->
+        # generators -> translators.
         from src.translators import TRANSLATORS
         self.translator = TRANSLATORS[language]()
         seeds_dir = options.get("seeds")

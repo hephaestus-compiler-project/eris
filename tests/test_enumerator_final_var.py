@@ -235,7 +235,7 @@ class TestFinalVarAnalysis:
 class TestFinalVarErrorEnumerator:
 
     def test_no_variants_when_no_assignments(self):
-        """Non-final variable with no assignment → no variants."""
+        """Non-final variable with no assignment -> no variants."""
         x = make_var_decl("x", is_final=False)
         func = make_func("test", [x])
         program = make_program(func)
@@ -246,7 +246,7 @@ class TestFinalVarErrorEnumerator:
         assert len(variants) == 0
 
     def test_no_variants_when_variable_already_final(self):
-        """Final variable with assignment → no variants (already final)."""
+        """Final variable with assignment -> no variants (already final)."""
         x = make_var_decl("x", is_final=True)
         assign = make_assignment("x")
         func = make_func("test", [x, assign])
@@ -258,7 +258,7 @@ class TestFinalVarErrorEnumerator:
         assert len(variants) == 0
 
     def test_one_variant_for_assigned_non_final_var(self):
-        """Non-final variable with assignment → one variant."""
+        """Non-final variable with assignment -> one variant."""
         x = make_var_decl("x", is_final=False)
         assign = make_assignment("x")
         func = make_func("test", [x, assign])
@@ -299,7 +299,7 @@ class TestFinalVarErrorEnumerator:
         assert enumerator._error_decl is None
 
     def test_one_variant_for_assigned_non_final_field(self):
-        """Non-final field with assignment in same class → one variant."""
+        """Non-final field with assignment in same class -> one variant."""
         field = make_field_decl("f", is_final=False)
         assign = make_assignment("f")
         method = make_func("setF", [assign])
@@ -312,7 +312,7 @@ class TestFinalVarErrorEnumerator:
         assert len(variants) == 1
 
     def test_one_variant_for_field_assigned_in_subclass(self):
-        """Non-final field assigned only in a subclass → one variant (hierarchy)."""
+        """Non-final field assigned only in a subclass -> one variant (hierarchy)."""
         field = make_field_decl("f", is_final=False)
         parent = make_class("Parent", fields=[field])
 
@@ -329,7 +329,7 @@ class TestFinalVarErrorEnumerator:
         assert len(variants) == 1
 
     def test_no_variant_for_field_assigned_only_in_unrelated_class(self):
-        """Field in class A not assigned in A or its subclasses → no variants."""
+        """Field in class A not assigned in A or its subclasses -> no variants."""
         field = make_field_decl("f", is_final=False)
         cls_a = make_class("A", fields=[field])
 
@@ -345,7 +345,7 @@ class TestFinalVarErrorEnumerator:
         assert len(variants) == 0
 
     def test_multiple_candidates_yield_multiple_variants(self):
-        """Two distinct assigned non-final variables → two variants."""
+        """Two distinct assigned non-final variables -> two variants."""
         x = make_var_decl("x", is_final=False)
         y = make_var_decl("y", is_final=False)
         ax = make_assignment("x")
@@ -359,7 +359,7 @@ class TestFinalVarErrorEnumerator:
         assert len(variants) == 2
 
     def test_unrelated_assignment_does_not_trigger_enumeration(self):
-        """Non-final variable 'x' with assignment to unrelated name 'z' → no variants."""
+        """Non-final variable 'x' with assignment to unrelated name 'z' -> no variants."""
         x = make_var_decl("x", is_final=False)
         az = make_assignment("z")
         func = make_func("test", [x, az])
@@ -422,8 +422,8 @@ class TestMetadata:
 
     def test_metadata_examined_counts_only_assigned_candidates(self):
         """examined = non-final decls that actually have matching assignments."""
-        x = make_var_decl("x", is_final=False)   # assigned → examined
-        y = make_var_decl("y", is_final=False)   # not assigned → not examined
+        x = make_var_decl("x", is_final=False)   # assigned -> examined
+        y = make_var_decl("y", is_final=False)   # not assigned -> not examined
         ax = make_assignment("x")
         func = make_func("test", [x, y, ax])
         program = make_program(func)
