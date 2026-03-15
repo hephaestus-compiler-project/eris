@@ -536,8 +536,11 @@ class KotlinTranslator(BaseTranslator):
                 [super_this_call])[0]
         param_res = [children_res[i] for i, _ in enumerate(node.params)]
         body_res = children_res[-1] if node.body else ''
-        res = "{ident}constructor({params}){super}{body}".format(
+        access_mod = node.metadata.get("access_mod", "")
+        modifiers = (access_mod + " ") if access_mod else ""
+        res = "{ident}{modifiers}constructor({params}){super}{body}".format(
             ident=" " * old_ident,
+            modifiers=modifiers,
             params=", ".join(param_res),
             super=super_this_call_res.replace("`", "").lstrip(),
             body=body_res

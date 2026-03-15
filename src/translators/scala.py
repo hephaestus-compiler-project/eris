@@ -449,8 +449,13 @@ class ScalaTranslator(BaseTranslator):
         children_res = self.pop_children_res(children)
         param_res = [children_res[i] for i, _ in enumerate(node.params)]
         body_res = children_res[-1] if node.body else ''
-        res = "{ident}def this({params}) = {body}".format(
+        access_mod = node.metadata.get("access_mod", "")
+        if access_mod in self.EXCLUDED_METADATA:
+            access_mod = ""
+        modifiers = (access_mod + " ") if access_mod else ""
+        res = "{ident}{modifiers}def this({params}) = {body}".format(
             ident=" " * old_ident,
+            modifiers=modifiers,
             params=", ".join(param_res),
             body=body_res
         )

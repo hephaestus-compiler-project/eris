@@ -114,7 +114,7 @@ class JavaTranslator(BaseTranslator):
         # A set of numbers where numbers is the number of type parameters that
         # an interface for a function should have.
         # TODO pass it as option, or produce the list during the AST traverse
-        self._function_interfaces = {0,1,2,3}
+        self._function_interfaces = {0,1,2,3,4,5,6,7,8,9,10}
 
         # We need nodes_stack to set semicolons when needed.
         # For instance, in visit_func_call we use a semicolon only if parent
@@ -142,7 +142,7 @@ class JavaTranslator(BaseTranslator):
         self.is_nested_func_block = False
         self._namespace = ast.GLOBAL_NAMESPACE
         self._children_res = []
-        self._function_interfaces = {0,1,2,3}
+        self._function_interfaces = {0,1,2,3,4,5,6,7,8,9,10}
         self._nodes_stack = [None]
         self._visit_is_stack = [None]
         self._x_counter = 0
@@ -673,10 +673,8 @@ class JavaTranslator(BaseTranslator):
         body_res = children_res[-1] if node.body else ''
         self.ident = old_ident
         constructor_name = node.name.rsplit(".", )[-1]
-        excluded_metadata = set(self.EXCLUDED_METADATA) & {"abstract"}
-        modifiers = get_modifier_list({k: v for k, v in node.metadata.items()
-                                       if k in excluded_metadata})
-        modifiers = " ".join(modifiers) + " " if modifiers else ""
+        access_mod = node.metadata.get("access_mod", "")
+        modifiers = (access_mod + " ") if access_mod else ""
         return "{modifiers}{name}({params}){body}".format(
             modifiers=modifiers,
             name=constructor_name,
