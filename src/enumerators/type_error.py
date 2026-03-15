@@ -368,11 +368,15 @@ class TypeErrorEnumerator(ErrorEnumerator):
         Based on a given location that corresponds to a receiver expression,
         this method produces a type that is an forms an incompatible receiver.
         """
-        assert loc.parent.receiver is not None, (
-            "Assertion failed: parent location does not contain a receiver")
+        if isinstance(loc.parent, ast.FieldAccess):
+            receiver_expr = loc.parent.expr
+        else:
+            assert loc.parent.receiver is not None, (
+                "Assertion failed: parent location does not contain a receiver")
+            receiver_expr = loc.parent.receiver
         use_nullables = self.options.get("use-nullable-types", False)
         decl = self.api_graph.get_declaration_of_access(loc.parent)
-        receiver_type = loc.parent.receiver.get_type_info()[1]
+        receiver_type = receiver_expr.get_type_info()[1]
         if not receiver_type.is_parameterized():
             if use_nullables:
                 typer = NullIncompatibleTyping(

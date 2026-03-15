@@ -159,8 +159,16 @@ class IncompatibleTyping():
                                  apply_filters: bool = True):
         inclusion_policies = inclusion_policies or []
         blacklisted_types = blacklisted_types or set()
+        # Exclude type variables that are not in scope at the injection
+        # location. The generator would produce BottomConstant(t=None) for
+        # out-of-scope type variables, which the translator emits as plain
+        # `null` — a value accepted by every reference type, making the
+        # injected error unsound.
+        in_scope_type_vars = set(loc.scope.get("local_types", {}).keys())
         type_pool = {t for t in self.api_graph.get_reg_types()
-                     if t not in blacklisted_types}
+                     if t not in blacklisted_types
+                     and not (t.is_type_var()
+                              and t.name not in in_scope_type_vars)}
         excluded_types = (
             self.get_type_filters(loc, exp_t, type_pool)
             if apply_filters
@@ -467,6 +475,17 @@ class IncompatibleTyping():
             # an instantation of the candidate type constructor.
             # Example:
             # exp_t: List<String>, type_con: Map<String, Object>
+            yield param_t[0]
+            return
+
+        type_con_params = set(type_con.type_parameters)
+        if not any(v.is_type_var() and v in type_con_params
+                   for v in sub.values()):
+            # sub maps exp_t's type params to concrete types (e.g., type_con
+            # extends a generic supertype with a hardcoded type argument like
+            # class Bar extends List<Float>). There are no free type parameters
+            # of type_con connected to exp_t, so the related-type path cannot
+            # generate incompatible instantiations. Fall back to a simple one.
             yield param_t[0]
             return
 

@@ -1554,6 +1554,17 @@ class Generator(ErrorEnumerationMixin):
         true_expr = self.generate_expr(true_type, only_leaves, subtype=False)
         false_expr = self.generate_expr(false_type, only_leaves, subtype=False)
         self.depth = initial_depth
+        # Mark each branch with the conditional's demanded type as the expected
+        # type. The error enumerator uses the expected type of an expression to
+        # decide which locations are valid injection points. Without this, a
+        # branch typed as Short in a conditional that expects Object would appear
+        # as an injection point for types incompatible with Short. However,
+        # replacing the branch only widens the ternary's LUB to Object, which
+        # the enclosing context already accepts, so no real type error is
+        # introduced. By annotating branches with etype, the enumerator's
+        # existing Any/Object filter correctly excludes such locations.
+        true_expr.mk_typed(ast.TypePair(etype, true_expr.get_type_info()[1]))
+        false_expr.mk_typed(ast.TypePair(etype, false_expr.get_type_info()[1]))
 
         # Note that this an approximation of the type of the whole conditional.
         # To properly estimate the type of conditional, we need to implememnt
@@ -2596,7 +2607,18 @@ class Generator(ErrorEnumerationMixin):
                 body = ast.Block([ret_expr])
         else:
             exprs, decls = self._gen_side_effects()
-            body = ast.Block(decls + exprs + [ret_expr])
+            if is_lambda and ret_type == self.bt_factory.get_void_type():
+                # For void lambdas/closures the last expression in the block
+                # is the implicit return value.  Placing a non-void ret_expr
+                # last would make the closure return a non-void value, which
+                # is rejected by compilers (e.g. groovyc "Cannot return value
+                # of type X for closure expecting Void").  The declarations
+                # created by ret_expr are still collected via _gen_side_effects
+                # decls, so variables appear in the block without the bare
+                # reference at the end.
+                body = ast.Block(decls + exprs)
+            else:
+                body = ast.Block(decls + exprs + [ret_expr])
         return body
 
     # Where
