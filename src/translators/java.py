@@ -79,6 +79,7 @@ class JavaTranslator(BaseTranslator):
         self.types = []
         self._generator = None
         self._cast_number = False
+        self._use_nullable_types = options.get('use_nullable_types', False)
         # Keep track if a block is in a function that has non-void return type
         self.is_func_non_void_block = False
 
@@ -312,6 +313,8 @@ class JavaTranslator(BaseTranslator):
             package_str = 'package ' + self.package + ';\n\n'
         else:
             package_str = ''
+        if self._use_nullable_types:
+            package_str += 'import org.checkerframework.checker.nullness.qual.*;\n\n'
         self.ident = 2
         bottom_func = self.get_ident() + \
             "static <T> T bottom() { throw new java.lang.RuntimeException(); }"

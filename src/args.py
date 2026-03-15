@@ -342,6 +342,7 @@ args.options = {
     },
     'Translator': {
         'cast_numbers': args.cast_numbers,
+        'use_nullable_types': args.use_nullable_types,
     },
     "TypeErasure": {
         "timeout": args.timeout

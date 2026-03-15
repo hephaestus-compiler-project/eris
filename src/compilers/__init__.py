@@ -28,7 +28,8 @@ def compile_program(language: str, program: ast.Program,
     filter_patterns = utils.path2set(cli_args.error_filter_patterns)
     # Create a temporary directory
     tmpdir = tempfile.mkdtemp()
-    translator = TRANSLATORS[language](package=package_name)
+    translator = TRANSLATORS[language](package=package_name,
+                                       options=cli_args.options['Translator'])
     # Translate the program
     program_str = utils.translate_program(translator, program)
     segs = tuple(package_name.split("."))
