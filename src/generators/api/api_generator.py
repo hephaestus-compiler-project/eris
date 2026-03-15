@@ -1,6 +1,7 @@
 from copy import deepcopy, copy
 import functools
 import itertools
+import os
 from typing import List, NamedTuple, Union
 
 from src import utils
@@ -82,6 +83,7 @@ class APIClientGenerator(Generator):
                                                         self.inject_error_mode)
         self.error_injected = None
         self.test_case_type_params: List[tp.TypeParameter] = []
+        self.seeds = options.get("seeds")
 
         # This flag blocks the creation of local variables. This flag is
         # needed, if in certain points we want to block the creation of
@@ -301,6 +303,19 @@ class APIClientGenerator(Generator):
         return typing_seqs, True
 
     def compute_programs(self):
+        if self.seeds:
+            for dirname in sorted(os.listdir(self.seeds)):
+                filename = self.translator.get_filename()
+                program = utils.load_program(
+                    os.path.join(self.seeds, dirname, filename + ".bin"))
+                self.api_graph = utils.load_program(
+                    os.path.join(self.seeds, dirname, filename + ".graph"))
+                if not self.ErrorEnumerator:
+                    yield program
+                else:
+                    yield from self.enumerate_ill_typed_programs(
+                        program, dirname)
+            return
         i = 1
         for encoding in self.encodings:
             types = (encoding.receivers, *encoding.parameters,

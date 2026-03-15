@@ -20,6 +20,7 @@ TODOs:
 """
 # pylint: disable=too-many-instance-attributes,too-many-arguments,dangerous-default-value
 import functools
+import os
 from collections import defaultdict
 from copy import deepcopy
 from typing import Tuple, List, Callable
@@ -94,6 +95,14 @@ class Generator(ErrorEnumerationMixin):
         # generators → translators.
         from src.translators import TRANSLATORS
         self.translator = TRANSLATORS[language]()
+        seeds_dir = options.get("seeds")
+        if seeds_dir:
+            self._seeds_list = sorted(os.listdir(seeds_dir))
+            self._seeds_dir = seeds_dir
+        else:
+            self._seeds_list = None
+            self._seeds_dir = None
+        self._seed_index = 0
 
     def _init_api_graphs(self):
         self._api_graph: nx.DiGraph = nx.DiGraph()
@@ -128,6 +137,9 @@ class Generator(ErrorEnumerationMixin):
         Checks if the generator can generate another program for the
         next iteration.
         """
+        if self._seeds_list is not None:
+            return (self._seed_index < len(self._seeds_list)
+                    or self._pending_variants is not None)
         return True
 
     ### Entry Point Generators ###
@@ -149,6 +161,44 @@ class Generator(ErrorEnumerationMixin):
             except StopIteration:
                 self._pending_variants = None
                 self.error_injected = None
+
+        # Load next seed from disk if seeds are configured.
+        if self._seeds_list is not None:
+            seed_dirname = self._seeds_list[self._seed_index]
+            self._seed_index += 1
+            filename = self.translator.get_filename()
+            program = ut.load_program(
+                os.path.join(self._seeds_dir, seed_dirname,
+                             filename + ".bin"))
+            graph_path = os.path.join(self._seeds_dir, seed_dirname,
+                                      filename + ".graph")
+            if os.path.exists(graph_path):
+                self.api_graph = ut.load_program(graph_path)
+            if not self.ErrorEnumerator:
+                self.error_injected = None
+                return program
+            from src.compilers import compile_program
+            (succeeded, err), compiler = compile_program(
+                self.language, program, self.package_name, extra_options=None)
+            compiler.analyze_compiler_output(err)
+            if not succeeded and not compiler.crash_msg:
+                log(self.logger,
+                    f"Seed {seed_dirname} unexpectedly does not compile")
+                self.error_injected = None
+                return program
+            if compiler.crash_msg:
+                log(self.logger,
+                    f"We found a crash with seed {seed_dirname}")
+                self.error_injected = None
+                return program
+            self._pending_variants = self.enumerate_ill_typed_programs(
+                program, seed_dirname)
+            try:
+                return next(self._pending_variants)
+            except StopIteration:
+                self._pending_variants = None
+                self.error_injected = None
+                return program
 
         # Generate a fresh well-typed skeleton.
         self.context = context or Context()

@@ -302,6 +302,7 @@ args.options = {
     "Generator": {
         "base": {
             "error-enumerator": args.error_enumerator,
+            "seeds": args.seeds,
         },
         "api": {
             "api-rules": args.api_rules,
@@ -312,6 +313,7 @@ args.options = {
             "path-search-strategy": args.path_search_strategy,
             "error-enumerator": args.error_enumerator,
             "use-nullable-types": args.use_nullable_types,
+            "seeds": args.seeds,
         },
         "api-decl": {
             "api-rules": args.api_rules,
@@ -331,6 +333,7 @@ args.options = {
             "max-cfg-nodes": args.max_cfg_nodes,
             "max-local-vars": args.max_cfg_local_vars,
             "use-nullable-types": args.use_nullable_types,
+            "seeds": args.seeds,
         }
     },
     "Enumerator": {

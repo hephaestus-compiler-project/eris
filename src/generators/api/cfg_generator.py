@@ -2,6 +2,7 @@ from collections import namedtuple, OrderedDict
 from copy import deepcopy
 import json
 import functools
+import os
 import re
 from typing import List, Tuple, Union
 
@@ -253,6 +254,7 @@ class CFGGenerator(APIClientGenerator):
         self._init_enumerator(options)
         self.max_local_vars = options.get("max-local-vars", 5)
         self.max_cfg_nodes = options.get("max-cfg-nodes")
+        self.seeds = options.get("seeds")
 
     def _fork_api_spec(self, specs: Tuple[str, dict],
                        selected_namespaces: List[str],
@@ -713,6 +715,20 @@ class CFGGenerator(APIClientGenerator):
             program, program_id, api_namespace)
 
     def compute_programs(self) -> ast.Program:
+        if self.seeds:
+            for i, dirname in enumerate(sorted(os.listdir(self.seeds))):
+                program_id = i + 1
+                filename = self.translator.get_filename()
+                program = utils.load_program(
+                    os.path.join(self.seeds, dirname, filename + ".bin"))
+                self.api_graph = utils.load_program(
+                    os.path.join(self.seeds, dirname, filename + ".graph"))
+                if not self.ErrorEnumerator:
+                    yield program
+                else:
+                    yield from self.generate_ill_typed_programs(
+                        program, program_id, dirname)
+            return
         for i, tree in enumerate(self.generate_cfg_tree()):
             program_id = i + 1
             api_namespace = utils.random.choice(self.api_namespaces)
