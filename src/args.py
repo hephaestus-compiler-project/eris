@@ -244,6 +244,12 @@ parser.add_argument(
     help="Maximum nodes in CFG graph (only applicable when --generator cfg)"
 )
 parser.add_argument(
+    "--max-cfg-local-vars",
+    default=5,
+    type=int,
+    help="Maximum local variables per CFG block (only applicable when --generator cfg)"
+)
+parser.add_argument(
     "--use-nullable-types",
     action="store_true",
     help="Use nullable types in the generated programs and enumerators"
@@ -294,7 +300,9 @@ args.stop_cond = "timeout" if args.seconds else "iterations"
 args.temp_directory = os.path.join(cwd, "temp")
 args.options = {
     "Generator": {
-        "base": {},
+        "base": {
+            "error-enumerator": args.error_enumerator,
+        },
         "api": {
             "api-rules": args.api_rules,
             "max-conditional-depth": args.max_conditional_depth,
@@ -302,12 +310,8 @@ args.options = {
             "erase-types": args.erase_types,
             "enable-expression-cache": args.enable_expression_cache,
             "path-search-strategy": args.path_search_strategy,
-            "extra-options": args.extra_compiler_option,
             "error-enumerator": args.error_enumerator,
-            "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
-            "disable-location-cache": args.disable_location_cache,
-            "disable-enumeration": args.disable_enumeration,
-            "disable-type-isomorphism": args.disable_type_isomorphism,
+            "use-nullable-types": args.use_nullable_types,
         },
         "api-decl": {
             "api-rules": args.api_rules,
@@ -317,10 +321,6 @@ args.options = {
             "erase-types": args.erase_types,
             "use-nullable-types": args.use_nullable_types,
             "seeds": args.seeds,
-            "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
-            "disable-location-cache": args.disable_location_cache,
-            "disable-enumeration": args.disable_enumeration,
-            "disable-type-isomorphism": args.disable_type_isomorphism,
         },
         "cfg": {
             "api-rules": args.api_rules,
@@ -329,12 +329,16 @@ args.options = {
             "path-search-strategy": args.path_search_strategy,
             "erase-types": args.erase_types,
             "max-cfg-nodes": args.max_cfg_nodes,
+            "max-local-vars": args.max_cfg_local_vars,
             "use-nullable-types": args.use_nullable_types,
-            "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
-            "disable-location-cache": args.disable_location_cache,
-            "disable-enumeration": args.disable_enumeration,
-            "disable-type-isomorphism": args.disable_type_isomorphism,
         }
+    },
+    "Enumerator": {
+        "use-nullable-types": args.use_nullable_types,
+        "ignore-locations-with-unknown-target-type": args.ignore_locations_with_unknown_target_type,
+        "disable-location-cache": args.disable_location_cache,
+        "disable-enumeration": args.disable_enumeration,
+        "disable-type-isomorphism": args.disable_type_isomorphism,
     },
     'Translator': {
         'cast_numbers': args.cast_numbers,
@@ -409,6 +413,11 @@ def validate_args(args):
                   " --generator 'api'"))
     if args.generator == "api" and args.workers is not None:
         sys.exit("The 'api' generator cannot be used in parallel mode")
+
+    if (args.generator == "base" and args.error_enumerator is not None
+            and args.workers is not None):
+        sys.exit("Error enumeration cannot be used with the 'base' generator "
+                 "in parallel mode")
 
     if args.api_rules and not os.path.isfile(args.api_rules):
         sys.exit("You have to provide a valid file in --api-rules")

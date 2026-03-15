@@ -8,7 +8,6 @@ from typing import List, Tuple, Union
 
 from src import utils
 from src.config import cfg
-from src.enumerators import get_error_enumerator
 from src.ir import ast, types as tp
 from src.ir.context import Context
 from src.compilers import compile_program
@@ -191,8 +190,7 @@ class APIDeclarationGenerator(APIClientGenerator):
                               if matcher.match(Namespace(k))]
         self.api_namespaces = utils.random.shuffle(api_namespaces)
         self.programs_gen = self.compute_programs()
-        self.ErrorEnumerator = get_error_enumerator(
-            self.options.get("error-enumerator"))
+        self._init_enumerator(options)
         self.seeds = options.get("seeds")
 
     def _fork_api_spec(self, specs: Tuple[str, dict],
@@ -888,34 +886,8 @@ class APIDeclarationGenerator(APIClientGenerator):
                 f"We found a crash with the skeleton program {program_id}")
             yield program
             return
-        error_enum = self.ErrorEnumerator(program, self,
-                                          self.bt_factory,
-                                          options=self.options)
-        flag = False
-        try:
-            cfg.substitute_wildcards = False
-            for j, p in enumerate(error_enum.enumerate_programs()):
-                if p is not None:
-                    flag = True
-                    self.error_injected = error_enum.error_explanation
-                    msg = (f"Enumerating error program {j + 1}"
-                           f" for skeleton {program_id}\n")
-                    log(self.logger, msg)
-                    log(self.logger, f"API namespace: {api_namespace}")
-                    log(self.logger, self.error_injected)
-                    yield p
-            metadata = error_enum.metadata
-            msg = (f"Metadata for skeleton {program_id}:"
-                   f" locations: {metadata['locations']}"
-                   f" examined locations: {metadata['examined']}")
-            log(self.logger, msg)
-            if not flag:
-                msg = f"No error added to skeleton {program_id}"
-                log(self.logger, msg)
-            cfg.substitute_wildcards = True
-        except Exception as exc:
-            log_error(self.logger, exc)
-            cfg.substitute_wildcards = True
+        yield from self.enumerate_ill_typed_programs(
+            program, program_id, api_namespace)
 
     def compute_programs(self) -> ast.Program:
         if self.seeds:

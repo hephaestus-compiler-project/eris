@@ -6,22 +6,36 @@ from src.utils import mkdir
 
 class Logger():
     def __init__(self, session, test_directory, iteration, name, number,
-                 stdout=False):
+                 stdout=False, fixed_filename=None, subdir=None):
         self.session = session
         self.test_directory = test_directory
         self.iteration = iteration
         self.transformation_name = name
         self.transformation_number = number
         self.stdout = stdout
+        self._fixed = False
         if not self.stdout:
-            self.directory = os.path.join(self.test_directory, "logs")
-            mkdir(self.directory)
-            self.filename = os.path.join(self.directory, str(self.iteration))
+            logs_dir = os.path.join(self.test_directory, "logs")
+            if fixed_filename is not None:
+                # Single fixed-file mode: all writes go to the same file;
+                # update_filename() is a no-op.
+                self._fixed = True
+                mkdir(logs_dir)
+                self.directory = logs_dir
+                self.filename = os.path.join(logs_dir, fixed_filename)
+            else:
+                # Per-program mode: one file per iteration, optionally under a
+                # subdirectory of logs/.
+                if subdir:
+                    self.directory = os.path.join(logs_dir, subdir)
+                else:
+                    self.directory = logs_dir
+                mkdir(self.directory)
+                self.filename = os.path.join(self.directory, str(self.iteration))
 
     def update_filename(self, iteration):
         self.iteration = iteration
-        if not self.stdout:
-            self.directory = os.path.join(self.test_directory, "logs")
+        if not self.stdout and not self._fixed:
             self.filename = os.path.join(self.directory, str(self.iteration))
 
     def log_info(self):

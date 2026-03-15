@@ -9,7 +9,6 @@ import networkx as nx
 
 from src import utils
 from src.config import cfg
-from src.enumerators import get_error_enumerator
 from src.ir import ast, types as tp, type_utils as tu
 from src.ir.context import Context
 from src.compilers import compile_program
@@ -251,8 +250,7 @@ class CFGGenerator(APIClientGenerator):
             api_namespaces = [k for k in api_namespaces
                               if matcher.match(Namespace(k))]
         self.api_namespaces = utils.random.shuffle(api_namespaces)
-        self.ErrorEnumerator = get_error_enumerator(
-            self.options.get("error-enumerator"))
+        self._init_enumerator(options)
         self.max_local_vars = options.get("max-local-vars", 5)
         self.max_cfg_nodes = options.get("max-cfg-nodes")
 
@@ -711,29 +709,8 @@ class CFGGenerator(APIClientGenerator):
                 f"We found a crash with the skeleton program {program_id}")
             yield program
             return
-        error_enum = self.ErrorEnumerator(program, self,
-                                          self.bt_factory,
-                                          options=self.options)
-        flag = False
-        try:
-            cfg.substitute_wildcards = False
-            for j, p in enumerate(error_enum.enumerate_programs()):
-                if p is not None:
-                    flag = True
-                    self.error_injected = error_enum.error_explanation
-                    msg = (f"Enumerating error program {j + 1}"
-                           f" for skeleton {program_id}\n")
-                    log(self.logger, msg)
-                    log(self.logger, f"API namespace: {api_namespace}")
-                    log(self.logger, self.error_injected)
-                    yield p
-            if not flag:
-                msg = f"No error added to skeleton {program_id}"
-                log(self.logger, msg)
-            cfg.substitute_wildcards = True
-        except Exception as exc:
-            log_error(self.logger, exc)
-            cfg.substitute_wildcards = True
+        yield from self.enumerate_ill_typed_programs(
+            program, program_id, api_namespace)
 
     def compute_programs(self) -> ast.Program:
         for i, tree in enumerate(self.generate_cfg_tree()):

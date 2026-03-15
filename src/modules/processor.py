@@ -50,9 +50,15 @@ class ProgramProcessor():
 
     def _get_generator(self):
         if self.args.log:
-            logger = Logger(self.args.name, self.args.test_directory,
-                            self.proc_id, "Generator",
-                            self.proc_id)
+            if self.args.generator == "base":
+                logger = Logger(self.args.name, self.args.test_directory,
+                                self.proc_id, "Generator",
+                                self.proc_id, subdir="generators")
+            else:
+                logger = Logger(self.args.name, self.args.test_directory,
+                                self.proc_id, "Generator",
+                                self.proc_id,
+                                fixed_filename="generation.logs")
         else:
             logger = None
         kwargs = {
@@ -66,7 +72,15 @@ class ProgramProcessor():
                 with open(os.path.join(self.args.api_doc_path, api_path)) as f:
                     docs[api_path.replace(".json", "")] = json.load(f)
             kwargs["api_docs"] = docs
-        return self.PROGRAM_GENERATORS.get(self.args.generator)(**kwargs)
+        generator = self.PROGRAM_GENERATORS.get(self.args.generator)(**kwargs)
+        if hasattr(generator, 'enumerator_options'):
+            generator.enumerator_options = self.args.options["Enumerator"]
+        if self.args.log and hasattr(generator, 'error_enum_logger'):
+            generator.error_enum_logger = Logger(
+                self.args.name, self.args.test_directory,
+                self.proc_id, "ErrorEnumerator",
+                self.proc_id, fixed_filename="error-enumeration.logs")
+        return generator
 
     def _apply_transformation(self, transformation_cls,
                               transformation_number, program):

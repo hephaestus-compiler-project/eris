@@ -35,9 +35,10 @@ from src.ir.context import Context
 from src.ir.builtins import BuiltinFactory
 from src.ir import BUILTIN_FACTORIES
 from src.modules.logging import Logger, log
+from src.generators.enumerator_mixin import ErrorEnumerationMixin
 
 
-class Generator():
+class Generator(ErrorEnumerationMixin):
     # TODO document
     def __init__(self,
                  language=None,
@@ -85,14 +86,31 @@ class Generator():
         self._blacklisted_classes: set = set()
         self.error_injected = None
         self.package_name: str = None
+        self._init_api_graphs()
+        self._init_enumerator(options)
+        self.type_eraser = None
+        self.block_variables: bool = False
+        # Deferred import to break the cycle: translators → generators.api →
+        # generators → translators.
+        from src.translators import TRANSLATORS
+        self.translator = TRANSLATORS[language]()
+
+    def _init_api_graphs(self):
         self._api_graph: nx.DiGraph = nx.DiGraph()
         self._subtyping_graph: nx.DiGraph = nx.DiGraph()
+        self._subtyping_graph.add_nodes_from(self.bt_factory.get_non_nothing_types())
 
     def prepare_next_program(self, program_id, package_name):
+        self._skeleton_program_id = program_id
+        # When error variants for the current skeleton are still being served,
+        # do not reset generator state and keep the logger pointing at the
+        # skeleton's file (so variant-generation logs stay co-located with the
+        # skeleton that produced them).
+        if self._pending_variants is not None:
+            return
         self.context = None
         self.package_name = package_name
-        self._api_graph = nx.DiGraph()
-        self._subtyping_graph = nx.DiGraph()
+        self._init_api_graphs()
         self.depth = 1
         self._vars_in_context = defaultdict(lambda: 0)
         self._new_from_class = None
@@ -119,7 +137,20 @@ class Generator():
 
         It first generates a number `n` top-level declarations,
         and then it generates the main function.
+
+        When an ``ErrorEnumerator`` is configured (and parallel mode is not
+        active), successive calls drain ill-typed variants of the last
+        well-typed skeleton before generating a new one.
         """
+        # Serve the next pending ill-typed variant, if any.
+        if self._pending_variants is not None:
+            try:
+                return next(self._pending_variants)
+            except StopIteration:
+                self._pending_variants = None
+                self.error_injected = None
+
+        # Generate a fresh well-typed skeleton.
         self.context = context or Context()
         for _ in ut.random.range(cfg.limits.min_top_level,
                                  cfg.limits.max_top_level):
@@ -129,7 +160,40 @@ class Generator():
         from src.generators.api import api_graph as ag
         self.api_graph = ag.APIGraph(self._api_graph, self._subtyping_graph,
                                      {}, self.bt_factory, **self.options)
-        return ast.Program(self.context, self.language)
+        program = ast.Program(self.context, self.language)
+
+        if not self.ErrorEnumerator:
+            self.error_injected = None
+            return program
+
+        # Compile the skeleton before enumerating variants; skip enumeration
+        # if it does not compile (mirrors APIDeclarationGenerator behaviour).
+        from src.compilers import compile_program
+        (succeeded, err), compiler = compile_program(
+            self.language, program, self.package_name, extra_options=None)
+        compiler.analyze_compiler_output(err)
+        if not succeeded and not compiler.crash_msg:
+            log(self.logger,
+                f"Skeleton program {self._skeleton_program_id}"
+                f" unexpectedly does not compile")
+            self.error_injected = None
+            return program
+        if compiler.crash_msg:
+            log(self.logger,
+                f"We found a crash with the skeleton program"
+                f" {self._skeleton_program_id}")
+            self.error_injected = None
+            return program
+
+        # Start enumerating ill-typed variants and serve the first one.
+        self._pending_variants = self.enumerate_ill_typed_programs(
+            program, self._skeleton_program_id)
+        try:
+            return next(self._pending_variants)
+        except StopIteration:
+            self._pending_variants = None
+            self.error_injected = None
+            return program
 
     def gen_top_level_declaration(self):
         """Generate a top-level declaration and add it in the context.
@@ -168,6 +232,12 @@ class Generator():
             func_type=ast.FunctionDeclaration.FUNCTION)
         self._add_node_to_parent(self.namespace[:-1], main_func)
         expr = self.generate_expr()
+        # main() is void: the type of the body expression is not checked by
+        # the type system.  Re-mark with expected=void so error enumerators
+        # do not treat this as a typed location.
+        _, actual_t = expr.get_type_info()
+        expr.mk_typed(ast.TypePair(expected=self.bt_factory.get_void_type(),
+                                   actual=actual_t))
         decls = list(self.context.get_declarations(
             self.namespace, True).values())
         decls = [d for d in decls
@@ -625,14 +695,21 @@ class Generator():
         self._add_out_type_to_api_graph(node.get_type(), constructor)
 
     def _add_variable_to_api_graph(self, node: ast.VariableDeclaration):
+        from src.generators.api.nodes import Field, Variable
         if self.namespace == ast.GLOBAL_NAMESPACE:
-            from src.generators.api.nodes import Field, Variable
+            # Global-scope variables: in Java/Groovy they are static fields of
+            # the Main class; in other languages they are plain Variables.
             if self.language in ["java", "groovy"]:
                 var = Field(node.name, f"{self.package_name}.Main", {})
             else:
                 var = Variable(node.name)
-            self._api_graph.add_node(var)
-            self._add_out_type_to_api_graph(node.get_type(), var)
+        else:
+            # Function-local variables: always represented as Variable nodes so
+            # that flow-based enumerators (e.g. FlowBasedTypeErrorEnumerator)
+            # can locate them in the api_graph.
+            var = Variable(node.name)
+        self._api_graph.add_node(var)
+        self._add_out_type_to_api_graph(node.get_type(), var)
 
     def _add_method_to_api_graph(self, node: ast.FunctionDeclaration,
                                  parent_node: ast.ClassDeclaration):
@@ -664,9 +741,10 @@ class Generator():
         self._add_out_type_to_api_graph(node.get_type(), field)
 
     def _add_class_to_api_graph(self, node: ast.ClassDeclaration):
-        # Add node to the API graph
+        # Add node to both the API graph and the subtyping graph.
         class_node = node.get_type()
         self._api_graph.add_node(class_node)
+        self._subtyping_graph.add_node(class_node)
 
         # Build subtyping relations
         super_types = class_node.get_supertypes()
@@ -990,6 +1068,12 @@ class Generator():
             return class_decl.get_callable_functions(class_decls)
         return class_decl.get_all_fields(class_decls)
 
+    def _generate_expr_from_node(self, node, depth=1, constraints=None):
+        # Avoid the side-effect of creating a new variable declaration by
+        # using exclude_var=True during error-injection expression generation.
+        from src.generators.api.api_generator import ExprRes
+        return ExprRes(self.generate_expr(node, only_leaves=True, exclude_var=True), {}, [node])
+
     def generate_expr(self,
                       expr_type: tp.Type=None,
                       only_leaves=False,
@@ -1026,6 +1110,9 @@ class Generator():
             ut.random.bool()
         )
         expr_type = expr_type or self.select_type()
+        # When no expected type was provided, the selected type becomes the
+        # expected type so that enumerators always see a non-None exp_t.
+        exp_t = exp_t or expr_type
         if find_subtype:
             subtypes = tu.find_subtypes(expr_type, self.get_types(),
                                         include_self=True, concrete_only=True)
@@ -2428,12 +2515,19 @@ class Generator():
         Returns:
             ast.Block or ast.Expr
         """
+        void_type = self.bt_factory.get_void_type()
         expr_type = (
             self.select_type(ret_types=False)
-            if ret_type == self.bt_factory.get_void_type()
+            if ret_type == void_type
             else ret_type
         )
         expr = self.generate_expr(expr_type)
+        if ret_type == void_type:
+            # The body expression of a void function is a statement; its type
+            # is not checked by the type system.  Re-mark with expected=void so
+            # error enumerators do not treat this as a typed location.
+            _, actual_t = expr.get_type_info()
+            expr.mk_typed(ast.TypePair(expected=void_type, actual=actual_t))
         decls = list(self.context.get_declarations(
             self.namespace, True).values())
         var_decls = [d for d in decls
@@ -2463,11 +2557,7 @@ class Generator():
         Example side-effects: assignment, variable declaration, etc.
         """
         exprs = []
-        expr_type = (
-            self.select_type()
-            if self.language == "groovy"
-            else self.bt_factory.get_void_type()
-        )
+        expr_type = self.bt_factory.get_void_type()
         for _ in range(ut.random.integer(0, cfg.limits.fn.max_side_effects)):
             expr = self.generate_expr(expr_type)
             if expr:
