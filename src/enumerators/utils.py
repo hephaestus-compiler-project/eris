@@ -159,15 +159,16 @@ class IncompatibleTyping():
                                  apply_filters: bool = True):
         inclusion_policies = inclusion_policies or []
         blacklisted_types = blacklisted_types or set()
-        # Exclude all type variables from the type pool. During error
-        # injection the generator runs in the global namespace, where no
-        # class/method type parameters are in scope. gen_new() would therefore
-        # produce BottomConstant(t=None) for any type variable, which the
-        # translator emits as plain `null` — a value accepted by every
-        # reference type, making the injected error unsound.
+        # Exclude type variables that are not in scope at the injection
+        # location. The generator would produce BottomConstant(t=None) for
+        # out-of-scope type variables, which the translator emits as plain
+        # `null` — a value accepted by every reference type, making the
+        # injected error unsound.
+        in_scope_type_vars = set(loc.scope.get("local_types", {}).keys())
         type_pool = {t for t in self.api_graph.get_reg_types()
                      if t not in blacklisted_types
-                     and not t.is_type_var()}
+                     and not (t.is_type_var()
+                              and t.name not in in_scope_type_vars)}
         excluded_types = (
             self.get_type_filters(loc, exp_t, type_pool)
             if apply_filters

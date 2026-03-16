@@ -1122,7 +1122,8 @@ class Generator(ErrorEnumerationMixin):
         # Avoid the side-effect of creating a new variable declaration by
         # using exclude_var=True during error-injection expression generation.
         from src.generators.api.api_generator import ExprRes
-        return ExprRes(self.generate_expr(node, only_leaves=True, exclude_var=True), {}, [node])
+        return ExprRes(self.generate_expr(
+            node, only_leaves=True, exclude_var=True, subtype=False), {}, [node])
 
     def generate_expr(self,
                       expr_type: tp.Type=None,

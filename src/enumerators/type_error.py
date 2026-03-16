@@ -74,6 +74,9 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def reconstruct_scope(self, loc: Loc):
         self.api_graph.add_types(list(loc.scope["local_types"].values()))
+        ns = self.program_gen.namespace
+        for name, t in loc.scope["local_types"].items():
+            self.program_gen.context.add_type(ns, name, t)
         for var_name, var_type in loc.scope["local_vars"].items():
             if isinstance(var_type, str):
                 var_type = self.api_graph.get_type_by_name(var_type)
@@ -81,6 +84,9 @@ class TypeErrorEnumerator(ErrorEnumerator):
 
     def delete_scope(self, loc: Loc):
         self.api_graph.remove_types(list(loc.scope["local_types"].values()))
+        ns = self.program_gen.namespace
+        for name in loc.scope["local_types"]:
+            self.program_gen.context.remove_type(ns, name)
         for var_name in loc.scope["local_vars"].keys():
             self.api_graph.remove_variable_node(var_name)
 
