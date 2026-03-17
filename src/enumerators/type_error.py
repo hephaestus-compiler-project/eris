@@ -225,11 +225,48 @@ class TypeErrorEnumerator(ErrorEnumerator):
             raise e
         return None
 
+    def _conditional_branch_in_non_type_param_receiver(self, loc) -> bool:
+        """
+        Returns True if loc is a branch of a Conditional that is itself a
+        receiver for a field/method whose return type does not depend on any
+        of the receiver's type parameters.
+        """
+        if not isinstance(loc.parent, ast.Conditional):
+            return False
+        cond_parents = self.analysis.get_parents(loc.parent)
+        if not cond_parents:
+            return False
+        cond_parent, cond_idx = cond_parents[0]
+        cond_loc = Loc(loc.parent, cond_parent, cond_idx, loc.depth, loc.scope)
+        if not cond_loc.is_receiver_loc():
+            return False
+        type_pair = loc.parent.get_type_info()
+        if type_pair is None:
+            return False
+        receiver_type = type_pair[1]
+        if not (receiver_type and receiver_type.is_parameterized()):
+            return False
+        decl = self.api_graph.get_declaration_of_access(cond_parent)
+        if decl is None:
+            return False
+        type_variables = self.get_type_variables_of_node_signature(
+            decl, receiver_type)
+        type_variables = {k: v for k, v in type_variables.items()
+                          if k in receiver_type.t_constructor.type_parameters}
+        return not type_variables
+
     def enumerate_incompatible_typings(self, loc):
         if loc.is_receiver_loc():
             # For receiver expression, we have a different logic to enumerate
             # the incompatible typings.
             yield from self.get_incompatible_type_of_receiver(loc)
+            return
+        if self._conditional_branch_in_non_type_param_receiver(loc):
+            # The branch's parent Conditional is a receiver for a member
+            # whose type doesn't depend on the receiver's type parameters.
+            # Any replacement here only widens the ternary's LUB without
+            # creating a real type error — mirror the empty-type_variables
+            # early-return in get_incompatible_type_of_receiver.
             return
         exp_t, _ = loc.expr.get_type_info()
         typer = (
