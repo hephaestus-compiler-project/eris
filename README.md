@@ -1,7 +1,7 @@
+> ⚠️ **Note:** This repository ([eris](https://github.com/hephaestus-compiler-project/eris)) is a fork of [thalia](https://github.com/hephaestus-compiler-project/thalia), which is itself a fork of [hephaestus](https://github.com/hephaestus-compiler-project/hephaestus). In the near future, we plan to integrate all three repositories into a single unified repo under [hephaestus](https://github.com/hephaestus-compiler-project/hephaestus).
+
 eris
 ====
-
-> **Note:** This repository ([eris](https://github.com/hephaestus-compiler-project/eris)) is a fork of [thalia](https://github.com/hephaestus-compiler-project/thalia), which is itself a fork of [hephaestus](https://github.com/hephaestus-compiler-project/hephaestus). In the near future, we plan to integrate all three repositories into a single unified repo under [hephaestus](https://github.com/hephaestus-compiler-project/hephaestus).
 
 `eris` is a testing framework for detecting bugs in type analyzers via
 *ill-typed program enumeration*.
