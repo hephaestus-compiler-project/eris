@@ -54,7 +54,7 @@ class APIClientGenerator(Generator):
     }
 
     def __init__(self, api_docs, options={}, language=None, logger=None):
-        super().__init__(language=language, logger=logger)
+        super().__init__(language=language, options=options, logger=logger)
         if self.logger:
             self.logger.update_filename("api-generator")
         self.api_builder = self.API_GRAPH_BUILDERS[language](
@@ -302,6 +302,27 @@ class APIClientGenerator(Generator):
         self.api_graph.remove_types(encoding.type_parameters)
         return typing_seqs, True
 
+    def generate_ill_typed_programs(self, program, program_id):
+        """Compile *program* and, if it compiles, enumerate ill-typed variants.
+
+        Mirrors ``APIDeclarationGenerator.generate_ill_typed_programs``.
+        """
+        from src.compilers import compile_program
+        (succeeded, err), compiler = compile_program(
+            self.language, program, self.package_name,
+            extra_options=None)
+        compiler.analyze_compiler_output(err)
+        if not succeeded and not compiler.crash_msg:
+            log(self.logger,
+                f"Skeleton program {program_id} unexpectedly does not compile")
+            return
+        if compiler.crash_msg:
+            log(self.logger,
+                f"We found a crash with the skeleton program {program_id}")
+            yield program
+            return
+        yield from self.enumerate_ill_typed_programs(program, program_id)
+
     def compute_programs(self):
         if self.seeds:
             for dirname in sorted(os.listdir(self.seeds)):
@@ -313,7 +334,7 @@ class APIClientGenerator(Generator):
                 if not self.ErrorEnumerator:
                     yield program
                 else:
-                    yield from self.enumerate_ill_typed_programs(
+                    yield from self.generate_ill_typed_programs(
                         program, dirname)
             return
         i = 1
@@ -335,9 +356,13 @@ class APIClientGenerator(Generator):
                                             typing_seq):
                         continue
 
-                    yield self.generate_test_case_from_combination(typing_seq,
-                                                                   encoding, i,
-                                                                   is_incorrect)
+                    program = self.generate_test_case_from_combination(
+                        typing_seq, encoding, i, is_incorrect)
+                    if not self.ErrorEnumerator:
+                        yield program
+                    else:
+                        yield from self.generate_ill_typed_programs(
+                            program, i)
                     i += 1
                 for ret in types[-1]:
                     # Merge receivers and parameters, and generate a test
@@ -348,7 +373,11 @@ class APIClientGenerator(Generator):
                     if program is None:
                         # No conditional can be created
                         continue
-                    yield program
+                    if not self.ErrorEnumerator:
+                        yield program
+                    else:
+                        yield from self.generate_ill_typed_programs(
+                            program, i)
                     i += 1
             except Exception as e:
                 # Handle any exception in order to prevent the termination
@@ -641,9 +670,11 @@ class APIClientGenerator(Generator):
     def has_next(self):
         return self._has_next
 
-    def prepare_next_program(self, program_id):
+    def prepare_next_program(self, program_id, package_name=None):
         self.error_injected = None
         self.test_case_type_params = []
+        if package_name is not None:
+            self.package_name = package_name
 
     def _get_target_selection(self, target: tp.Type) -> str:
         # In case of arrays we don't examine abstract output types because
