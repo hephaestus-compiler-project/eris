@@ -306,6 +306,7 @@ args.options = {
         "base": {
             "error-enumerator": args.error_enumerator,
             "seeds": args.seeds,
+            "extra-options": args.extra_compiler_option,
         },
         "api": {
             "api-rules": args.api_rules,
@@ -317,6 +318,7 @@ args.options = {
             "error-enumerator": args.error_enumerator,
             "use-nullable-types": args.use_nullable_types,
             "seeds": args.seeds,
+            "extra-options": args.extra_compiler_option,
         },
         "api-decl": {
             "api-rules": args.api_rules,
