@@ -220,14 +220,16 @@ class Generator(ErrorEnumerationMixin):
         # if it does not compile (mirrors APIDeclarationGenerator behaviour).
         from src.compilers import compile_program
         (succeeded, err), compiler = compile_program(
-            self.language, program, self.package_name, extra_options=None)
+            self.language, program, self.package_name,
+            extra_options=self.options.get("extra-options"))
         compiler.analyze_compiler_output(err)
         if not succeeded and not compiler.crash_msg:
             log(self.logger,
                 f"Skeleton program {self._skeleton_program_id}"
                 f" unexpectedly does not compile")
-            self.error_injected = None
-            return program
+            self.prepare_next_program(self._skeleton_program_id + 1,
+                                      self.package_name)
+            return self.generate()
         if compiler.crash_msg:
             log(self.logger,
                 f"We found a crash with the skeleton program"
