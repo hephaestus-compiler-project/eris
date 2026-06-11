@@ -115,6 +115,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv*/
 env/
 venv/
 ENV/
@@ -127,6 +128,10 @@ venv.bak/
 
 # Rope project settings
 .ropeproject
+
+# Metals (Scala LSP)
+.metals/
+.bloop/
 
 # mkdocs documentation
 /site
