@@ -404,8 +404,8 @@ To support a new language, you need to implement the following:
 # Related Publications
 
 * Thodoris Sotiropoulos, Stefanos Chaliasos, Zhendong Su.
-  *Enumerating Ill-Typed Programs for Testing Type Analyzers.*
-  PLDI '26. ACM, 2026 **(conditionally accepted)**.
+  [Enumerating Ill-Typed Programs for Testing Type Analyzers](https://doi.org/10.1145/3808320)
+  PLDI '26. ACM, June 2026.
 
 * Thodoris Sotiropoulos, Stefanos Chaliasos, Zhendong Su.
   [API-driven Program Synthesis for Testing Static Typing Implementations](https://theosotr.github.io/assets/pdf/popl24.pdf).
