@@ -1,3 +1,4 @@
+import warnings
 from typing import List, NamedTuple, Union
 
 import networkx as nx
@@ -78,8 +79,17 @@ def to_type_abstraction(t: tp.Type,
     if t.is_type_var():
         return TypeParameterAbstraction(t.bound is not None)
 
-    tree_hash = nx.weisfeiler_lehman_graph_hash(get_inheritance_tree(
-        t, bt_factory), node_attr="type")
+    with warnings.catch_warnings():
+        # networkx >= 3.5 warns that the WL hash value for directed graphs
+        # changed (a bugfix tracking in/out edges separately). Our hashes are
+        # recomputed each run and only compared in-memory, so the value change
+        # does not matter.
+        warnings.filterwarnings(
+            "ignore",
+            message="The hashes produced for directed graphs changed",
+            category=UserWarning)
+        tree_hash = nx.weisfeiler_lehman_graph_hash(
+            get_inheritance_tree(t, bt_factory), node_attr="type")
 
     if t.is_parameterized():
         signs = [to_type_abstraction(type_arg,
